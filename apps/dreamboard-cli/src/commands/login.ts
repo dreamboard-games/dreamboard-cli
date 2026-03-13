@@ -31,10 +31,7 @@ export default defineCommand({
   async run({ args }) {
     const parsedArgs = parseLoginCommandArgs(args);
     const globalConfig = await loadGlobalConfig();
-    const effectiveArgs = IS_PUBLISHED_BUILD
-      ? { ...parsedArgs, env: PUBLISHED_ENVIRONMENT }
-      : parsedArgs;
-    const config = resolveConfig(globalConfig, effectiveArgs);
+    const config = resolveConfig(globalConfig, parsedArgs);
     const state = crypto.randomUUID();
 
     const server = await startCliAuthServer(state, DEFAULT_LOGIN_TIMEOUT_MS);
@@ -45,18 +42,22 @@ export default defineCommand({
     openBrowser(loginUrl);
 
     consola.start("Waiting for login to complete...");
-    const { token, refreshToken } = await server.waitForToken;
+    try {
+      const { token, refreshToken } = await server.waitForToken;
 
-    await saveGlobalConfig({
-      ...globalConfig,
-      authToken: token,
-      refreshToken: refreshToken ?? undefined,
-      environment: IS_PUBLISHED_BUILD
-        ? PUBLISHED_ENVIRONMENT
-        : effectiveArgs.env || globalConfig.environment,
-    });
-    consola.success(
-      `Login successful. Session saved to ${getGlobalConfigPath()}.`,
-    );
+      await saveGlobalConfig({
+        ...globalConfig,
+        authToken: token,
+        refreshToken: refreshToken ?? undefined,
+        environment: IS_PUBLISHED_BUILD
+          ? PUBLISHED_ENVIRONMENT
+          : parsedArgs.env || globalConfig.environment,
+      });
+      consola.success(
+        `Login successful. Session saved to ${getGlobalConfigPath()}.`,
+      );
+    } finally {
+      server.close();
+    }
   },
 });

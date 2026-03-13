@@ -24,6 +24,7 @@ Dreamboard exists to turn a board-game idea into a playable digital prototype qu
 ## Prereqs
 
 - Dreamboard CLI installed and available as `dreamboard`
+  Install with `npm install -g dreamboard`
 - Authenticated via `dreamboard login`
 
 ## Core Workflow
@@ -62,6 +63,10 @@ Read only the reference that matches the task:
   [references/scenario-format.md](references/scenario-format.md)
 - Rejection and edge-case pressure using JSON runtime scenarios:
   [references/adversarial-testing.md](references/adversarial-testing.md)
+
+## Rulebook Imports
+
+Rulebook lookups are temporarily unavailable.
 
 ## Testing Modes
 

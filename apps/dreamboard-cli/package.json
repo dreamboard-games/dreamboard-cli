@@ -1,6 +1,6 @@
 {
   "name": "dreamboard-cli",
-  "version": "0.1.0",
+  "version": "0.1.1-beta.0",
   "description": "Design board games with AI and turn ideas into playable digital prototypes.",
   "repository": {
     "type": "git",
@@ -25,7 +25,6 @@
     "dreamboard": "dist/index.js"
   },
   "scripts": {
-    "be-cli": "bun scripts/be-cli.ts",
     "check:embedded-harness": "bun run scripts/check-embedded-harness.ts",
     "dev": "$HOME/.bun/bin/bun run scripts/dev.ts",
     "sync:skill-content": "tsx scripts/sync-skill-content.ts",
@@ -35,8 +34,7 @@
     "build": "pnpm run prebuild && tsup",
     "build:published": "pnpm run prebuild && DREAMBOARD_BUILD_CHANNEL=published tsup",
     "stage:publish": "pnpm run build:published && tsx scripts/stage-publish.ts",
-    "pack:publish": "pnpm run stage:publish && npm pack --dry-run .publish/package",
-    "verify:gh-auth": "tsx scripts/verify-gh-account.ts"
+    "pack:publish": "pnpm run stage:publish && npm pack --dry-run .publish/package"
   },
   "dependencies": {
     "@dreamboard/api-client": "workspace:*",

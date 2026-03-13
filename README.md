@@ -231,14 +231,14 @@ export DREAMBOARD_PUBLIC_LICENSE="MIT"
 
 If the source package already defines `repository`, `homepage`, `bugs`, or `license`, `stage:publish` will reuse those fields automatically.
 
-Before creating GitHub PRs or releases for the public CLI flow, verify `gh` is using account `ctan1345`:
+Before creating GitHub PRs or releases, verify `gh` is authenticated to the account you intend to use:
 
 ```bash
-pnpm run verify:gh-auth
+gh auth status
 ```
 
-If the account is logged in but inactive, switch first:
+If the wrong account is active, switch first:
 
 ```bash
-gh auth switch -u ctan1345
+gh auth switch -u <github-user>
 ```

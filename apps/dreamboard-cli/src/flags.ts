@@ -28,6 +28,10 @@ const cloneCommandArgsSchema = configFlagsSchema.extend({
   slug: z.string().min(1),
 });
 
+const queryCommandArgsSchema = configFlagsSchema.extend({
+  title: z.string().min(1),
+});
+
 const pullCommandArgsSchema = configFlagsSchema.extend({
   force: z.boolean().default(false),
 });
@@ -91,6 +95,7 @@ export type PlayerCountFlags = z.infer<typeof playerCountFlagsSchema>;
 
 export type NewCommandArgs = z.infer<typeof newCommandArgsSchema>;
 export type CloneCommandArgs = z.infer<typeof cloneCommandArgsSchema>;
+export type QueryCommandArgs = z.infer<typeof queryCommandArgsSchema>;
 export type PullCommandArgs = z.infer<typeof pullCommandArgsSchema>;
 export type PushCommandArgs = z.infer<typeof pushCommandArgsSchema>;
 export type StatusCommandArgs = z.infer<typeof statusCommandArgsSchema>;
@@ -137,6 +142,10 @@ export function parseNewCommandArgs(args: unknown): NewCommandArgs {
 
 export function parseCloneCommandArgs(args: unknown): CloneCommandArgs {
   return parseArgs("clone", cloneCommandArgsSchema, args);
+}
+
+export function parseQueryCommandArgs(args: unknown): QueryCommandArgs {
+  return parseArgs("query", queryCommandArgsSchema, args);
 }
 
 export function parsePullCommandArgs(args: unknown): PullCommandArgs {
