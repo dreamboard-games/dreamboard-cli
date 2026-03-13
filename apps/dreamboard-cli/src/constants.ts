@@ -3,6 +3,9 @@ import type { EnvironmentConfig } from "./types.js";
 export const DEFAULT_API_BASE_URL = "https://api.dreamboard.games";
 export const DEFAULT_WEB_BASE_URL = "https://dreamboard.games";
 export const CODE_EDITS_BUCKET = "code-edits";
+export const PROD_SUPABASE_URL = "https://upsjrgzihskmqporuaye.supabase.co";
+export const PROD_SUPABASE_ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVwc2pyZ3ppaHNrbXFwb3J1YXllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAwOTM1MjQsImV4cCI6MjA3NTY2OTUyNH0.9IZZ9Jmtqk4OzhQnkU7pApVx-IfdNjAt55ZKjOBjBB4";
 
 export const PROJECT_DIR_NAME = ".dreamboard";
 
@@ -24,8 +27,8 @@ export const ENVIRONMENT_CONFIGS: Record<string, EnvironmentConfig> = {
   prod: {
     apiBaseUrl: "https://api.dreamboard.games",
     webBaseUrl: "https://dreamboard.games",
-    supabaseUrl: "https://supabase.dreamboard.games",
-    supabaseAnonKey: process.env.SUPABASE_PROD_ANON_KEY || "",
+    supabaseUrl: PROD_SUPABASE_URL,
+    supabaseAnonKey: PROD_SUPABASE_ANON_KEY,
   },
 };
 export const PROJECT_CONFIG_FILE = "project.json";
