@@ -16,6 +16,7 @@ import { CONFIG_FLAG_ARGS } from "../command-args.js";
 import { resolveProjectContext } from "../config/resolve.js";
 import { parseConfigFlags } from "../flags.js";
 import { resolveCompiledResultForRun } from "../services/workflows/resolve-run-result.js";
+import { shouldUseRemoteTestRuntime } from "../services/testing/runtime-mode.js";
 import {
   ensureDir,
   exists,
@@ -178,7 +179,7 @@ const generateCommand = defineCommand({
   },
   async run({ args }) {
     const parsedFlags = parseConfigFlags(args);
-    const useRemoteRuntime = isRemoteTestEnvironment(parsedFlags.env);
+    const useRemoteRuntime = shouldUseRemoteTestRuntime(parsedFlags.env);
     const { projectRoot, projectConfig } = await resolveProjectContext(
       parsedFlags,
       { requireAuth: useRemoteRuntime },
@@ -269,7 +270,7 @@ const runCommand = defineCommand({
   },
   async run({ args }) {
     const parsedFlags = parseConfigFlags(args);
-    const useRemoteRuntime = isRemoteTestEnvironment(parsedFlags.env);
+    const useRemoteRuntime = shouldUseRemoteTestRuntime(parsedFlags.env);
     const { projectRoot, projectConfig } = await resolveProjectContext(
       parsedFlags,
       { requireAuth: useRemoteRuntime },
@@ -329,12 +330,6 @@ const runCommand = defineCommand({
     }
   },
 });
-
-function isRemoteTestEnvironment(
-  environment: string | undefined,
-): environment is "dev" | "prod" {
-  return environment === "dev" || environment === "prod";
-}
 
 async function resolveTestCommandRuntime(options: {
   projectRoot: string;
