@@ -1,0 +1,60 @@
+{
+  "name": "dreamboard-cli",
+  "version": "0.1.0",
+  "description": "Design board games with AI and turn ideas into playable digital prototypes.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dreamboard-games/dreamboard-cli.git"
+  },
+  "homepage": "http://dreamboard.games/",
+  "bugs": {
+    "url": "https://github.com/dreamboard-games/dreamboard-cli/issues"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "dreamboard",
+    "cli",
+    "game-dev",
+    "board-game",
+    "multiplayer"
+  ],
+  "module": "src/index.ts",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "dreamboard": "dist/index.js"
+  },
+  "scripts": {
+    "be-cli": "bun scripts/be-cli.ts",
+    "check:embedded-harness": "bun run scripts/check-embedded-harness.ts",
+    "dev": "$HOME/.bun/bin/bun run scripts/dev.ts",
+    "sync:skill-content": "tsx scripts/sync-skill-content.ts",
+    "sync:scaffold-ownership": "tsx scripts/sync-scaffold-ownership.ts",
+    "sync:static-scaffold": "tsx scripts/sync-static-scaffold.ts",
+    "prebuild": "pnpm run sync:skill-content && pnpm run sync:scaffold-ownership && pnpm run sync:static-scaffold",
+    "build": "pnpm run prebuild && tsup",
+    "build:published": "pnpm run prebuild && DREAMBOARD_BUILD_CHANNEL=published tsup",
+    "stage:publish": "pnpm run build:published && tsx scripts/stage-publish.ts",
+    "pack:publish": "pnpm run stage:publish && npm pack --dry-run .publish/package",
+    "verify:gh-auth": "tsx scripts/verify-gh-account.ts"
+  },
+  "dependencies": {
+    "@dreamboard/api-client": "workspace:*",
+    "@dreamboard/sdk-types": "workspace:*",
+    "@supabase/supabase-js": "^2.94.1",
+    "citty": "^0.2.0",
+    "consola": "^3.4.2",
+    "esbuild": "^0.25.1",
+    "picocolors": "^1.1.1",
+    "playwright": "^1.50.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^24.5.2",
+    "prettier": "^3.5.1",
+    "prettier-plugin-sql": "^0.18.1",
+    "tsup": "^8.5.0",
+    "tsx": "^4.20.5"
+  }
+}

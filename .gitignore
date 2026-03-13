@@ -1,0 +1,12 @@
+node_modules
+.turbo
+dist
+.publish
+*.tgz
+.cursor
+CLAUDE.md
+.eslintcache
+*.tsbuildinfo
+__pycache__/
+*.pyc
+.DS_Store
