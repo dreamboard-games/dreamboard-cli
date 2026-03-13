@@ -8,7 +8,6 @@
   "scripts": {
     "build": "pnpm --dir apps/dreamboard-cli run build",
     "stage:publish": "pnpm --dir apps/dreamboard-cli run stage:publish",
-    "pack:publish": "pnpm --dir apps/dreamboard-cli run pack:publish",
-    "verify:gh-auth": "pnpm --dir apps/dreamboard-cli run verify:gh-auth"
+    "pack:publish": "pnpm --dir apps/dreamboard-cli run pack:publish"
   }
 }

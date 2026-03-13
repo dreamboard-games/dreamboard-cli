@@ -200,19 +200,22 @@ dreamboard run --screenshot --output ./shot.png --delay 1500 --width 1440 --heig
 
 ## Skill Source
 
-- Public skill source lives under repo-root `skills/dreamboard/`.
+- Public skill source lives under `skills/dreamboard/`.
 - `dreamboard new` installs the bundled skill into `.agents/skills/dreamboard/` in the generated game project.
 - The Node helper script for run-artifact inspection is `.agents/skills/dreamboard/scripts/events-extract.mjs`.
 - Public GitHub repo for the CLI is [dreamboard-games/dreamboard-cli](https://github.com/dreamboard-games/dreamboard-cli).
-- Install the public skill directly with `skills.sh`:
-
-```bash
-npx skills add https://github.com/dreamboard-games/dreamboard-cli --skill dreamboard
-```
 
 ## Publish Prep
 
-This repo is the public mirror for the published CLI. If you also work in the private monorepo, sync only the public-safe CLI surface into this repo before publishing.
+Public repo layout:
+
+```bash
+apps/dreamboard-cli/   # CLI code
+skills/                # public skill source
+```
+
+Important: `apps/dreamboard-cli/skills` is not the published skill location. In the public repo, skills belong at top-level `skills/`.
+Keep local-only assets out of `skills/dreamboard/`; that tree is mirrored to GitHub and staged for npm publish.
 
 Build a staged public package:
 
@@ -234,14 +237,14 @@ export DREAMBOARD_PUBLIC_LICENSE="MIT"
 
 If the source package already defines `repository`, `homepage`, `bugs`, or `license`, `stage:publish` will reuse those fields automatically.
 
-Before creating GitHub PRs or releases for the public CLI flow, verify `gh` is using account `ctan1345`:
+Before creating GitHub PRs or releases, verify `gh` is authenticated to the account you intend to use:
 
 ```bash
-pnpm run verify:gh-auth
+gh auth status
 ```
 
-If the account is logged in but inactive, switch first:
+If the wrong account is active, switch first:
 
 ```bash
-gh auth switch -u ctan1345
+gh auth switch -u <github-user>
 ```

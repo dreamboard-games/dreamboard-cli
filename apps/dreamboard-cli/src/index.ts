@@ -7,6 +7,7 @@ import cmdPush from "./commands/push.js";
 import cmdStatus from "./commands/status.js";
 import cmdUpdate from "./commands/update.js";
 import cmdRun from "./commands/run.js";
+import cmdQuery from "./commands/query.js";
 import cmdAuth from "./commands/auth.js";
 import cmdLogin from "./commands/login.js";
 import cmdLogout from "./commands/logout.js";
@@ -37,7 +38,7 @@ const subCommands = {
   login: cmdLogin,
   logout: cmdLogout,
   config: cmdConfig,
-  ...(IS_PUBLISHED_BUILD ? {} : { auth: cmdAuth }),
+  ...(IS_PUBLISHED_BUILD ? {} : { query: cmdQuery, auth: cmdAuth }),
 };
 
 const main = defineCommand({
