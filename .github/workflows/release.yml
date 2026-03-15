@@ -1,0 +1,83 @@
+name: Release CLI
+
+on:
+  workflow_dispatch:
+    inputs:
+      npm_tag:
+        description: "npm dist-tag to publish under"
+        required: true
+        default: beta
+        type: choice
+        options:
+          - beta
+          - latest
+  release:
+    types:
+      - published
+
+concurrency:
+  group: release-cli
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish npm package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      NODE_VERSION: "20"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.4.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Stage publish package
+        run: pnpm pack:publish
+
+      - name: Resolve npm tag
+        id: release_meta
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            npm_tag="${{ inputs.npm_tag }}"
+          elif [ "${{ github.event.release.prerelease }}" = "true" ]; then
+            npm_tag="beta"
+          else
+            npm_tag="latest"
+          fi
+
+          package_version="$(node -p "require('./apps/dreamboard-cli/.publish/package/package.json').version")"
+          echo "npm_tag=$npm_tag" >> "$GITHUB_OUTPUT"
+          echo "package_version=$package_version" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to npm
+        run: |
+          npm publish apps/dreamboard-cli/.publish/package \
+            --tag "${{ steps.release_meta.outputs.npm_tag }}" \
+            --provenance
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Job summary
+        run: |
+          {
+            echo "Published \`dreamboard@${{ steps.release_meta.outputs.package_version }}\`"
+            echo
+            echo "- npm tag: \`${{ steps.release_meta.outputs.npm_tag }}\`"
+            echo "- trigger: \`${{ github.event_name }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
