@@ -109,9 +109,31 @@ mock.module("../utils/fs.js", () => ({
   writeTextFile: async () => undefined,
 }));
 
+mock.module("../services/project/sync.js", () => ({
+  buildRemoteAlignedSnapshotFiles: (options: {
+    localFiles: Record<string, string>;
+  }) => options.localFiles,
+  fetchLatestRemoteSources: async () => null,
+  reconcileRemoteChangesIntoWorkspace: async () => ({
+    latest: {
+      resultId: "result-1",
+      files: {},
+      sourceRevisionId: "source-revision-1",
+      treeHash: "tree-hash-1",
+    },
+    remoteUserFiles: {},
+    written: [],
+    deleted: [],
+    conflicts: [],
+  }),
+}));
+
 mock.module("../services/api/index.js", () => ({
   tryGetGameBySlug: async () => null,
   getLatestManifestIdSdk: async () => "manifest-1",
+  getManifestSdk: async () => ({
+    contentHash: "content-hash",
+  }),
   isManifestDifferentFromServer: async () => false,
   saveManifestSdk: async () => ({
     manifestId: "manifest-1",

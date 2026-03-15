@@ -21,6 +21,10 @@
     "./storage-paths": {
       "types": "./src/storage-paths.ts",
       "import": "./src/storage-paths.ts"
+    },
+    "./source-revisions": {
+      "types": "./src/source-revisions.ts",
+      "import": "./src/source-revisions.ts"
     }
   },
   "typesVersions": {
@@ -33,6 +37,9 @@
       ],
       "storage-paths": [
         "./src/storage-paths.ts"
+      ],
+      "source-revisions": [
+        "./src/source-revisions.ts"
       ]
     }
   },

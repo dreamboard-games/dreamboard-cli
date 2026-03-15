@@ -1,6 +1,16 @@
 # Rule Authoring Guide
 
-`rule.md` is the source of truth for game intent. A strong rule document leads to better manifest generation, better phase scaffolding, and fewer logic bugs.
+Use this guide when creating or rewriting `rule.md`.
+
+`rule.md` should explain how the game works in plain language. It is the source of intent for the game. `manifest.json` comes later and turns that intent into runtime structure.
+
+Keep the jobs separate:
+
+- `rule.md` explains the rules
+- `manifest.json` defines the runtime model
+- `app/phases/*.ts` implements the rules
+
+If you need schema details, use [manifest-authoring.md](manifest-authoring.md). If you need help deciding between hands and decks, use [hands-vs-decks.md](hands-vs-decks.md).
 
 ## Recommended Document Structure
 
@@ -8,81 +18,66 @@ Use this section order in `rule.md`.
 
 1. **Overview**
 
-   - Game premise and objective.
-   - Player count (min/max/optimal).
-   - Match length target (for example 15-25 minutes).
+   - Game premise and objective
+   - Player count
+   - Match length target
 
 2. **Components**
 
-   - Cards, decks, hands, tokens, dice, boards, resources.
-   - Public vs hidden information.
-   - Limits (deck sizes, hand limits, token caps).
+   - Cards, hands, decks, tokens, dice, boards, resources
+   - Public vs hidden information
+   - Limits such as hand size or token caps
 
 3. **Setup**
 
-   - Initial board/deck/resource setup.
-   - Starting player and initial turn order.
-   - Initial cards/resources per player.
+   - Starting layout
+   - Starting player and turn order
+   - Initial cards, resources, and other player state
 
 4. **Gameplay**
 
-   - Turn or phase loop in order.
-   - Available actions per phase.
-   - Validation constraints for actions.
-   - Transition conditions between phases.
+   - Turn or phase loop in order
+   - Available actions in each phase
+   - Validation constraints
+   - Transition conditions between phases
 
 5. **Scoring and Progression**
 
-   - How points/resources/progress are gained or lost.
-   - When scoring occurs (per action, end of round, end of game).
-   - Tie-breakers.
+   - How points or progress are gained or lost
+   - When scoring happens
+   - Tie-breakers
 
 6. **Winning Conditions**
 
-   - Exact end-game triggers.
-   - Winner resolution rules, including ties.
+   - Exact end-game triggers
+   - Winner resolution rules
 
 7. **Special Rules and Edge Cases**
-   - Simultaneous actions.
-   - Empty deck behavior.
-   - Invalid/no-op action handling.
-   - What happens when a player cannot act.
 
-## Authoring Rules That Map Cleanly to Engine Concepts
+   - Simultaneous actions
+   - Empty deck behavior
+   - Invalid or no-op actions
+   - What happens when a player cannot act
 
-Write rules in a way that maps directly to Dreamboard systems:
+## Writing Rules That Map Cleanly To The Engine
 
 - **Phase model**
-
-  - State whether a phase is automatic, single-player, or all-players.
-  - State completion criteria for each phase.
-
+  State whether a phase is automatic, single-player, or all-players, and say how it ends.
 - **Action model**
-
-  - Define each action by name, intent, and required inputs.
-  - Include action constraints ("must", "cannot", min/max quantities).
-
+  Name each action, say what it does, and list required inputs and constraints.
 - **State model**
-
-  - Separate persistent state from derived state.
-  - Prefer explicit counters/flags over vague conditions.
-
+  Separate stored state from derived state. If something can be computed from cards, resources, or the current phase, call that out.
 - **Visibility model**
-
-  - Specify what each player can see at all times.
-  - Explicitly call out hidden hands, private choices, and reveal timing.
-
+  Say who can see what, when hidden information becomes public, and when reveals happen.
 - **Determinism**
-  - Resolve "if multiple options apply" with priority order.
-  - Define random events precisely (shuffle, draw count, tie randomization).
+  Resolve ambiguous cases with explicit priority order. Define random events precisely.
 
-## Writing Style Requirements
+## Writing Style
 
-- Use explicit modal language:
-  - Use "must" for mandatory behavior.
-  - Use "may" only for optional player choices.
-- Define terms once and reuse them exactly.
-- Avoid UI instructions ("click", "drag") in rule logic.
+- Use `must` for mandatory behavior.
+- Use `may` only for optional player choices.
+- Define terms once, then reuse the same words consistently.
+- Avoid UI-specific verbs such as "click" or "drag".
 
 ## High-Signal Template
 
@@ -99,11 +94,12 @@ Use this template when creating or rewriting `rule.md`:
 
 ## Components
 
-- Decks:
+- Card sets:
+- Shared decks:
 - Player hands:
-- Shared zones:
-- Resources/tokens/dice:
-- Public vs hidden info:
+- Boards:
+- Resources, tokens, or dice:
+- Public vs hidden information:
 
 ## Setup
 
@@ -120,7 +116,9 @@ Use this template when creating or rewriting `rule.md`:
 - Validation:
 - Completion -> Next phase:
 
-### Phase 2: <name> ...
+### Phase 2: <name>
+
+- ...
 
 ## Scoring and Progression
 
@@ -137,6 +135,6 @@ Use this template when creating or rewriting `rule.md`:
 
 1. Edit `rule.md` first.
 2. Align `manifest.json` to the updated rules.
-3. Run `dreamboard update` to regenerate scaffolding.
-4. Implement/refine `app/phases/*.ts`.
-5. Validate flow with `dreamboard run`.
+3. Run `dreamboard update`.
+4. Implement or refine `app/phases/*.ts`.
+5. Validate the flow with `dreamboard run`, `dreamboard test generate`, and `dreamboard test run` as needed.

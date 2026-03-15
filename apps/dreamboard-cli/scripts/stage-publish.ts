@@ -1,25 +1,17 @@
-import {
-  access,
-  cp,
-  mkdir,
-  readdir,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  assertPublicSkillScriptsArePublishable,
+  IGNORED_PUBLIC_SKILL_ENTRY_NAMES,
+  resolvePublicSkillRoot,
+} from "./public-skill-utils.ts";
 
 const packageRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
-const repoRoot = path.resolve(packageRoot, "..", "..");
 const stageRoot = path.join(packageRoot, ".publish", "package");
-const packageSkillRoot = path.join(packageRoot, "skills", "dreamboard");
-const repoSkillRoot = path.join(repoRoot, "skills", "dreamboard");
-const ALLOWED_PUBLIC_SKILL_SCRIPT_ENTRY_NAMES = new Set(["events-extract.mjs"]);
-const TRANSIENT_SKILL_ENTRY_NAMES = new Set([".DS_Store", "__pycache__"]);
 const sourcePackage = JSON.parse(
   await readFile(path.join(packageRoot, "package.json"), "utf8"),
 ) as {
@@ -32,36 +24,6 @@ const sourcePackage = JSON.parse(
   bugs?: string | { url?: string };
   license?: string;
 };
-
-async function resolvePublicSkillRoot(): Promise<string> {
-  try {
-    await access(repoSkillRoot);
-    return repoSkillRoot;
-  } catch {
-    return packageSkillRoot;
-  }
-}
-
-async function assertPublicSkillScriptsArePublishable(rootDir: string) {
-  const scriptsDir = path.join(rootDir, "scripts");
-  const entries = await readdir(scriptsDir, { withFileTypes: true });
-
-  for (const entry of entries) {
-    if (TRANSIENT_SKILL_ENTRY_NAMES.has(entry.name)) {
-      continue;
-    }
-    if (!ALLOWED_PUBLIC_SKILL_SCRIPT_ENTRY_NAMES.has(entry.name)) {
-      throw new Error(
-        `Unexpected entry under skills/dreamboard/scripts: ${entry.name}. Keep local-only assets outside the public skill tree.`,
-      );
-    }
-    if (!entry.isFile()) {
-      throw new Error(
-        `Only published helper files belong under skills/dreamboard/scripts. Found non-file entry: ${entry.name}.`,
-      );
-    }
-  }
-}
 
 const repositoryUrl =
   typeof sourcePackage.repository === "string"
@@ -133,7 +95,7 @@ async function pruneTransientSkillArtifacts(rootDir: string) {
 
   for (const entry of entries) {
     const entryPath = path.join(rootDir, entry.name);
-    if (TRANSIENT_SKILL_ENTRY_NAMES.has(entry.name)) {
+    if (IGNORED_PUBLIC_SKILL_ENTRY_NAMES.has(entry.name)) {
       await rm(entryPath, { recursive: true, force: true });
       continue;
     }

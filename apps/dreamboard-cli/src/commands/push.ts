@@ -1,9 +1,10 @@
 import { defineCommand } from "citty";
 import consola from "consola";
 import {
-  getGameSources,
   getLatestCompiledResult,
-  recompileGame,
+  type CreateSourceRevisionRequest,
+  type SourceChangeOperation,
+  type SourceChangeMode,
 } from "@dreamboard/api-client";
 import { CONFIG_FLAG_ARGS } from "../command-args.js";
 import { MANIFEST_FILE, RULE_FILE } from "../constants.js";
@@ -13,49 +14,89 @@ import {
   getLocalDiff,
   collectLocalFiles,
   isAllowedGamePath,
-  isLibraryPath,
   loadManifest,
   loadRule,
   writeSnapshot,
 } from "../services/project/local-files.js";
-import { PRESERVED_USER_FILES } from "../services/project/scaffold-ownership.js";
 import { assertCliStaticScaffoldComplete } from "../services/project/static-scaffold.js";
 import {
+  createCompiledResultSdk,
+  createSourceRevisionSdk,
   saveManifestSdk,
   saveRuleSdk,
   getLatestRuleIdSdk,
   findLatestSuccessfulCompiledResult,
-} from "../services/api/index.js";
-import { uploadFileOverrides } from "../services/storage/supabase-storage.js";
+} from "../services/api";
 import { updateProjectState } from "../config/project-config.js";
-import { formatApiError } from "../utils/errors.js";
+import { planSourceRevisionTransport } from "@dreamboard/api-client/source-revisions";
 
-/** Update the known server file list after an incremental push. */
-function mergeServerUserFiles(
-  previous: string[],
-  added: string[],
-  deleted: string[],
-): string[] {
-  const deletedSet = new Set(deleted);
-  const result = new Set(previous.filter((p) => !deletedSet.has(p)));
-  for (const p of added) result.add(p);
-  return [...result].sort();
+function isSourcePath(filePath: string): boolean {
+  return (
+    filePath !== MANIFEST_FILE &&
+    filePath !== RULE_FILE &&
+    isAllowedGamePath(filePath)
+  );
+}
+
+function buildSourceChanges(options: {
+  mode: SourceChangeMode;
+  localFiles: Record<string, string>;
+  diff: { modified: string[]; added: string[]; deleted: string[] };
+}): SourceChangeOperation[] {
+  const { mode, localFiles, diff } = options;
+
+  if (mode === "replace") {
+    return Object.entries(localFiles)
+      .filter(([filePath]) => isSourcePath(filePath))
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([path, content]) => ({
+        kind: "upsert",
+        path,
+        content,
+      }));
+  }
+
+  const changes: SourceChangeOperation[] = [];
+  const upsertPaths = [...diff.modified, ...diff.added]
+    .filter(isSourcePath)
+    .sort((left, right) => left.localeCompare(right));
+
+  for (const path of upsertPaths) {
+    const content = localFiles[path];
+    if (content === undefined) {
+      continue;
+    }
+    changes.push({
+      kind: "upsert",
+      path,
+      content,
+    });
+  }
+
+  for (const path of diff.deleted.filter(isSourcePath).sort()) {
+    changes.push({
+      kind: "delete",
+      path,
+    });
+  }
+
+  return changes;
 }
 
 export default defineCommand({
   meta: {
     name: "push",
-    description: "Push local changes to server (recompile)",
+    description: "Push local changes to the server",
   },
   args: {
     force: {
       type: "boolean",
-      description: "Override conflicts",
+      description: "Replace the full authored source tree",
       default: false,
     },
     debug: {
       type: "boolean",
-      description: "Print debug details including recompile payload",
+      description: "Print debug details including source revision payloads",
       default: false,
     },
     ...CONFIG_FLAG_ARGS,
@@ -63,13 +104,30 @@ export default defineCommand({
   async run({ args }) {
     const parsedArgs = parsePushCommandArgs(args);
     const debug = parsedArgs.debug;
-    const { projectRoot, projectConfig, config } =
+    const { projectRoot, projectConfig } =
       await resolveProjectContext(parsedArgs);
     let currentProjectConfig = projectConfig;
-    const knownBaseResultId =
-      currentProjectConfig.remoteBaseResultId ?? currentProjectConfig.resultId;
+    const persistProjectProgress = async (
+      overrides: Partial<typeof currentProjectConfig> = {},
+    ) => {
+      currentProjectConfig = {
+        ...currentProjectConfig,
+        ruleId,
+        manifestId,
+        manifestContentHash,
+        sourceRevisionId,
+        sourceTreeHash,
+        ...overrides,
+      };
+      await updateProjectState(projectRoot, currentProjectConfig);
+    };
+    const knownBaseResultId = currentProjectConfig.resultId;
 
     const diff = await getLocalDiff(projectRoot);
+    const sourceDiffHasChanges =
+      diff.modified.some(isSourcePath) ||
+      diff.added.some(isSourcePath) ||
+      diff.deleted.some(isSourcePath);
     const hasChanges =
       diff.modified.length > 0 ||
       diff.added.length > 0 ||
@@ -89,15 +147,14 @@ export default defineCommand({
     const { data: latest } = await getLatestCompiledResult({
       path: { gameId: currentProjectConfig.gameId },
     });
-    let latestCompiledResultId = latest?.id;
-    if (
-      knownBaseResultId &&
-      latest?.id &&
-      latest.id !== knownBaseResultId &&
-      !parsedArgs.force
-    ) {
+    if (latest?.id && !knownBaseResultId) {
       throw new Error(
-        "Remote drift detected. Run 'dreamboard update --pull' to reconcile before pushing, or use --force to replace remote state.",
+        `Remote base is unknown. Latest remote result=${latest.id}. Run 'dreamboard update --pull' to reconcile before pushing.`,
+      );
+    }
+    if (knownBaseResultId && latest?.id && latest.id !== knownBaseResultId) {
+      throw new Error(
+        `Remote drift detected. Local base=${knownBaseResultId}, remote latest=${latest.id}. Run 'dreamboard update --pull' to reconcile before pushing.`,
       );
     }
 
@@ -109,6 +166,9 @@ export default defineCommand({
     let manifestId = currentProjectConfig.manifestId;
     let manifestContentHash = currentProjectConfig.manifestContentHash;
     let ruleId = currentProjectConfig.ruleId;
+    let sourceRevisionId =
+      currentProjectConfig.sourceRevisionId ?? latest?.sourceRevisionId;
+    let sourceTreeHash = currentProjectConfig.sourceTreeHash;
 
     if (ruleChanged) {
       const ruleText = await loadRule(projectRoot);
@@ -129,7 +189,7 @@ export default defineCommand({
       manifestContentHash = saved.contentHash;
     }
 
-    if (!latestCompiledResultId) {
+    if (!latest?.id) {
       if (!manifestId) {
         throw new Error("Cannot compile initial result: missing manifestId.");
       }
@@ -141,147 +201,88 @@ export default defineCommand({
       );
     }
 
-    const metaFiles = new Set([MANIFEST_FILE, RULE_FILE]);
-    const forceFullSync = parsedArgs.force || !hasCurrentSuccessfulResult;
-    const includeLibraries = forceFullSync;
-    const isPushPath = (p: string) =>
-      !metaFiles.has(p) &&
-      isAllowedGamePath(p) &&
-      (includeLibraries || PRESERVED_USER_FILES.has(p) || !isLibraryPath(p));
-
-    // When --force, upload ALL local user files to fully replace the server VFS.
-    // A normal push only sends the diff — if the snapshot is in sync, diff is
-    // empty and stale server files are left untouched, causing phantom errors.
     const localFiles = await collectLocalFiles(projectRoot);
-    const localPushFiles = Object.fromEntries(
-      Object.entries(localFiles).filter(([filePath]) => isPushPath(filePath)),
-    );
-    const overridePaths = forceFullSync
-      ? Object.keys(localPushFiles)
-      : diff.modified.concat(diff.added).filter(isPushPath);
-
-    const overrides = await uploadFileOverrides(
-      config,
-      projectRoot,
-      currentProjectConfig.gameId,
-      overridePaths,
-    );
-
-    // When --force, also delete any server-side user files that no longer exist
-    // locally. This catches stale files that predate the current snapshot and
-    // would not appear in diff.deleted.
-    const localPushFileSet = new Set(Object.keys(localPushFiles));
-    let deletedPaths: string[];
-    if (forceFullSync) {
-      const cachedServerPaths = currentProjectConfig.serverUserFiles ?? [];
-      let knownServerPaths = cachedServerPaths;
-      if (latestCompiledResultId) {
-        const { data: sourceResponse } = await getGameSources({
-          path: { gameId: currentProjectConfig.gameId },
-          query: { resultId: latestCompiledResultId },
-        });
-        const remoteFiles =
-          (sourceResponse as { files?: Record<string, string> } | undefined)
-            ?.files ??
-          (
-            sourceResponse as
-              | { sourceFiles?: Record<string, string> }
-              | undefined
-          )?.sourceFiles ??
-          {};
-        const remoteServerPaths = Object.keys(remoteFiles).filter(
-          (p) => isAllowedGamePath(p) && !metaFiles.has(p),
-        );
-        // In force mode prefer server truth over cached state so we can delete
-        // stale files that were never tracked locally (e.g. older generated files).
-        knownServerPaths = remoteServerPaths;
-      }
-
-      if (debug) {
-        consola.info(
-          `[push --debug] force sync path discovery: cachedServerPaths=${cachedServerPaths.length}, knownServerPaths=${knownServerPaths.length}, localPushFiles=${localPushFileSet.size}`,
-        );
-      }
-
-      deletedPaths = knownServerPaths.filter(
-        (p) => !localPushFileSet.has(p) && isAllowedGamePath(p),
-      );
-    } else {
-      deletedPaths = diff.deleted.filter(isPushPath);
-    }
-
-    if (debug) {
-      consola.info(
-        `[push --debug] computed sets: overrides=${overridePaths.length}, deleted=${deletedPaths.length}`,
-      );
-      if (deletedPaths.length > 0) {
-        consola.info(
-          `[push --debug] deletedPaths:\n${deletedPaths.map((p) => `  - ${p}`).join("\n")}`,
-        );
-      }
-    }
-
-    const recompileBody = {
-      fileOverrides: overrides,
-      deletedPaths,
-      ...(knownBaseResultId ? { resultId: knownBaseResultId } : {}),
-      ...(manifestId ? { manifestId } : {}),
-      ...(ruleId ? { ruleId } : {}),
-    };
-
-    if (debug) {
-      consola.info(
-        `[push --debug] recompile request payload:\n${JSON.stringify(recompileBody, null, 2)}`,
-      );
-    }
-
-    const {
-      data: response,
-      error: recompileError,
-      response: recompileResponse,
-    } = await recompileGame({
-      path: { gameId: currentProjectConfig.gameId },
-      body: recompileBody,
+    const sourceChangeMode: SourceChangeMode =
+      parsedArgs.force || !sourceRevisionId ? "replace" : "incremental";
+    const sourceChanges = buildSourceChanges({
+      mode: sourceChangeMode,
+      localFiles,
+      diff,
     });
 
-    // Always update local state if we got a result ID back, even on compilation errors.
-    // The backend saves a result record for failed compilations too, so we must stay in sync
-    // to avoid "Remote has newer changes" on the next push.
-    if (response?.result) {
-      await updateProjectState(projectRoot, {
-        ...currentProjectConfig,
-        resultId: response.result.id,
-        remoteBaseResultId: response.result.id,
-        sourceKey: response.result.sourceKey ?? currentProjectConfig.sourceKey,
-        manifestId: manifestId ?? currentProjectConfig.manifestId,
-        manifestContentHash:
-          manifestContentHash ?? currentProjectConfig.manifestContentHash,
-        ruleId: ruleId ?? currentProjectConfig.ruleId,
-        // Track which user files are now on the server so --force can compute
-        // the correct deletedPaths on the next run.
-        serverUserFiles: forceFullSync
-          ? overridePaths
-          : mergeServerUserFiles(
-              currentProjectConfig.serverUserFiles ?? [],
-              overridePaths,
-              deletedPaths,
-            ),
+    if (debug) {
+      const transportPreview = planSourceRevisionTransport({
+        ...(sourceRevisionId ? { baseSourceRevisionId: sourceRevisionId } : {}),
+        mode: sourceChangeMode,
+        changes: sourceChanges,
       });
+      consola.info(
+        `[push --debug] source changes=${sourceChanges.length}, upserts=${transportPreview.upsertCount}, bytes=${transportPreview.byteLength}, transport=${transportPreview.useBundle ? "gzip-bundle" : "inline-json"}`,
+      );
+      if (sourceChanges.length > 0) {
+        consola.info(
+          `[push --debug] source paths:\n${sourceChanges.map((change) => `  - ${change.kind} ${change.path}`).join("\n")}`,
+        );
+      }
     }
 
-    if (recompileError || !response?.result) {
-      throw new Error(
-        formatApiError(
-          recompileError,
-          recompileResponse,
-          "Failed to recompile",
-        ),
+    if (sourceChanges.length > 0 || !sourceRevisionId) {
+      const sourceRevisionRequest: CreateSourceRevisionRequest = {
+        ...(sourceRevisionId ? { baseSourceRevisionId: sourceRevisionId } : {}),
+        mode: sourceChangeMode,
+        changes: sourceChanges,
+      };
+      const sourceRevision = await createSourceRevisionSdk(
+        currentProjectConfig.gameId,
+        sourceRevisionRequest,
+      );
+      sourceRevisionId = sourceRevision.id;
+      sourceTreeHash = sourceRevision.treeHash;
+    } else if (debug && !sourceDiffHasChanges) {
+      consola.info(
+        `[push --debug] reusing existing source revision ${sourceRevisionId}`,
       );
     }
 
-    if (!response.result.success) {
+    if (!sourceRevisionId) {
+      throw new Error("Cannot compile without a source revision.");
+    }
+    if (!manifestId) {
+      throw new Error("Cannot compile without a manifest.");
+    }
+    if (!ruleId) {
+      ruleId = await getLatestRuleIdSdk(currentProjectConfig.gameId);
+    }
+
+    // Checkpoint any remote authoring progress before compilation. If the
+    // compile request throws after saving a rule, manifest, or source
+    // revision, the next push should reuse those remote IDs instead of
+    // replaying from stale local state.
+    const shouldCheckpointPrecompileState =
+      manifestId !== currentProjectConfig.manifestId ||
+      manifestContentHash !== currentProjectConfig.manifestContentHash ||
+      ruleId !== currentProjectConfig.ruleId ||
+      sourceRevisionId !== currentProjectConfig.sourceRevisionId ||
+      sourceTreeHash !== currentProjectConfig.sourceTreeHash;
+    if (shouldCheckpointPrecompileState) {
+      await persistProjectProgress();
+    }
+
+    const compiledResult = await createCompiledResultSdk({
+      gameId: currentProjectConfig.gameId,
+      sourceRevisionId,
+      manifestId,
+      ruleId,
+    });
+
+    await persistProjectProgress({
+      resultId: compiledResult.id,
+      sourceRevisionId: compiledResult.sourceRevisionId,
+    });
+
+    if (!compiledResult.success) {
       await writeSnapshot(projectRoot);
-      const diagnostics = response.result.diagnostics ?? [];
+      const diagnostics = compiledResult.diagnostics ?? [];
       if (diagnostics.length > 0) {
         consola.error(
           `Compilation failed with ${diagnostics.length} diagnostic(s):\n`,

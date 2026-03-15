@@ -22,7 +22,7 @@ import type { GameMessage, GameMessageType } from "../shared/game-message";
 
 export interface ScenarioCardInfo {
   cardType: string;
-  deckDefinitionId: string;
+  cardSetId: string;
   cardName?: string;
   description?: string;
   /** JSON-encoded card properties */

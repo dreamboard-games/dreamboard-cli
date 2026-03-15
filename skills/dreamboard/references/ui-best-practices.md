@@ -1,105 +1,113 @@
 # UI Best Practices
 
-Best practices for working on `ui/App.tsx` and `ui/components/*` — the React frontend.
+Use this guide when implementing `ui/App.tsx` and `ui/components/*`.
 
-## General principles
+This page is about rendering, interaction, and UI data flow. Keep rules in `rule.md`, runtime structure in `manifest.json`, and phase-specific UI data in `getUIArgs()`.
 
-1. **Use SDK components** — import from `./sdk/components/`. Prefer library components over rolling your own. Customize them via render props if needed.
-2. **Mobile-first** — mobile is the primary target, desktop is an enhancement. Start with mobile-optimized layouts, use large touch targets, and relative units (rem, em).
-3. **No state duplication** — avoid `React.useState()` for state that needs to sync across players. Use `useGameState`, `useUIArgs`, and action submitters instead.
-4. **Error handling on actions** — always wrap action submissions in try/catch and show feedback via `useToast`.
-5. **Do not use `any`** — always work with typed hooks and props.
-6. **Persistent feedback matters** — include a stable feedback region that survives auto-phase transitions so players can always see the current phase, latest status message, last round result, and game-over summary.
+## Core Principles
 
-## SDK hooks (from `./sdk/hooks/`)
+1. **Start with SDK components**
+   Prefer `./sdk/components/` and customize them with render props before building custom replacements.
+2. **Design mobile-first**
+   Mobile is the baseline. Desktop can add polish, but the primary layout should work on smaller screens first.
+3. **Do not duplicate authoritative game state**
+   Use hooks such as `useGameState`, `useUIArgs`, and `useAction` instead of mirroring shared state in local React state.
+4. **Wrap actions in error handling**
+   Show feedback through `useToast` or another clear error surface.
+5. **Keep types intact**
+   Use the generated hook and action types. Avoid `any`.
+6. **Reserve a persistent feedback area**
+   Players should always be able to see the current phase, turn ownership, latest meaningful result, and end-of-game summary.
 
-| Hook                   | Returns                                                           | When to use                                                                                                                                     |
-| ---------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `useGameState`         | Full game state (currentPlayerIds, decks, currentState, isMyTurn) | Core game state. All fields are non-nullable — do not use optional chaining.                                                                    |
-| `useCard(cardId)`      | `CardItem \| undefined`                                           | Get a single card's data                                                                                                                        |
-| `useCards(cardIds)`    | `CardItem[]`                                                      | Get multiple cards                                                                                                                              |
-| `useMyHand(handId)`    | Hand data for current player                                      | Player's cards                                                                                                                                  |
-| `useMyResources()`     | Current player's resources                                        | Resource display                                                                                                                                |
-| `useMe`                | `{ playerId, name, isHost }`                                      | Current player identity                                                                                                                         |
-| `usePlayerInfo`        | Map of all players                                                | Player list/display                                                                                                                             |
-| `useAction`            | Phase-specific action submitters                                  | Submitting actions. Keyed by phase with "Actions" suffix (e.g., `playCardsActions`). Only current phase returns submitters; others return null. |
-| `useUIArgs`            | Phase-specific UI args                                            | Data from `getUIArgs()`. Keyed by phase name. Only current phase has data.                                                                      |
-| `useGameNotifications` | Event listeners                                                   | `onYourTurn`, `onActionRejected`, `onGameEnded`                                                                                                 |
-| `useLobby`             | Lobby state                                                       | seats, canStart, hostUserId                                                                                                                     |
-| `useDice(dieIds)`      | Dice values and roll function                                     | Dice mechanics                                                                                                                                  |
+## SDK Hooks
 
-## SDK components (from `./sdk/components/`)
+Use these from `./sdk/hooks/`.
+
+| Hook                     | Returns                                                                   | When to use                        |
+| ------------------------ | ------------------------------------------------------------------------- | ---------------------------------- |
+| `useGameState`           | Full game state (`currentPlayerIds`, `decks`, `currentState`, `isMyTurn`) | Core session state                 |
+| `useCard(cardId)`        | `CardItem \| undefined`                                                   | Resolve one card                   |
+| `useCards(cardIds)`      | `CardItem[]`                                                              | Resolve multiple cards             |
+| `useMyHand(handId)`      | Current player's cards for one hand                                       | Private or public per-player cards |
+| `useMyResources()`       | Current player's resources                                                | Resource display                   |
+| `useMe()`                | `{ playerId, name, isHost }`                                              | Current player identity            |
+| `usePlayerInfo()`        | All players keyed by ID                                                   | Player labels and scoreboards      |
+| `useAction()`            | Phase-specific action submitters                                          | Submitting actions                 |
+| `useUIArgs()`            | Phase-specific UI args                                                    | Data returned from `getUIArgs()`   |
+| `useGameNotifications()` | Event listeners                                                           | Turn prompts, rejections, game end |
+| `useLobby()`             | Lobby state                                                               | Seating and pre-game UI            |
+| `useDice(dieIds)`        | Dice values and roll function                                             | Dice mechanics                     |
+
+## SDK Components
+
+Use these from `./sdk/components/`.
 
 ### Core display
 
-| Component       | Purpose                                                                                      |
-| --------------- | -------------------------------------------------------------------------------------------- |
-| `Card`          | Displays a game card with animations. Supports `renderContent` for custom faces.             |
-| `ConnectedCard` | Auto-fetches card data from context.                                                         |
-| `Hand`          | Container for player's hand. Uses render props: `renderCard`, `renderDrawer`, `renderEmpty`. |
-| `PlayArea`      | Central board area for active cards. Supports grid/row layouts.                              |
-| `PlayerInfo`    | Player avatar with status, score, and turn indicators.                                       |
+| Component       | Purpose                                        |
+| --------------- | ---------------------------------------------- |
+| `Card`          | Display a card with animation support          |
+| `ConnectedCard` | Resolve card data from context automatically   |
+| `Hand`          | Render a player's hand with custom card layout |
+| `PlayArea`      | Render a shared card area                      |
+| `PlayerInfo`    | Show player name, score, and turn state        |
 
-### Action UI
+### Actions and status
 
-| Component      | Purpose                                                      |
-| -------------- | ------------------------------------------------------------ |
-| `ActionButton` | Button with integrated cost display and affordability check. |
-| `ActionPanel`  | Collapsible container for action groups.                     |
-| `ActionGroup`  | Groups related actions with title and variant styling.       |
-
-### Game state display
-
-| Component         | Purpose                                                             |
-| ----------------- | ------------------------------------------------------------------- |
-| `PhaseIndicator`  | Shows current phase and "Your Turn" indicator.                      |
-| `ResourceCounter` | Displays resource counts with icons and animations.                 |
-| `CostDisplay`     | Shows resource costs with green/red affordability indication.       |
-| `DiceRoller`      | Display component for dice values with render prop.                 |
-| `GameEndDisplay`  | End-of-game overlay with trophy, scoreboard, and return-to-lobby.   |
-| `Drawer`          | Mobile-friendly drawer for overflow content (e.g., too many cards). |
+| Component         | Purpose                                  |
+| ----------------- | ---------------------------------------- |
+| `ActionButton`    | Action button with optional cost display |
+| `ActionPanel`     | Container for related actions            |
+| `ActionGroup`     | Group actions inside a panel             |
+| `PhaseIndicator`  | Show current phase and turn state        |
+| `ResourceCounter` | Display typed resources                  |
+| `CostDisplay`     | Show affordability                       |
+| `DiceRoller`      | Show die values                          |
+| `GameEndDisplay`  | Show final results                       |
+| `Drawer`          | Mobile overflow surface                  |
 
 ### Board components
 
-| Component      | Use case                                | Hook                              |
-| -------------- | --------------------------------------- | --------------------------------- |
-| `SquareGrid`   | Chess, Checkers, Go, Tic-Tac-Toe        | `useSquareBoard(boardId)`         |
-| `HexGrid`      | Catan, wargames, Hive                   | `useHexBoard(boardId)`            |
-| `TrackBoard`   | Monopoly, racing, Snakes & Ladders      | `useTrackBoard(boardId)`          |
-| `NetworkGraph` | Ticket to Ride, Pandemic, Power Grid    | `useNetworkBoard(boardId)`        |
-| `ZoneMap`      | Risk, Small World, area control         | `useZoneMap(zones, pieces)`       |
-| `SlotSystem`   | Agricola, Viticulture, worker placement | `useSlotSystem(slots, occupants)` |
+| Component      | Use case                      | Hook                              |
+| -------------- | ----------------------------- | --------------------------------- |
+| `SquareGrid`   | Chess, checkers, grid tactics | `useSquareBoard(boardId)`         |
+| `HexGrid`      | Hex maps and wargames         | `useHexBoard(boardId)`            |
+| `TrackBoard`   | Race tracks and score tracks  | `useTrackBoard(boardId)`          |
+| `NetworkGraph` | Connected-node boards         | `useNetworkBoard(boardId)`        |
+| `ZoneMap`      | Area-control boards           | `useZoneMap(zones, pieces)`       |
+| `SlotSystem`   | Worker placement              | `useSlotSystem(slots, occupants)` |
 
-## Layout guidelines
+## Layout Guidelines
 
-- Use Tailwind CSS for all styling.
+- Use Tailwind CSS for styling.
 - Use `clsx` for conditional class composition.
-- Use `framer-motion` for animations (already included via SDK components).
-- Keep spacing tight on mobile, generous on desktop.
-- Limit simultaneous animations for performance.
-- Use `useIsMobile()` hook when you need device-specific behavior.
+- Use `framer-motion` for meaningful motion, not motion everywhere.
+- Keep touch targets large and spacing readable on mobile.
+- Use `useIsMobile()` when behavior must differ by device.
 
-## Persistent feedback region
+## Persistent Feedback Region
 
-Reserve a visible area near the top of the layout for game status. This should outlive individual action panels and phase-specific subviews.
+Reserve a visible area near the top of the layout for status that should survive subview changes.
 
-- Show the current phase and whether it is the local player's turn.
-- Show a human-readable status message for the latest meaningful change.
-- Keep the last round result visible until the next player-facing state can explain it.
-- Show a clear game-over summary when the game ends.
+That region should be able to show:
 
-If your game uses AUTO phases, do not let those transitions wipe the only copy of round-resolution feedback before the UI can render it.
+- the current phase
+- whether it is the local player's turn
+- the latest meaningful status message
+- round or trick resolution results
+- game-over state and winner summary
 
-## Common patterns
+If your game uses `AUTO` phases, do not let those transitions erase the only copy of round-resolution feedback before the next interactive view appears.
+
+## Common Patterns
 
 ### Phase-based rendering
 
 ```tsx
-const { currentState, isMyTurn } = useGameState();
+const { currentState } = useGameState();
 const uiArgs = useUIArgs();
 const actions = useAction();
 
-// Render based on current phase
 if (currentState === "playCards") {
   const phaseArgs = uiArgs.playCards;
   const phaseActions = actions.playCardsActions;
@@ -121,19 +129,9 @@ const handlePlay = async () => {
 };
 ```
 
-### Game end detection
+### Public hands in UI
 
-```tsx
-const { currentState } = useGameState();
-
-if (currentState === "endGame") {
-  return <GameEndDisplay isGameOver scores={scores} />;
-}
-```
-
-## Public hands in UI
-
-For public card zones (for example a scored area), prefer the built-in hook instead of custom `getUIArgs()` plumbing.
+For per-player containers that should be visible to everyone, prefer the built-in public-hand hook instead of duplicating that data in `getUIArgs()`.
 
 ```ts
 import { useMyHand, usePublicHands } from "@dreamboard/ui-sdk";
@@ -145,14 +143,14 @@ const player2Scored = scoredByPlayer["player-2"] ?? [];
 
 Notes:
 
-- `useMyHand(handId)` returns cards for the currently controlling player only.
-- `usePublicHands(handId)` returns all players' cards for that hand, keyed by `playerId`.
-- `usePublicHands()` is only populated for hands marked `"visibility": "public"`.
+- `useMyHand(handId)` reads the current player's copy of that hand
+- `usePublicHands(handId)` reads all players' copies, keyed by `playerId`
+- `usePublicHands()` only works for hands marked `visibility: "public"`
 
-## Genre-specific guidance
+## Genre-Specific Guides
 
-For detailed UI patterns and recommended components per game genre, see:
+Use these when the game matches one of the built-in patterns:
 
-- [ui-genre-trick-taking.md](ui-genre-trick-taking.md) — Hearts, Spades, Bridge, Big Two
-- [ui-genre-worker-placement.md](ui-genre-worker-placement.md) — Agricola, Viticulture, Lords of Waterdeep
-- [ui-genre-resource-management.md](ui-genre-resource-management.md) — Catan, Splendor, engine builders
+- [ui-genre-trick-taking.md](ui-genre-trick-taking.md)
+- [ui-genre-worker-placement.md](ui-genre-worker-placement.md)
+- [ui-genre-resource-management.md](ui-genre-resource-management.md)

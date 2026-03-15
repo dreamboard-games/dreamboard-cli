@@ -25,7 +25,8 @@ const META_FILES = new Set([MANIFEST_FILE, RULE_FILE]);
 export type RemoteProjectSources = {
   resultId: string;
   files: Record<string, string>;
-  sourceKey?: string;
+  sourceRevisionId: string;
+  treeHash: string;
   manifestId?: string;
   manifest?: BoardManifest;
   ruleId?: string;
@@ -35,7 +36,6 @@ export type RemoteProjectSources = {
 export type RemoteReconcileResult = {
   latest: RemoteProjectSources;
   remoteUserFiles: Record<string, string>;
-  serverUserFiles: string[];
   written: string[];
   deleted: string[];
   conflicts: string[];
@@ -68,14 +68,6 @@ function isMergeableUserPath(filePath: string): boolean {
     isAllowedGamePath(filePath) &&
     !isLibraryPath(filePath)
   );
-}
-
-function listServerUserFiles(files: Record<string, string>): string[] {
-  return Object.keys(files)
-    .filter(
-      (filePath) => isAllowedGamePath(filePath) && !META_FILES.has(filePath),
-    )
-    .sort();
 }
 
 function buildMergeableRemoteFiles(
@@ -197,7 +189,8 @@ async function fetchRemoteSources(
   return {
     resultId,
     files: normalizeRemoteFiles(sources),
-    sourceKey: sources.sourceKey,
+    sourceRevisionId: sources.sourceRevisionId,
+    treeHash: sources.treeHash,
     manifestId: sources.manifestId,
     manifest: sources.manifest,
     ruleId: sources.ruleId,
@@ -245,11 +238,10 @@ export async function pullIntoDirectory(
   await updateProjectState(targetDir, {
     ...projectConfig,
     resultId: latest.resultId,
-    remoteBaseResultId: latest.resultId,
+    sourceRevisionId: latest.sourceRevisionId,
+    sourceTreeHash: latest.treeHash,
     manifestId: latest.manifestId ?? projectConfig.manifestId,
     ruleId: latest.ruleId ?? projectConfig.ruleId,
-    sourceKey: latest.sourceKey ?? projectConfig.sourceKey,
-    serverUserFiles: listServerUserFiles(latest.files),
   });
 
   await writeSnapshot(targetDir);
@@ -317,7 +309,6 @@ export async function reconcileRemoteChangesIntoWorkspace(options: {
         isMergeableUserPath(filePath),
       ),
     ),
-    serverUserFiles: listServerUserFiles(latest.files),
     written,
     deleted,
     conflicts,

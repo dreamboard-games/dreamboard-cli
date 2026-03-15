@@ -19,6 +19,7 @@ import {
 import { ensureDir, readTextFileIfExists, writeTextFile } from "../utils/fs.js";
 import {
   getLatestManifestIdSdk,
+  getManifestSdk,
   isManifestDifferentFromServer,
   saveManifestSdk,
   saveRuleSdk,
@@ -145,8 +146,7 @@ export default defineCommand({
     let currentProjectConfig = projectConfig;
     let remoteSnapshotUserFiles: Record<string, string> | null = null;
 
-    const localBaseResultId =
-      currentProjectConfig.remoteBaseResultId ?? currentProjectConfig.resultId;
+    const localBaseResultId = currentProjectConfig.resultId;
     const latestRemote = await fetchLatestRemoteSources(
       currentProjectConfig.gameId,
     );
@@ -180,6 +180,10 @@ export default defineCommand({
           baseResultId: localBaseResultId,
           latestResultId: latestRemote.resultId,
         });
+        const reconciledManifestHash = reconcileResult.latest.manifestId
+          ? (await getManifestSdk(reconcileResult.latest.manifestId))
+              ?.contentHash
+          : null;
 
         if (reconcileResult.written.length > 0) {
           consola.info(
@@ -205,14 +209,23 @@ export default defineCommand({
           manifestId:
             reconcileResult.latest.manifestId ??
             currentProjectConfig.manifestId,
-          manifestContentHash: undefined,
+          manifestContentHash:
+            reconciledManifestHash ?? currentProjectConfig.manifestContentHash,
           ruleId: reconcileResult.latest.ruleId ?? currentProjectConfig.ruleId,
-          sourceKey:
-            reconcileResult.latest.sourceKey ?? currentProjectConfig.sourceKey,
-          remoteBaseResultId: reconcileResult.latest.resultId,
-          serverUserFiles: reconcileResult.serverUserFiles,
+          sourceRevisionId: reconcileResult.latest.sourceRevisionId,
+          sourceTreeHash: reconcileResult.latest.treeHash,
+          resultId: reconcileResult.latest.resultId,
         };
         remoteSnapshotUserFiles = reconcileResult.remoteUserFiles;
+        await updateProjectState(projectRoot, currentProjectConfig);
+        const reconciledLocalFiles = await collectLocalFiles(projectRoot);
+        await writeSnapshotFromFiles(
+          projectRoot,
+          buildRemoteAlignedSnapshotFiles({
+            localFiles: reconciledLocalFiles,
+            remoteUserFiles: remoteSnapshotUserFiles,
+          }),
+        );
         consola.success(
           `Reconciled remote changes from ${localBaseResultId} to ${reconcileResult.latest.resultId}.`,
         );
@@ -365,12 +378,22 @@ export default defineCommand({
 
     await writeManifest(projectRoot, localManifest);
 
+    const shouldClearCompiledState = ruleChanged || manifestChanged;
+
     await updateProjectState(projectRoot, {
       ...currentProjectConfig,
       manifestId,
       manifestContentHash,
       ruleId: ruleId ?? currentProjectConfig.ruleId,
-      resultId: undefined,
+      resultId: shouldClearCompiledState
+        ? undefined
+        : currentProjectConfig.resultId,
+      sourceRevisionId: shouldClearCompiledState
+        ? undefined
+        : currentProjectConfig.sourceRevisionId,
+      sourceTreeHash: shouldClearCompiledState
+        ? undefined
+        : currentProjectConfig.sourceTreeHash,
     });
 
     if (written.length > 0) {

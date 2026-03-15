@@ -24,8 +24,7 @@ export default defineCommand({
     );
 
     const diff = await getLocalDiff(projectRoot);
-    const localBaseResultId =
-      projectConfig.remoteBaseResultId ?? projectConfig.resultId;
+    const localBaseResultId = projectConfig.resultId;
     let latestRemoteResultId: string | null = null;
     let completionLights: {
       rules: boolean;

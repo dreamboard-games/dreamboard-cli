@@ -16,7 +16,6 @@ export async function saveManifestSdk(
     body: {
       manifest,
       ruleId,
-      thinking: "CLI update",
     },
   });
   if (error || !data) {
@@ -70,8 +69,7 @@ export async function getManifestSdk(
  * Returns true if the server's current manifest differs from the last push.
  *
  * Both hashes are produced by the backend (SHA-256 of canonical JSON), so
- * there is no cross-language serialisation risk. The CLI never computes the
- * canonical hash itself.
+ * there is no cross-language serialisation risk.
  *
  * - `manifestId`: the server-side ID of the manifest to check.
  * - `storedContentHash`: the hash returned by the server after the last

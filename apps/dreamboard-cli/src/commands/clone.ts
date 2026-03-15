@@ -137,7 +137,6 @@ export default defineCommand({
         ruleId,
         manifestId,
         manifestContentHash: manifestResponse.contentHash,
-        remoteBaseResultId: undefined,
         apiBaseUrl: config.apiBaseUrl,
         webBaseUrl: config.webBaseUrl,
       });

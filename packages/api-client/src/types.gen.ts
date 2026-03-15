@@ -173,109 +173,17 @@ export type CreateGameRequest = {
     enhanceRule?: boolean;
 };
 
-export type DeckComponent = {
-    type: 'deck';
+export type PresetCardSetDefinition = {
     /**
-     * Unique identifier for the component
+     * Unique identifier for the card set
      */
     id: string;
     /**
-     * Display name of the component
+     * Display name of the card set
      */
     name: string;
     /**
-     * ID of the deck definition this component uses
-     */
-    deckDefinitionId: string;
-};
-
-export type PlayerZone = {
-    type: 'playerZone';
-    /**
-     * Unique identifier for the component
-     */
-    id: string;
-    /**
-     * Display name of the component
-     */
-    name: string;
-    /**
-     * Player number (1-based)
-     */
-    playerNumber: number;
-    /**
-     * Color associated with this player zone
-     */
-    color: string;
-};
-
-/**
- * A spatial zone on the board that can hold cards or tokens (e.g., 'Discard Pile', 'Active Play Area')
- */
-export type ZoneComponent = {
-    type: 'zone';
-    /**
-     * Unique identifier for the zone
-     */
-    id: string;
-    /**
-     * Display name (e.g. 'Discard')
-     */
-    name: string;
-    /**
-     * Who owns/controls this zone
-     */
-    ownership: 'public' | 'private' | 'shared';
-    /**
-     * Who can see the contents of this zone
-     */
-    visibility: 'visible' | 'hidden' | 'owner-only';
-    /**
-     * How items are arranged in this zone
-     */
-    layout: 'stack' | 'grid' | 'fan' | 'free';
-};
-
-/**
- * A die component for randomization and chance mechanics
- */
-export type DieComponent = {
-    type: 'die';
-    /**
-     * Unique identifier for the die
-     */
-    id: string;
-    /**
-     * Display name of the die
-     */
-    name: string;
-    /**
-     * Number of sides on the die (e.g., 6 for standard die)
-     */
-    sides: number;
-};
-
-export type BoardComponent = ({
-    type: 'deck';
-} & DeckComponent) | ({
-    type: 'playerZone';
-} & PlayerZone) | ({
-    type: 'zone';
-} & ZoneComponent) | ({
-    type: 'die';
-} & DieComponent);
-
-export type PresetDeckDefinition = {
-    /**
-     * Unique identifier for the deck definition
-     */
-    id: string;
-    /**
-     * Display name of the deck
-     */
-    name: string;
-    /**
-     * Type of deck source
+     * Type of card set source
      */
     type: 'preset';
 };
@@ -347,34 +255,34 @@ export type BoardCard = {
     };
 };
 
-export type ManualDeckDefinition = {
+export type ManualCardSetDefinition = {
     /**
-     * Unique identifier for the deck definition
+     * Unique identifier for the card set
      */
     id: string;
     /**
-     * Display name of the deck
+     * Display name of the card set
      */
     name: string;
     /**
-     * Type of deck source
+     * Type of card set source
      */
     type: 'manual';
     /**
-     * Schema definition for card properties in this deck. Defines the structure and types of properties that cards in this deck can have.
+     * Schema definition for card properties in this card set. Defines the structure and types of properties that cards in this card set can have.
      */
     cardSchema: ObjectSchema;
     /**
-     * List of cards in this deck
+     * List of cards in this card set
      */
     cards: Array<BoardCard>;
 };
 
-export type BoardDeckDefinition = ({
+export type CardSetDefinition = ({
     type: 'preset';
-} & PresetDeckDefinition) | ({
+} & PresetCardSetDefinition) | ({
     type: 'manual';
-} & ManualDeckDefinition);
+} & ManualCardSetDefinition);
 
 /**
  * Definition of a player hand type
@@ -405,9 +313,42 @@ export type PlayerHandDefinition = {
      */
     visibility?: 'ownerOnly' | 'public' | 'hidden';
     /**
-     * List of deck definition IDs that can be stored in this hand. If empty, hand can store cards from any deck.
+     * List of card set IDs that can be stored in this hand. If empty, the hand can store cards from any card set.
      */
-    deckDefinitionIds?: Array<string>;
+    cardSetIds?: Array<string>;
+};
+
+export type DeckDefinition = {
+    /**
+     * Unique identifier for the deck
+     */
+    id: string;
+    /**
+     * Display name of the deck
+     */
+    name: string;
+    /**
+     * ID of the card set this deck uses
+     */
+    cardSetId: string;
+};
+
+/**
+ * A die component for randomization and chance mechanics
+ */
+export type DieDefinition = {
+    /**
+     * Unique identifier for the die
+     */
+    id: string;
+    /**
+     * Display name of the die
+     */
+    name: string;
+    /**
+     * Number of sides on the die (e.g., 6 for standard die)
+     */
+    sides: number;
 };
 
 export type PlayerConfig = {
@@ -467,9 +408,9 @@ export type ActionParameterDefinition = {
      */
     maxLength?: number;
     /**
-     * Optional deck definition ID to specify which deck the CARD_ID parameter refers to (only applicable when type is CARD_ID)
+     * Optional card set ID to specify which card set the CARD_ID parameter refers to (only applicable when type is CARD_ID)
      */
-    deckDefinitionId?: string;
+    cardSetId?: string;
     /**
      * Optional help text for this parameter
      */
@@ -973,21 +914,21 @@ export type BoardDefinition = ({
 
 export type BoardManifest = {
     /**
-     * Manifest format version
+     * List of card sets
      */
-    version: string;
-    /**
-     * List of board components
-     */
-    components: Array<BoardComponent>;
-    /**
-     * List of deck definitions
-     */
-    deckDefinitions: Array<BoardDeckDefinition>;
+    cardSets: Array<CardSetDefinition>;
     /**
      * Definitions of different hand types players can hold
      */
     playerHandDefinitions: Array<PlayerHandDefinition>;
+    /**
+     * Shared decks available to the whole game
+     */
+    decks?: Array<DeckDefinition>;
+    /**
+     * Dice available to the whole game
+     */
+    dice?: Array<DieDefinition>;
     /**
      * Player configuration settings
      */
@@ -1042,6 +983,13 @@ export type DeleteGameResponse = {
     deleted: boolean;
 };
 
+export type WorkshopRuleTextResponse = {
+    /**
+     * Extracted rulebook text from the first valid candidate.
+     */
+    ruleText: string;
+};
+
 export type GameManifestSummaryDto = {
     /**
      * Unique identifier for this manifest version
@@ -1094,10 +1042,6 @@ export type SaveManifestRequest = {
      */
     manifest: BoardManifest;
     /**
-     * Optional notes about this manifest version
-     */
-    thinking?: string;
-    /**
      * Agent job that created this manifest
      */
     jobId?: string;
@@ -1148,10 +1092,6 @@ export type GameManifestDto = {
      * The board manifest data
      */
     manifest: BoardManifest;
-    /**
-     * Optional notes about this manifest version
-     */
-    thinking?: string;
     /**
      * Version number for this game
      */
@@ -1318,21 +1258,15 @@ export type CompiledResult = {
      */
     uiStorageKey?: string;
     /**
-     * Where uncompiled source files are stored
+     * Source revision used to produce this compilation
      */
-    sourceType: CompiledResultStorageType;
-    /**
-     * Key/path within the storage backend for uncompiled source files
-     */
-    sourceKey?: string;
+    sourceRevisionId: string;
     /**
      * Version of the UI SDK used for this compilation
      */
     sdkVersion?: string;
     createdAt: string;
     lastModifiedAt: string;
-    deleted: boolean;
-    deletedAt?: string;
 };
 
 /**
@@ -1347,6 +1281,10 @@ export type ListCompiledResultsResponse = {
 
 export type CreateCompiledResultRequest = {
     /**
+     * Source revision to compile
+     */
+    sourceRevisionId: string;
+    /**
      * Manifest used for this compilation
      */
     manifestId: string;
@@ -1354,16 +1292,10 @@ export type CreateCompiledResultRequest = {
      * Game rule used for this compilation
      */
     ruleId: string;
-    /**
-     * Optional idempotency key; duplicates will return 409
-     */
-    compilationRequestId?: string;
-    storageType: CompiledResultStorageType;
-    storageKey: string;
 };
 
 /**
- * Response containing all source files for a game. App and UI share the same source folder.
+ * Response containing authored source files resolved through a compiled result's source revision.
  */
 export type GameSourcesResponse = {
     /**
@@ -1373,9 +1305,13 @@ export type GameSourcesResponse = {
         [key: string]: string;
     };
     /**
-     * Supabase storage key for source files (null if no sources available)
+     * Source revision identifier used to fetch the authored source files
      */
-    sourceKey?: string;
+    sourceRevisionId: string;
+    /**
+     * Deterministic hash of the authored source tree
+     */
+    treeHash: string;
     /**
      * ID of the compiled result used to fetch source files
      */
@@ -1466,53 +1402,89 @@ export type DynamicScaffoldResponse = {
 };
 
 /**
- * A file override specification pointing to an uploaded file in Supabase storage
+ * How the submitted change set should be applied against the base source revision.
  */
-export type FileOverride = {
+export type SourceChangeMode = 'incremental' | 'replace';
+
+/**
+ * Upsert a file in the authored source tree.
+ */
+export type SourceFileUpsert = {
+    kind: 'upsert';
     /**
-     * Relative file path within the source tree (e.g., 'phases/setup.ts' or 'App.tsx')
+     * Relative file path within the authored source tree.
      */
     path: string;
     /**
-     * Supabase storage key where the modified file has been uploaded
+     * UTF-8 file content for the authored source file.
      */
-    storageKey: string;
+    content: string;
 };
 
 /**
- * Request options for recompiling game assets
+ * Delete a file from the authored source tree.
  */
-export type RecompileRequest = {
+export type SourcePathDelete = {
+    kind: 'delete';
     /**
-     * List of file overrides to merge with existing sources before compilation. Each override points to a file uploaded to Supabase storage that will replace the corresponding source file.
+     * Relative file path within the authored source tree.
      */
-    fileOverrides?: Array<FileOverride>;
+    path: string;
+};
+
+export type SourceChangeOperation = ({
+    kind: 'upsert';
+} & SourceFileUpsert) | ({
+    kind: 'delete';
+} & SourcePathDelete);
+
+/**
+ * Request to create a new authored source revision from a change set.
+ */
+export type CreateSourceRevisionRequest = {
     /**
-     * List of file paths to delete from the source tree before compilation.
+     * Base source revision the change set must apply to. Must match the current head revision when present.
      */
-    deletedPaths?: Array<string>;
+    baseSourceRevisionId?: string;
+    mode: SourceChangeMode;
     /**
-     * Optional ID of the compiled result to use as base. If not provided, uses the latest result.
+     * Canonical change set applied to the authored source tree.
      */
-    resultId?: string;
-    /**
-     * Optional manifest ID to compile against. If not provided, uses the base result's manifest.
-     */
-    manifestId?: string;
-    /**
-     * Optional rule ID to associate with the new compiled result. If not provided, uses the base result's rule (or manifest-linked rule when manifestId is provided).
-     */
-    ruleId?: string;
+    changes: Array<SourceChangeOperation>;
 };
 
 /**
- * Response containing the newly compiled result.
+ * Immutable authored source revision for a game.
  */
-export type RecompileResponse = {
+export type SourceRevision = {
     /**
-     * The newly compiled result. Null if no existing compiled result was found.
+     * Source revision identifier
      */
-    result?: CompiledResult;
+    id: string;
+    /**
+     * Game identifier
+     */
+    gameId: string;
+    /**
+     * User who created the source revision
+     */
+    userId: string;
+    /**
+     * Parent source revision identifier
+     */
+    parentSourceRevisionId?: string;
+    /**
+     * Deterministic hash of the authored source tree
+     */
+    treeHash: string;
+    /**
+     * Number of authored files stored in this revision
+     */
+    fileCount: number;
+    /**
+     * Revision creation timestamp
+     */
+    createdAt: string;
 };
 
 export type GameScriptsResponse = {
@@ -1801,13 +1773,13 @@ export type SessionStatus = {
  */
 export type CardInfo = {
     /**
-     * Card type identifier matching a schema in the manifest
+     * Card type identifier matching a card set in the manifest
      */
     cardType: string;
     /**
-     * The deck definition ID this card was created from (e.g., 'standard_52_deck')
+     * The card set ID this card was created from (e.g., 'standard_52_deck')
      */
-    deckDefinitionId: string;
+    cardSetId: string;
     /**
      * Display name for the card
      */
@@ -1817,7 +1789,7 @@ export type CardInfo = {
      */
     description?: string;
     /**
-     * JSON-serialized custom properties specific to this game's cards as defined by the game's BoardManifest.cardSchemas
+     * JSON-serialized custom properties specific to this game's cards as defined by the game's BoardManifest card set schemas
      */
     properties: string;
 };
@@ -3387,9 +3359,9 @@ export type SimpleLocation = ({
 } & DetachedLocation);
 
 /**
- * Type of source for the deck
+ * Type of source for the card set
  */
-export type DeckSourceType = 'preset' | 'csv' | 'manual';
+export type CardSetSourceType = 'preset' | 'csv' | 'manual';
 
 export type TurnStepDefinition = {
     /**
@@ -3519,10 +3491,6 @@ export type GameManifestResponse = {
      * The board manifest data
      */
     manifest: BoardManifest;
-    /**
-     * Optional notes about this manifest version
-     */
-    thinking?: string;
     /**
      * Version number for this game
      */
@@ -3811,6 +3779,48 @@ export type GetGameBySlugResponses = {
 
 export type GetGameBySlugResponse = GetGameBySlugResponses[keyof GetGameBySlugResponses];
 
+export type QueryWorkshopRulebookData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * Board game title to search for in the rulebook library.
+         */
+        title: string;
+    };
+    url: '/api/workshop/query';
+};
+
+export type QueryWorkshopRulebookErrors = {
+    /**
+     * Bad request - invalid input parameters
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized - authentication required
+     */
+    401: ErrorResponse;
+    /**
+     * Resource not found
+     */
+    404: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+};
+
+export type QueryWorkshopRulebookError = QueryWorkshopRulebookErrors[keyof QueryWorkshopRulebookErrors];
+
+export type QueryWorkshopRulebookResponses = {
+    /**
+     * Extracted rulebook text for the first valid candidate.
+     */
+    200: WorkshopRuleTextResponse;
+};
+
+export type QueryWorkshopRulebookResponse = QueryWorkshopRulebookResponses[keyof QueryWorkshopRulebookResponses];
+
 export type FindManifestsData = {
     body?: never;
     path: {
@@ -4050,10 +4060,6 @@ export type CreateCompiledResultErrors = {
      */
     401: ErrorResponse;
     /**
-     * A compiled result with the same compilationRequestId already exists
-     */
-    409: ErrorResponse;
-    /**
      * Internal server error
      */
     500: ErrorResponse;
@@ -4063,7 +4069,7 @@ export type CreateCompiledResultError = CreateCompiledResultErrors[keyof CreateC
 
 export type CreateCompiledResultResponses = {
     /**
-     * Compiled result saved
+     * Compiled result created
      */
     201: CompiledResult;
 };
@@ -4193,8 +4199,8 @@ export type ScaffoldGameSourcesV3Responses = {
 
 export type ScaffoldGameSourcesV3Response = ScaffoldGameSourcesV3Responses[keyof ScaffoldGameSourcesV3Responses];
 
-export type RecompileGameData = {
-    body?: RecompileRequest;
+export type CreateSourceRevisionData = {
+    body: CreateSourceRevisionRequest;
     path: {
         /**
          * Unique identifier for the game
@@ -4202,10 +4208,10 @@ export type RecompileGameData = {
         gameId: string;
     };
     query?: never;
-    url: '/api/games/{gameId}/recompile';
+    url: '/api/games/{gameId}/source-revisions';
 };
 
-export type RecompileGameErrors = {
+export type CreateSourceRevisionErrors = {
     /**
      * Bad request - invalid input parameters
      */
@@ -4215,25 +4221,67 @@ export type RecompileGameErrors = {
      */
     401: ErrorResponse;
     /**
-     * Resource not found
+     * Base source revision does not match the current head revision
      */
-    404: ErrorResponse;
+    409: ErrorResponse;
     /**
      * Internal server error
      */
     500: ErrorResponse;
 };
 
-export type RecompileGameError = RecompileGameErrors[keyof RecompileGameErrors];
+export type CreateSourceRevisionError = CreateSourceRevisionErrors[keyof CreateSourceRevisionErrors];
 
-export type RecompileGameResponses = {
+export type CreateSourceRevisionResponses = {
     /**
-     * Recompilation completed successfully
+     * Source revision created
      */
-    200: RecompileResponse;
+    201: SourceRevision;
 };
 
-export type RecompileGameResponse = RecompileGameResponses[keyof RecompileGameResponses];
+export type CreateSourceRevisionResponse = CreateSourceRevisionResponses[keyof CreateSourceRevisionResponses];
+
+export type CreateSourceRevisionBundleData = {
+    body: Blob | File;
+    path: {
+        /**
+         * Unique identifier for the game
+         */
+        gameId: string;
+    };
+    query?: never;
+    url: '/api/games/{gameId}/source-revisions/bundle';
+};
+
+export type CreateSourceRevisionBundleErrors = {
+    /**
+     * Bad request - invalid input parameters
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized - authentication required
+     */
+    401: ErrorResponse;
+    /**
+     * Base source revision does not match the current head revision
+     */
+    409: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+};
+
+export type CreateSourceRevisionBundleError = CreateSourceRevisionBundleErrors[keyof CreateSourceRevisionBundleErrors];
+
+export type CreateSourceRevisionBundleResponses = {
+    /**
+     * Source revision created
+     */
+    201: SourceRevision;
+};
+
+export type CreateSourceRevisionBundleResponse = CreateSourceRevisionBundleResponses[keyof CreateSourceRevisionBundleResponses];
 
 export type GetGameScriptsData = {
     body?: never;
