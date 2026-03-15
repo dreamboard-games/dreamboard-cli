@@ -44,7 +44,7 @@
   {
     "sourcePath": "packages/js-template-resources/src/main/resources/template/src/sdk/types.d.ts + apps/dreamboard-cli/src/scaffold/templates/static/app/types-imports.ts.mustache",
     "targetPath": "app/sdk/types.d.ts",
-    "checksumSha256": "686e01f03a38fcafa9d07ea7090fb09170a6fed139b2f5d4a1cd5ee7200bd26c",
+    "checksumSha256": "697c0ecacf2aaf69545efe02d0ada30b4a900da15649fb0391324ad1cc835497",
     "category": "cli-static"
   },
   {

@@ -7,6 +7,7 @@ import cmdPush from "./commands/push.js";
 import cmdStatus from "./commands/status.js";
 import cmdUpdate from "./commands/update.js";
 import cmdRun from "./commands/run.js";
+import cmdStart from "./commands/start.js";
 import cmdQuery from "./commands/query.js";
 import cmdAuth from "./commands/auth.js";
 import cmdLogin from "./commands/login.js";
@@ -34,6 +35,7 @@ const subCommands = {
   status: cmdStatus,
   update: cmdUpdate,
   run: cmdRun,
+  start: cmdStart,
   test: cmdTest,
   login: cmdLogin,
   logout: cmdLogout,
