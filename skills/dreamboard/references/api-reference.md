@@ -1,5 +1,9 @@
 # State & API Reference
 
+Use this page as a lookup while writing `app/phases/*.ts`.
+
+This is a reference-first document, not a modeling guide. For schema design, use [manifest-authoring.md](manifest-authoring.md). For hand-vs-deck decisions, use [hands-vs-decks.md](hands-vs-decks.md).
+
 ## Read APIs (`ctx.state.*`)
 
 ### `state.player`

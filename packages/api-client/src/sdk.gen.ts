@@ -2,7 +2,7 @@
 
 import { client } from './client.gen.js';
 import type { Client, Options as Options2, TDataShape } from './client/index.js';
-import type { AbortSandboxSessionData, AbortSandboxSessionErrors, AbortSandboxSessionResponses, AddSeatData, AddSeatErrors, AddSeatResponses, AssignSeatData, AssignSeatErrors, AssignSeatResponses, CancelConversationJobData, CancelConversationJobErrors, CancelConversationJobResponses, CreateCompiledResultData, CreateCompiledResultErrors, CreateCompiledResultResponses, CreateGameData, CreateGameErrors, CreateGameResponses, CreateGameRuleData, CreateGameRuleErrors, CreateGameRuleResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, DeleteConversationData, DeleteConversationErrors, DeleteConversationResponses, DeleteGameData, DeleteGameErrors, DeleteGameResponses, DownloadGameSourcesData, DownloadGameSourcesErrors, DownloadGameSourcesResponses, FetchUiBundleData, FetchUiBundleErrors, FetchUiBundleResponses, FindManifestsData, FindManifestsErrors, FindManifestsResponses, GetActiveJobData, GetActiveJobErrors, GetActiveJobResponses, GetAgentChatContextData, GetAgentChatContextErrors, GetAgentChatContextResponses, GetGameBySlugData, GetGameBySlugErrors, GetGameBySlugResponses, GetGameData, GetGameErrors, GetGameResponses, GetGameRuleData, GetGameRuleErrors, GetGameRuleResponses, GetGameScriptsData, GetGameScriptsErrors, GetGameScriptsResponses, GetGameSourcesData, GetGameSourcesErrors, GetGameSourcesResponses, GetJobData, GetJobErrors, GetJobResponses, GetLatestCompiledResultData, GetLatestCompiledResultErrors, GetLatestCompiledResultResponses, GetLatestGameRuleData, GetLatestGameRuleErrors, GetLatestGameRuleResponses, GetManifestData, GetManifestErrors, GetManifestResponses, GetSessionByShortCodeData, GetSessionByShortCodeErrors, GetSessionByShortCodeResponses, GetSessionStatusData, GetSessionStatusErrors, GetSessionStatusResponses, HealthCheckData, HealthCheckResponses, ListCompiledResultsData, ListCompiledResultsErrors, ListCompiledResultsResponses, ListConversationsData, ListConversationsErrors, ListConversationsResponses, ListGameRulesData, ListGameRulesErrors, ListGameRulesResponses, ListGamesData, ListGamesErrors, ListGamesResponses, ReceiveSandboxWebhookCompleteData, ReceiveSandboxWebhookCompleteErrors, ReceiveSandboxWebhookCompleteResponses, ReceiveSandboxWebhookEventData, ReceiveSandboxWebhookEventErrors, ReceiveSandboxWebhookEventResponses, RecompileGameData, RecompileGameErrors, RecompileGameResponses, RemoveSeatData, RemoveSeatErrors, RemoveSeatResponses, RestoreHistoryData, RestoreHistoryErrors, RestoreHistoryResponses, SandboxAbortData, SandboxAbortErrors, SandboxAbortResponses, SandboxChatData, SandboxChatErrors, SandboxChatResponses, SaveManifestData, SaveManifestErrors, SaveManifestResponses, ScaffoldGameSourcesV3Data, ScaffoldGameSourcesV3Errors, ScaffoldGameSourcesV3Responses, SendSandboxMessageData, SendSandboxMessageErrors, SendSandboxMessageResponses, StartGameData, StartGameErrors, StartGameResponses, StreamConversationData, StreamConversationErrors, StreamConversationResponses, SubmitActionData, SubmitActionErrors, SubmitActionResponses, SubscribeToGameLogsData, SubscribeToGameLogsErrors, SubscribeToGameLogsResponses, SubscribeToSessionEventsData, SubscribeToSessionEventsErrors, SubscribeToSessionEventsResponses, UnassignSeatData, UnassignSeatErrors, UnassignSeatResponses, UpdateGameData, UpdateGameErrors, UpdateGameResponses, UpdateSeatData, UpdateSeatErrors, UpdateSeatResponses, ValidateActionData, ValidateActionErrors, ValidateActionResponses } from './types.gen.js';
+import type { AbortSandboxSessionData, AbortSandboxSessionErrors, AbortSandboxSessionResponses, AddSeatData, AddSeatErrors, AddSeatResponses, AssignSeatData, AssignSeatErrors, AssignSeatResponses, CancelConversationJobData, CancelConversationJobErrors, CancelConversationJobResponses, CreateCompiledResultData, CreateCompiledResultErrors, CreateCompiledResultResponses, CreateGameData, CreateGameErrors, CreateGameResponses, CreateGameRuleData, CreateGameRuleErrors, CreateGameRuleResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, CreateSourceRevisionBundleData, CreateSourceRevisionBundleErrors, CreateSourceRevisionBundleResponses, CreateSourceRevisionData, CreateSourceRevisionErrors, CreateSourceRevisionResponses, DeleteConversationData, DeleteConversationErrors, DeleteConversationResponses, DeleteGameData, DeleteGameErrors, DeleteGameResponses, DownloadGameSourcesData, DownloadGameSourcesErrors, DownloadGameSourcesResponses, FetchUiBundleData, FetchUiBundleErrors, FetchUiBundleResponses, FindManifestsData, FindManifestsErrors, FindManifestsResponses, GetActiveJobData, GetActiveJobErrors, GetActiveJobResponses, GetAgentChatContextData, GetAgentChatContextErrors, GetAgentChatContextResponses, GetGameBySlugData, GetGameBySlugErrors, GetGameBySlugResponses, GetGameData, GetGameErrors, GetGameResponses, GetGameRuleData, GetGameRuleErrors, GetGameRuleResponses, GetGameScriptsData, GetGameScriptsErrors, GetGameScriptsResponses, GetGameSourcesData, GetGameSourcesErrors, GetGameSourcesResponses, GetJobData, GetJobErrors, GetJobResponses, GetLatestCompiledResultData, GetLatestCompiledResultErrors, GetLatestCompiledResultResponses, GetLatestGameRuleData, GetLatestGameRuleErrors, GetLatestGameRuleResponses, GetManifestData, GetManifestErrors, GetManifestResponses, GetSessionByShortCodeData, GetSessionByShortCodeErrors, GetSessionByShortCodeResponses, GetSessionStatusData, GetSessionStatusErrors, GetSessionStatusResponses, HealthCheckData, HealthCheckResponses, ListCompiledResultsData, ListCompiledResultsErrors, ListCompiledResultsResponses, ListConversationsData, ListConversationsErrors, ListConversationsResponses, ListGameRulesData, ListGameRulesErrors, ListGameRulesResponses, ListGamesData, ListGamesErrors, ListGamesResponses, QueryWorkshopRulebookData, QueryWorkshopRulebookErrors, QueryWorkshopRulebookResponses, ReceiveSandboxWebhookCompleteData, ReceiveSandboxWebhookCompleteErrors, ReceiveSandboxWebhookCompleteResponses, ReceiveSandboxWebhookEventData, ReceiveSandboxWebhookEventErrors, ReceiveSandboxWebhookEventResponses, RemoveSeatData, RemoveSeatErrors, RemoveSeatResponses, RestoreHistoryData, RestoreHistoryErrors, RestoreHistoryResponses, SandboxAbortData, SandboxAbortErrors, SandboxAbortResponses, SandboxChatData, SandboxChatErrors, SandboxChatResponses, SaveManifestData, SaveManifestErrors, SaveManifestResponses, ScaffoldGameSourcesV3Data, ScaffoldGameSourcesV3Errors, ScaffoldGameSourcesV3Responses, SendSandboxMessageData, SendSandboxMessageErrors, SendSandboxMessageResponses, StartGameData, StartGameErrors, StartGameResponses, StreamConversationData, StreamConversationErrors, StreamConversationResponses, SubmitActionData, SubmitActionErrors, SubmitActionResponses, SubscribeToGameLogsData, SubscribeToGameLogsErrors, SubscribeToGameLogsResponses, SubscribeToSessionEventsData, SubscribeToSessionEventsErrors, SubscribeToSessionEventsResponses, UnassignSeatData, UnassignSeatErrors, UnassignSeatResponses, UpdateGameData, UpdateGameErrors, UpdateGameResponses, UpdateSeatData, UpdateSeatErrors, UpdateSeatResponses, ValidateActionData, ValidateActionErrors, ValidateActionResponses } from './types.gen.js';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean> = Options2<TData, ThrowOnError> & {
     /**
@@ -104,6 +104,17 @@ export const getGameBySlug = <ThrowOnError extends boolean = false>(options: Opt
 });
 
 /**
+ * Query rulebook text by title
+ *
+ * Search ranked rulebook candidates for the provided title, try up to the top 3 matches, and return extracted text from the first valid PDF found.
+ */
+export const queryWorkshopRulebook = <ThrowOnError extends boolean = false>(options: Options<QueryWorkshopRulebookData, ThrowOnError>) => (options.client ?? client).get<QueryWorkshopRulebookResponses, QueryWorkshopRulebookErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/workshop/query',
+    ...options
+});
+
+/**
  * Find manifests for game
  *
  * Retrieve a list of manifest versions for a game, ordered by version descending (newest first)
@@ -132,7 +143,7 @@ export const saveManifest = <ThrowOnError extends boolean = false>(options: Opti
 /**
  * Get manifest by ID
  *
- * Retrieve a specific manifest version by its ID with full details including the board manifest and thinking notes
+ * Retrieve a specific manifest version by its ID with full board manifest details
  */
 export const getManifest = <ThrowOnError extends boolean = false>(options: Options<GetManifestData, ThrowOnError>) => (options.client ?? client).get<GetManifestResponses, GetManifestErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -143,7 +154,7 @@ export const getManifest = <ThrowOnError extends boolean = false>(options: Optio
 /**
  * Get latest compiled result for a game
  *
- * Return the most recent non-deleted compiled result for the specified game.
+ * Return the most recent compiled result for the specified game.
  */
 export const getLatestCompiledResult = <ThrowOnError extends boolean = false>(options: Options<GetLatestCompiledResultData, ThrowOnError>) => (options.client ?? client).get<GetLatestCompiledResultResponses, GetLatestCompiledResultErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -163,9 +174,9 @@ export const listCompiledResults = <ThrowOnError extends boolean = false>(option
 });
 
 /**
- * Save a compiled result for a game
+ * Compile a source revision for a game
  *
- * Persist metadata for a compiled script bundle. The server derives userId from the auth token and sets timestamps.
+ * Compile a specific source revision with the provided manifest and rule IDs. Returns the newly created compiled result, including failed compilations with diagnostics.
  */
 export const createCompiledResult = <ThrowOnError extends boolean = false>(options: Options<CreateCompiledResultData, ThrowOnError>) => (options.client ?? client).post<CreateCompiledResultResponses, CreateCompiledResultErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -178,9 +189,9 @@ export const createCompiledResult = <ThrowOnError extends boolean = false>(optio
 });
 
 /**
- * Download game source files
+ * Download authored game source files
  *
- * Download all uncompiled source files for both APP and UI compilations as a ZIP archive. The archive contains 'app/' and 'ui/' directories with all source files.
+ * Download the authored source files for the selected compiled result as a ZIP archive. The source files are resolved through the compiled result's source revision.
  */
 export const downloadGameSources = <ThrowOnError extends boolean = false>(options: Options<DownloadGameSourcesData, ThrowOnError>) => (options.client ?? client).get<DownloadGameSourcesResponses, DownloadGameSourcesErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -189,9 +200,9 @@ export const downloadGameSources = <ThrowOnError extends boolean = false>(option
 });
 
 /**
- * Get game source files
+ * Get authored game source files
  *
- * Retrieve all uncompiled source files for both APP and UI compilations as JSON. Returns a map of file paths to file contents. Optionally specify compiled result IDs to fetch sources from specific versions instead of the latest.
+ * Retrieve authored source files as JSON for the selected compiled result. Source files are resolved through the compiled result's source revision.
  */
 export const getGameSources = <ThrowOnError extends boolean = false>(options: Options<GetGameSourcesData, ThrowOnError>) => (options.client ?? client).get<GetGameSourcesResponses, GetGameSourcesErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -215,16 +226,32 @@ export const scaffoldGameSourcesV3 = <ThrowOnError extends boolean = false>(opti
 });
 
 /**
- * Recompile latest compiled results
+ * Create a source revision for a game
  *
- * Recompile the latest compiled results (both APP and UI types) for a game using the external compiler service. Creates new compiled result entries for each type. Optionally update the SDK library to the latest version. Can accept file overrides that will be merged with existing sources before compilation.
+ * Create a new authored source revision from an inline change set. The request must be based on the current head revision for the game.
  */
-export const recompileGame = <ThrowOnError extends boolean = false>(options: Options<RecompileGameData, ThrowOnError>) => (options.client ?? client).post<RecompileGameResponses, RecompileGameErrors, ThrowOnError>({
+export const createSourceRevision = <ThrowOnError extends boolean = false>(options: Options<CreateSourceRevisionData, ThrowOnError>) => (options.client ?? client).post<CreateSourceRevisionResponses, CreateSourceRevisionErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/api/games/{gameId}/recompile',
+    url: '/api/games/{gameId}/source-revisions',
     ...options,
     headers: {
         'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Create a source revision for a game from a gzip bundle
+ *
+ * Create a new authored source revision from a gzip-compressed JSON payload matching CreateSourceRevisionRequest.
+ */
+export const createSourceRevisionBundle = <ThrowOnError extends boolean = false>(options: Options<CreateSourceRevisionBundleData, ThrowOnError>) => (options.client ?? client).post<CreateSourceRevisionBundleResponses, CreateSourceRevisionBundleErrors, ThrowOnError>({
+    bodySerializer: null,
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/games/{gameId}/source-revisions/bundle',
+    ...options,
+    headers: {
+        'Content-Type': 'application/gzip',
         ...options.headers
     }
 });

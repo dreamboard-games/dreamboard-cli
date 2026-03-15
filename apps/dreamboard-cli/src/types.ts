@@ -23,24 +23,16 @@ export type ProjectConfig = {
   /** SHA-256 hash returned by the server after the last manifest push. Used to detect server-side changes. */
   manifestContentHash?: string;
   resultId?: string;
-  /** Last known remote compiled result that the local workspace is based on. */
-  remoteBaseResultId?: string;
-  sourceKey?: string;
+  sourceRevisionId?: string;
+  sourceTreeHash?: string;
   apiBaseUrl?: string;
   webBaseUrl?: string;
-  /**
-   * Relative paths of user-owned files last pushed to the server.
-   * Used by `push --force` to delete server-side files that no longer
-   * exist locally (stale files not captured in the snapshot).
-   */
-  serverUserFiles?: string[];
 };
 
 export type Snapshot = {
   files: Record<string, string>;
   manifestHash?: string;
   resultId?: string;
-  sourceKey?: string;
 };
 
 export type LocalDiff = {

@@ -1,16 +1,29 @@
 # Manifest Authoring Guide
 
-`manifest.json` is the source of truth for your game's structure — components, actions, state machine, and variables. After editing, run `dreamboard update` to regenerate scaffolded files (`app/phases/`, `shared/manifest.d.ts`, etc.).
+Use this guide when editing `manifest.json`.
 
-## Top-Level Structure
+`manifest.json` describes the runtime shape of the game:
+
+- who can play
+- what cards, resources, dice, and boards exist
+- what actions players can submit
+- what phases and stored state the engine needs
+
+Keep the full game explanation in `rule.md`. Use the manifest to turn that explanation into typed runtime data.
+
+After editing the manifest, run `dreamboard update` to regenerate scaffolded files such as `shared/manifest.ts` and `app/phases/`.
+
+If you are still deciding whether something is a hand, a deck, or a card set, read [hands-vs-decks.md](hands-vs-decks.md) alongside this guide.
+
+## Supported Top-Level Shape
 
 ```json
 {
-  "version": "1.0.0",
   "playerConfig": { ... },
-  "deckDefinitions": [ ... ],
+  "cardSets": [ ... ],
   "playerHandDefinitions": [ ... ],
-  "components": [ ... ],
+  "decks": [ ... ],
+  "dice": [ ... ],
   "resources": [ ... ],
   "boardDefinitions": [ ... ],
   "availableActions": [ ... ],
@@ -19,26 +32,38 @@
 }
 ```
 
-| Field                   | Required | Description                                        |
-| ----------------------- | -------- | -------------------------------------------------- |
-| `version`               | ✅       | Manifest version - increment manually when updated |
-| `playerConfig`          | ✅       | Min/max/optimal player counts                      |
-| `deckDefinitions`       | ✅       | Card deck blueprints (preset or manual)            |
-| `playerHandDefinitions` | ✅       | Per-player card containers                         |
-| `components`            | ✅       | Shared game components (decks, dice)               |
-| `resources`             | ❌       | Typed resource economy (gold, wood)                |
-| `boardDefinitions`      | ❌       | Spatial boards (hex, network, square, track)       |
-| `availableActions`      | ✅       | Player submission buttons                          |
-| `stateMachine`          | ✅       | Game phases and transitions                        |
-| `variableSchema`        | ✅       | Minimal state for game logic                       |
+| Field                   | Required | Purpose                                      |
+| ----------------------- | -------- | -------------------------------------------- |
+| `playerConfig`          | ✅       | Supported player counts                      |
+| `cardSets`              | ✅       | Card blueprints and card property schemas    |
+| `playerHandDefinitions` | ✅       | Per-player card containers                   |
+| `decks`                 | ❌       | Shared card containers                       |
+| `dice`                  | ❌       | Shared dice                                  |
+| `resources`             | ❌       | Typed resource economy                       |
+| `boardDefinitions`      | ❌       | Structured boards such as hex, square, track |
+| `availableActions`      | ✅       | Player-submittable actions                   |
+| `stateMachine`          | ✅       | Game phases and transitions                  |
+| `variableSchema`        | ✅       | Global and per-player stored state           |
 
----
+## Authoring Rules
 
-## Authoring Sequence
+- Only use documented schema fields. If a key is not described in this guide, do not invent it in `manifest.json`.
+- Optional list fields should be omitted or set to `[]`. Do not use `null`.
+- Keep the manifest about runtime structure. Put presentation choices in UI code or `shared/ui-args.ts`.
+- There is no top-level `version` field in the manifest schema.
+- A deck entry is structural data only. Use `id`, `name`, and `cardSetId`.
 
-Work through sections in this order. Skip any step that doesn't apply to your game.
+## Recommended Authoring Order
 
-### 1. `playerConfig`
+1. Start from `rule.md`.
+2. Define the game's containers and content: players, card sets, hands, decks, resources, dice, and boards.
+3. Define the actions players can submit.
+4. Define the phase flow in `stateMachine`.
+5. Add only the stored state that cannot be derived from the rest of the game state.
+
+## 1. `playerConfig`
+
+Use `playerConfig` to declare the supported player counts.
 
 ```json
 {
@@ -50,23 +75,20 @@ Work through sections in this order. Skip any step that doesn't apply to your ga
 }
 ```
 
-| Field            | Type    | Range | Description                          |
-| ---------------- | ------- | ----- | ------------------------------------ |
-| `minPlayers`     | integer | 1–10  | Minimum players required             |
-| `maxPlayers`     | integer | 1–10  | Maximum players supported            |
-| `optimalPlayers` | integer | 1–10  | Best player count for the experience |
+## 2. `cardSets`
 
-### 2. `deckDefinitions`
+`cardSets` define the cards that exist in the game. They do not describe where those cards live during play.
 
-Deck definitions are blueprints for card types. There are two kinds:
+There are two card set styles:
 
-#### Preset decks
+- `preset` for built-in sets such as a standard 52-card deck
+- `manual` for authored card content and custom card schemas
 
-Use `"standard_52_deck"` for standard playing cards. **Do NOT define 52 cards manually.**
+### Preset card set
 
 ```json
 {
-  "deckDefinitions": [
+  "cardSets": [
     {
       "type": "preset",
       "id": "standard_52_deck",
@@ -76,18 +98,16 @@ Use `"standard_52_deck"` for standard playing cards. **Do NOT define 52 cards ma
 }
 ```
 
-#### Manual (custom) decks
-
-Define your own cards with a `cardSchema` and a `cards` list.
+### Manual card set
 
 ```json
 {
   "type": "manual",
-  "id": "resource-deck",
+  "id": "resource-cards",
   "name": "Resource Cards",
   "cardSchema": {
     "properties": {
-      "value": { "type": "integer", "description": "Point value of the card" },
+      "value": { "type": "integer", "description": "Point value" },
       "category": { "type": "string", "description": "Resource category" }
     }
   },
@@ -97,34 +117,24 @@ Define your own cards with a `cardSchema` and a `cards` list.
       "name": "Lumber",
       "count": 4,
       "properties": { "value": "1", "category": "wood" }
-    },
-    {
-      "type": "brick",
-      "name": "Brick",
-      "count": 3,
-      "properties": { "value": "2", "category": "stone" }
     }
   ]
 }
 ```
 
-**Card fields:**
+Card authoring reminders:
 
-| Field        | Required | Description                                                                              |
-| ------------ | -------- | ---------------------------------------------------------------------------------------- |
-| `type`       | ✅       | Card type ID. Runtime IDs are generated as `{type}-1`, `{type}-2`, etc. when `count > 1` |
-| `name`       | ✅       | Display name                                                                             |
-| `count`      | ✅       | Number of copies (≥ 1)                                                                   |
-| `properties` | ✅       | Values matching `cardSchema` (all values are strings)                                    |
-| `imageUrl`   | ❌       | Card image URL                                                                           |
-| `text`       | ❌       | Text content on the card                                                                 |
-| `cardType`   | ❌       | Optional category within the deck                                                        |
+- `type` is the manifest-level card type.
+- `count` is the number of copies to create.
+- runtime card IDs are derived from `type` and `count` (`lumber`, `lumber-2`, `lumber-3`, ...)
+- `properties` must match `cardSchema`
+- `name` and `text` are worth keeping because they help scaffolding, debugging, and agent reasoning
 
-**Property schema types:** `string`, `integer`, `number`, `boolean`, `array`, `object`, `enum`, `deckId`, `cardId`, `playerId`
+## 3. `playerHandDefinitions`
 
-### 3. `playerHandDefinitions`
+Each `playerHandDefinition` creates one container per player.
 
-Per-player card containers. Each player gets their own instance automatically.
+Use a hand for anything each player owns separately, even if the tabletop rules call it a "deck", "reserve", or "scored pile".
 
 ```json
 {
@@ -134,117 +144,73 @@ Per-player card containers. Each player gets their own instance automatically.
       "displayName": "Hand",
       "visibility": "ownerOnly",
       "maxCards": 7,
-      "deckDefinitionIds": ["standard_52_deck"]
-    },
-    {
-      "id": "score-pile",
-      "displayName": "Scored Cards",
-      "visibility": "public"
+      "cardSetIds": ["standard_52_deck"]
     }
   ]
 }
 ```
 
-| Field               | Required | Default       | Description                                                 |
-| ------------------- | -------- | ------------- | ----------------------------------------------------------- |
-| `id`                | ✅       | —             | Unique hand ID (becomes `HandId` type)                      |
-| `displayName`       | ✅       | —             | UI label                                                    |
-| `visibility`        | ❌       | `"ownerOnly"` | `"ownerOnly"`, `"public"`, or `"hidden"`                    |
-| `maxCards`          | ❌       | —             | Maximum cards allowed                                       |
-| `minCards`          | ❌       | —             | Minimum cards required                                      |
-| `deckDefinitionIds` | ❌       | —             | Restrict to cards from these deck definitions (empty = any) |
-| `description`       | ❌       | —             | Purpose description                                         |
+| Field         | Required | Purpose                                         |
+| ------------- | -------- | ----------------------------------------------- |
+| `id`          | ✅       | Stable hand ID (`HandId`)                       |
+| `displayName` | ✅       | Human-readable name                             |
+| `visibility`  | ❌       | `ownerOnly`, `public`, or `hidden`              |
+| `maxCards`    | ❌       | Maximum allowed card count                      |
+| `minCards`    | ❌       | Minimum required card count                     |
+| `cardSetIds`  | ❌       | Allowed card sets; omit for any compatible card |
+| `description` | ❌       | Explanation for authors and tools               |
 
-> **DECK vs HAND:** `DeckComponent` (in `components`) is **shared** — one instance per game (draw piles, discard piles, trick zones). `PlayerHandDefinition` is **per-player** — private hands, tableaus, collected cards.
+## 4. `decks`
 
-### 4. `components` — Shared Decks
+`decks` are shared card containers.
 
-Deck components are shared game zones that reference a deck definition.
+Use a deck for any card location the whole table shares: a draw pile, discard pile, market row, trick area, or communal play area.
 
 ```json
 {
-  "components": [
+  "decks": [
     {
-      "type": "deck",
       "id": "draw-pile",
       "name": "Draw Pile",
-      "deckDefinitionId": "standard_52_deck",
-      "layout": "stack"
+      "cardSetId": "standard_52_deck"
     },
     {
-      "type": "deck",
       "id": "discard-pile",
       "name": "Discard Pile",
-      "deckDefinitionId": "standard_52_deck",
-      "layout": "spread"
+      "cardSetId": "standard_52_deck"
     }
   ]
 }
 ```
 
-| Field              | Required | Default   | Description                             |
-| ------------------ | -------- | --------- | --------------------------------------- |
-| `type`             | ✅       | —         | `"deck"`                                |
-| `id`               | ✅       | —         | Unique component ID                     |
-| `name`             | ✅       | —         | Display name                            |
-| `deckDefinitionId` | ✅       | —         | Which deck definition this sources from |
-| `layout`           | ❌       | `"stack"` | `"stack"`, `"spread"`, or `"fan"`       |
+| Field       | Required | Purpose                                |
+| ----------- | -------- | -------------------------------------- |
+| `id`        | ✅       | Stable deck ID (`DeckId`)              |
+| `name`      | ✅       | Human-readable name                    |
+| `cardSetId` | ✅       | Card set used by this shared container |
 
-### 5. `components` — Dice
+## 5. `dice`, `resources`, and `boardDefinitions`
 
-Add dice as components with `type: "die"`.
+Add these sections only if the game needs them.
 
-```json
-{
-  "type": "die",
-  "id": "d6-die",
-  "name": "Six-Sided Die",
-  "sides": 6
-}
-```
+- `dice` define shared dice such as `d6` or custom dice.
+- `resources` define typed player economies such as coins, food, or energy.
+- `boardDefinitions` define structured boards such as hex maps, square grids, tracks, or networks.
 
-| Field   | Required | Description                                   |
-| ------- | -------- | --------------------------------------------- |
-| `type`  | ✅       | `"die"`                                       |
-| `id`    | ✅       | Unique die ID (e.g., `"d6-die"`, `"d20-die"`) |
-| `name`  | ✅       | Display name                                  |
-| `sides` | ✅       | Number of sides (≥ 2)                         |
-
-### 6. `resources` (Optional)
-
-Typed resource economy for games with currencies or materials. Resources have a dedicated API (`canAfford`, `deduct`, `add`, `transfer`).
+Example:
 
 ```json
 {
-  "resources": [
-    { "id": "gold", "name": "Gold" },
-    { "id": "wood", "name": "Wood" },
-    { "id": "victoryPoints", "name": "Victory Points" }
-  ]
+  "dice": [{ "id": "d6", "name": "Six-Sided Die", "sides": 6 }],
+  "resources": [{ "id": "coins", "displayName": "Coins" }]
 }
 ```
 
-| Field  | Required | Description                                                        |
-| ------ | -------- | ------------------------------------------------------------------ |
-| `id`   | ✅       | Unique resource ID (alphanumeric + underscore, starts with letter) |
-| `name` | ✅       | Display name                                                       |
+## 6. `availableActions`
 
-> **Don't duplicate resources in `playerVariableSchema`.** Use the resource system instead.
+Actions describe what players may submit to the engine.
 
-### 7. `boardDefinitions` (Optional)
-
-For games with spatial structure. Each board type has its own shape:
-
-| Board Type | Use Case                              | Key Concepts                                                                                      |
-| ---------- | ------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `hex`      | Hexagonal grids (Catan)               | Tiles (pre-defined with IDs/types), Edges `[TileId, TileId]`, Vertices `[TileId, TileId, TileId]` |
-| `network`  | Graph maps (Ticket to Ride, Pandemic) | Nodes (locations using TileId), Edges `[TileId, TileId]`                                          |
-| `square`   | Grid boards (Chess, Checkers)         | Cells derived from row/col (e.g., `"a1"` to `"h8"`), Pieces placed on cells                       |
-| `track`    | Path boards (Monopoly, VP track)      | Sequential spaces with IDs, pieces on spaces                                                      |
-
-### 8. `availableActions`
-
-Actions are **submissions** (buttons), **NOT selections**. Card/tile selection happens via UI clicks — the action definition declares the parameters that carry the selected items in the POST request.
+Think of actions as structured intent, not UI clicks. The UI gathers selections, then submits those values through action parameters.
 
 ```json
 {
@@ -252,99 +218,38 @@ Actions are **submissions** (buttons), **NOT selections**. Card/tile selection h
     {
       "actionType": "playCard",
       "displayName": "Play Card",
-      "description": "Play the selected card from your hand",
+      "description": "Play the selected card",
       "parameters": [
         {
           "name": "cardId",
           "type": "cardId",
           "required": true,
-          "array": false,
-          "deckDefinitionId": "standard_52_deck"
+          "cardSetId": "standard_52_deck"
         }
       ],
-      "errorCodes": ["NOT_YOUR_TURN", "INVALID_CARD", "MUST_FOLLOW_SUIT"]
-    },
-    {
-      "actionType": "pass",
-      "displayName": "Pass",
-      "parameters": [],
-      "errorCodes": ["CANNOT_PASS"]
-    },
-    {
-      "actionType": "discardCards",
-      "displayName": "Discard",
-      "parameters": [
-        {
-          "name": "cardIds",
-          "type": "cardId",
-          "required": true,
-          "array": true,
-          "minLength": 1,
-          "maxLength": 3,
-          "deckDefinitionId": "standard_52_deck"
-        }
-      ],
-      "errorCodes": ["WRONG_COUNT", "CARD_NOT_IN_HAND"]
+      "errorCodes": ["NOT_YOUR_TURN", "INVALID_CARD"]
     }
   ]
 }
 ```
 
-**ActionDefinition fields:**
+Action authoring reminders:
 
-| Field         | Required | Description                                                               |
-| ------------- | -------- | ------------------------------------------------------------------------- |
-| `actionType`  | ✅       | Unique ID in camelCase (e.g., `"playCard"`, `"rollDice"`)                 |
-| `displayName` | ✅       | Button label                                                              |
-| `description` | ❌       | Help text                                                                 |
-| `parameters`  | ✅       | List of parameters (can be empty for parameterless actions like `"pass"`) |
-| `errorCodes`  | ❌       | Possible validation error codes                                           |
+- use stable, readable IDs
+- use `cardSetId` when a `cardId` or `cardType` parameter should be limited to one card set
+- use `array: true` with `minLength` and `maxLength` when an action takes multiple values
 
-**ActionParameterDefinition fields:**
+## 7. `stateMachine`
 
-| Field              | Required | Default | Description                                           |
-| ------------------ | -------- | ------- | ----------------------------------------------------- |
-| `name`             | ✅       | —       | Parameter name                                        |
-| `type`             | ✅       | —       | See parameter types below                             |
-| `required`         | ❌       | `true`  | Whether required                                      |
-| `array`            | ❌       | `false` | Set `true` when multiple values can be sent           |
-| `minLength`        | ❌       | —       | Min items (only when `array: true`)                   |
-| `maxLength`        | ❌       | —       | Max items (only when `array: true`)                   |
-| `deckDefinitionId` | ❌       | —       | Links `"cardId"` params to a specific deck definition |
-| `description`      | ❌       | —       | Help text                                             |
+`stateMachine` defines the phase flow of the game.
 
-**Parameter types:**
+Use it to name phases, describe who can act, and define how the game moves from one phase to the next.
 
-| Type           | Description                                                 |
-| -------------- | ----------------------------------------------------------- |
-| `"cardId"`     | Runtime card instance ID (e.g., `"lumber-1"`, `"lumber-2"`) |
-| `"cardType"`   | Manifest-level card type identifier (e.g., `"lumber"`)      |
-| `"deckId"`     | Deck component ID                                           |
-| `"playerId"`   | Player ID                                                   |
-| `"string"`     | Free-form string                                            |
-| `"number"`     | Numeric value                                               |
-| `"boolean"`    | Boolean value                                               |
-| `"tileId"`     | Hex tile or network node ID                                 |
-| `"edgeId"`     | Edge between tiles/nodes                                    |
-| `"vertexId"`   | Vertex between tiles                                        |
-| `"spaceId"`    | Track board space ID                                        |
-| `"pieceId"`    | Board piece ID                                              |
-| `"zoneId"`     | Zone ID                                                     |
-| `"tokenId"`    | Token ID                                                    |
-| `"resourceId"` | Resource ID                                                 |
+State types:
 
-**Key rules:**
-
-- **NO `"selectCard"` actions.** UI clicks are not actions.
-- If an action involves cards, **always include a `cardId` parameter** with the correct `deckDefinitionId`. Use `array: true` when multiple cards can be sent.
-- Never use placeholder string params or empty parameter lists when the action consumes card data.
-- Use `"cardId"` for specific card instances, `"cardType"` for card categories.
-- Use camelCase for `actionType` names.
-- Always use the specific type (e.g. deckId, cardId, playerId, etc) to narrow the parameter type instead of string where appropriate.
-
-### 9. `stateMachine`
-
-Define game phases and transitions.
+- `AUTO`: engine-driven phase
+- `SINGLE_PLAYER`: one active player acts
+- `ALL_PLAYERS`: multiple players may act in parallel
 
 ```json
 {
@@ -354,218 +259,52 @@ Define game phases and transitions.
       {
         "name": "dealCards",
         "type": "AUTO",
-        "description": "Shuffle the deck and deal 7 cards to each player.",
-        "transitions": [{ "targetState": "playCard" }],
-        "autoAdvance": true
-      },
-      {
-        "name": "playCard",
-        "type": "SINGLE_PLAYER",
-        "description": "Active player must play a valid card or draw from the pile.",
-        "availableActions": ["playCard", "drawCard"],
-        "transitions": [
-          { "targetState": "playCard", "description": "Next player's turn" },
-          {
-            "targetState": "gameOver",
-            "description": "Player has no cards left"
-          }
-        ],
-        "autoAdvance": true
-      },
-      {
-        "name": "gameOver",
-        "type": "AUTO",
-        "description": "Calculate final scores and determine the winner.",
-        "transitions": []
-      }
-    ]
-  }
-}
-```
-
-**State types:**
-
-| Type            | Description                                                 | Example                                     |
-| --------------- | ----------------------------------------------------------- | ------------------------------------------- |
-| `SINGLE_PLAYER` | Engine waits for **one** player to act, then auto-advances  | Chess turns, Poker betting                  |
-| `ALL_PLAYERS`   | Engine waits for **all** players to submit before advancing | Rock-Paper-Scissors, 7 Wonders card passing |
-| `AUTO`          | No player interaction — executes immediately                | Dealing, scoring, state checks              |
-
-**StateDefinition fields:**
-
-| Field              | Required | Default | Description                                                                     |
-| ------------------ | -------- | ------- | ------------------------------------------------------------------------------- |
-| `name`             | ✅       | —       | Unique state name in camelCase (use verbNoun format: `dealCards`, `playTurn`)   |
-| `type`             | ✅       | —       | `AUTO`, `SINGLE_PLAYER`, or `ALL_PLAYERS`                                       |
-| `description`      | ✅       | —       | Full logic description — what happens, what players can do                      |
-| `availableActions` | ❌       | —       | Action types available in this state (only for `SINGLE_PLAYER` / `ALL_PLAYERS`) |
-| `transitions`      | ✅       | —       | List of possible next states                                                    |
-| `autoAdvance`      | ❌       | `true`  | Whether to auto-advance when complete                                           |
-
-**StateTransition fields:**
-
-| Field         | Required | Description                     |
-| ------------- | -------- | ------------------------------- |
-| `targetState` | ✅       | Name of the next state          |
-| `description` | ❌       | When/why this transition occurs |
-
-### 10. `variableSchema`
-
-Minimal state for game logic. Split into global (shared) and per-player variables.
-
-```json
-{
-  "variableSchema": {
-    "globalVariableSchema": {
-      "properties": {
-        "currentRound": {
-          "type": "integer",
-          "description": "Current round number"
-        },
-        "trumpSuit": { "type": "string", "description": "Current trump suit" }
-      }
-    },
-    "playerVariableSchema": {
-      "properties": {
-        "score": { "type": "integer", "description": "Player's current score" },
-        "hasPassed": {
-          "type": "boolean",
-          "description": "Whether player has passed this round"
-        }
-      }
-    }
-  }
-}
-```
-
-**Rules for variables:**
-
-- **MINIMIZE state.** Only include what's needed for rules and logic.
-- ✅ **Include:** scores, flags (`hasPassed`), logic blockers (`lastPlayedCards`), trump suit, round counters
-- ❌ **Exclude:** derivable data (hand sizes, deck sizes, current player — the engine tracks these)
-- ❌ **Don't duplicate resources** — use the `resources` section instead of player variables for economies
-- Use `globalVariableSchema` for shared/global state (turn counter, current round)
-- Use `playerVariableSchema` for per-player state (scores, flags)
-
-**Property types:** `string`, `integer`, `number`, `boolean`, `array` (with `items`), `object` (with `properties`), `enum` (with `enums` list), `deckId`, `cardId`, `playerId`
-
----
-
-## ID Naming Conventions
-
-- Use **human-readable, kebab-case IDs** for components and hands: `"draw-pile"`, `"main-hand"`, `"d6-die"`
-- Use **camelCase** for state names and action types: `"dealCards"`, `"playCard"`, `"rollDice"`
-- Use **camelCase** for variable names: `"currentRound"`, `"hasPassed"`, `"trumpSuit"`
-- Resource IDs: alphanumeric + underscore, starting with a letter: `"gold"`, `"victoryPoints"`
-
----
-
-## Minimal Example
-
-A simple draw-and-play card game for 2–4 players:
-
-```json
-{
-  "version": "1.0.0",
-  "playerConfig": {
-    "minPlayers": 2,
-    "maxPlayers": 4,
-    "optimalPlayers": 3
-  },
-  "deckDefinitions": [
-    {
-      "type": "preset",
-      "id": "standard_52_deck",
-      "name": "Standard 52-Card Deck"
-    }
-  ],
-  "playerHandDefinitions": [
-    {
-      "id": "main-hand",
-      "displayName": "Hand",
-      "visibility": "ownerOnly",
-      "maxCards": 7,
-      "deckDefinitionIds": ["standard_52_deck"]
-    }
-  ],
-  "components": [
-    {
-      "type": "deck",
-      "id": "draw-pile",
-      "name": "Draw Pile",
-      "deckDefinitionId": "standard_52_deck",
-      "layout": "stack"
-    },
-    {
-      "type": "deck",
-      "id": "discard-pile",
-      "name": "Discard Pile",
-      "deckDefinitionId": "standard_52_deck",
-      "layout": "spread"
-    }
-  ],
-  "availableActions": [
-    {
-      "actionType": "playCard",
-      "displayName": "Play Card",
-      "description": "Play a card from your hand to the discard pile",
-      "parameters": [
-        {
-          "name": "cardId",
-          "type": "cardId",
-          "required": true,
-          "deckDefinitionId": "standard_52_deck"
-        }
-      ],
-      "errorCodes": ["NOT_YOUR_TURN", "INVALID_PLAY"]
-    },
-    {
-      "actionType": "drawCard",
-      "displayName": "Draw Card",
-      "description": "Draw a card from the draw pile",
-      "parameters": [],
-      "errorCodes": ["HAND_FULL", "DECK_EMPTY"]
-    }
-  ],
-  "stateMachine": {
-    "initialState": "dealCards",
-    "states": [
-      {
-        "name": "dealCards",
-        "type": "AUTO",
-        "description": "Shuffle the deck and deal 5 cards to each player. Place remaining cards face-down as the draw pile. Flip the top card to start the discard pile.",
+        "description": "Shuffle and deal cards.",
         "transitions": [{ "targetState": "playTurn" }]
       },
       {
         "name": "playTurn",
         "type": "SINGLE_PLAYER",
-        "description": "Active player must play a matching card from their hand or draw from the draw pile. A card matches if it shares the same suit or rank as the top discard.",
-        "availableActions": ["playCard", "drawCard"],
-        "transitions": [
-          { "targetState": "playTurn", "description": "Next player's turn" },
-          {
-            "targetState": "endRound",
-            "description": "Player empties their hand"
-          }
-        ]
-      },
-      {
-        "name": "endRound",
-        "type": "AUTO",
-        "description": "The player who emptied their hand wins. Calculate scores based on cards remaining in other players' hands.",
-        "transitions": []
+        "description": "Active player plays a card.",
+        "availableActions": ["playCard"],
+        "transitions": [{ "targetState": "playTurn" }]
       }
     ]
-  },
+  }
+}
+```
+
+## 8. `variableSchema`
+
+`variableSchema` is for state that must be stored explicitly.
+
+Keep it small. If something can be derived from card locations, resources, board state, or the current phase, it usually does not belong here.
+
+Good candidates:
+
+- running scores across rounds
+- round number, trump suit, current bid
+- flags that affect future legal moves
+
+Avoid storing:
+
+- counts that can be derived from hands or decks
+- phase flow already represented by `stateMachine`
+- duplicated resource totals
+
+```json
+{
   "variableSchema": {
     "globalVariableSchema": {
-      "properties": {}
+      "properties": {
+        "roundNumber": { "type": "integer", "description": "Current round" }
+      }
     },
     "playerVariableSchema": {
       "properties": {
         "score": {
           "type": "integer",
-          "description": "Accumulated score across rounds"
+          "description": "Accumulated score"
         }
       }
     }
@@ -573,18 +312,17 @@ A simple draw-and-play card game for 2–4 players:
 }
 ```
 
----
+## Final Checklist
 
-## After Editing
+Before running `dreamboard update`, check that:
 
-Run `dreamboard update` to push the manifest and regenerate scaffolded files:
+- every referenced `cardSetId`, `handId`, `deckId`, resource ID, board ID, and action name exists
+- the manifest only uses documented schema fields
+- `variableSchema` stores only non-derivable state
+- optional list fields are omitted or `[]`, not `null`
+
+Then run:
 
 ```bash
 dreamboard update
 ```
-
-This regenerates:
-
-- `app/phases/` — One handler file per state in the state machine
-- `shared/manifest.d.ts` — TypeScript type definitions derived from the manifest
-- Action handler stubs and variable type definitions

@@ -1,54 +1,110 @@
 # Hands vs Decks
 
-The framework distinguishes between **Hands** and **Decks**. Confusing them causes silent bugs.
+Use this guide when you are deciding how to model a card container in `manifest.json`.
 
-## Definitions
+Dreamboard separates three ideas that are easy to blur together in tabletop rules:
 
-| Concept  | Manifest key                  | Type ID  | Access API                               | Description                                                  |
-| -------- | ----------------------------- | -------- | ---------------------------------------- | ------------------------------------------------------------ |
-| **Hand** | `playerHandDefinitions`       | `HandId` | `state.player.getHand(playerId, handId)` | Cards owned by a specific player. Per-player.                |
-| **Deck** | `components` (type: `"deck"`) | `DeckId` | `state.deck.getCards(deckId)`            | Shared card piles (draw pile, discard, battle zone). Global. |
+- `cardSets`: what cards exist
+- `decks`: shared card containers
+- `playerHandDefinitions`: per-player card containers
 
-## Key rule
+For the full manifest schema, see [manifest-authoring.md](manifest-authoring.md).
 
-A player's collection of cards is always a **Hand** (`HandId`), even if the real-world game calls it a "deck."
+## Quick Decision Rule
 
-For example, in the War card game, each player's face-down pile is called a "deck" in real life, but in the framework it's defined as a **Hand** with id `"player-deck"` under `playerHandDefinitions`.
+1. If you are defining the cards themselves, use a `cardSet`.
+2. If the whole table shares one container, use a `deck`.
+3. If each player gets their own copy of the container, use a `playerHandDefinition`.
 
-## Manifest Example (War card game)
+## Canonical Meanings
+
+| Concept  | Manifest key            | Runtime ID    | Use it for                        |
+| -------- | ----------------------- | ------------- | --------------------------------- |
+| Card set | `cardSets`              | none directly | Card content and card schema      |
+| Hand     | `playerHandDefinitions` | `HandId`      | Cards each player owns separately |
+| Deck     | `decks`                 | `DeckId`      | Shared piles or shared card areas |
+
+## Naming Rule
+
+Use the Dreamboard meaning, not the tabletop nickname.
+
+If a real-world game says each player has a "deck", but each player owns a separate pile, model it as a hand.
+
+Examples:
+
+- a player's draw pile in War is a hand
+- a player's scored pile is a hand
+- the shared draw pile in Poker is a deck
+- the shared discard pile is a deck
+- a shared trick area is a deck
+
+## Common Mistakes
+
+- Do not use a deck just because cards are face-down.
+- Do not use a deck for something every player owns separately.
+- Do not use a hand for a communal area just because cards stay there for a while.
+
+Visibility is separate from ownership:
+
+- if each player has their own container, it is still a hand
+- set `visibility: "public"` if other players should be able to see that hand
+
+## Example
 
 ```json
 {
-  "components": [
-    { "type": "deck", "id": "main-deck", "name": "Main Deck" },
-    { "type": "deck", "id": "battle-zone", "name": "Battle Zone" },
-    { "type": "deck", "id": "war-pile", "name": "War Pile" }
+  "cardSets": [
+    {
+      "type": "preset",
+      "id": "standard_52_deck",
+      "name": "Standard 52-Card Deck"
+    }
+  ],
+  "decks": [
+    {
+      "id": "main-deck",
+      "name": "Main Deck",
+      "cardSetId": "standard_52_deck"
+    },
+    {
+      "id": "battle-zone",
+      "name": "Battle Zone",
+      "cardSetId": "standard_52_deck"
+    }
   ],
   "playerHandDefinitions": [
     {
       "id": "player-deck",
       "displayName": "Your Deck",
-      "visibility": "ownerOnly"
+      "visibility": "ownerOnly",
+      "cardSetIds": ["standard_52_deck"]
     },
-    { "id": "won-pile", "displayName": "Won Cards", "visibility": "ownerOnly" }
+    {
+      "id": "won-pile",
+      "displayName": "Won Cards",
+      "visibility": "public",
+      "cardSetIds": ["standard_52_deck"]
+    }
   ]
 }
 ```
 
-- `"player-deck"` → **HandId** (per-player) → `state.player.getHand(playerId, "player-deck")`
-- `"battle-zone"` → **DeckId** (shared) → `state.deck.getCards("battle-zone")`
-- `"war-pile"` → **DeckId** (shared) → `state.deck.getCards("war-pile")`
+In that example:
 
-## Moving Cards
+- `standard_52_deck` defines the cards
+- `main-deck` and `battle-zone` are shared decks
+- `player-deck` and `won-pile` are per-player hands
+
+## Related Move APIs
 
 ```typescript
-// Hand → Deck (player plays card to shared area)
+// Hand -> Deck
 apis.cardApi.moveCardsFromHandToDeck(playerId, handId, cardIds, deckId);
 
-// Deck → Hand (deal from shared pile to player)
+// Deck -> Hand
 apis.deckApi.moveCardsFromDeckToPlayer(deckId, playerId, handId, count);
 
-// Hand → Hand (pass cards between players)
+// Hand -> Hand
 apis.cardApi.moveCardsFromHandToHand(
   fromPlayer,
   fromHand,
@@ -57,30 +113,12 @@ apis.cardApi.moveCardsFromHandToHand(
   cardIds,
 );
 
-// Deck → Deck (move all cards between shared piles)
+// Deck -> Deck
 apis.deckApi.moveCardsFromDeckToDeck(fromDeckId, toDeckId);
-
-// Any card → Hand (move specific cards to a player)
-apis.cardApi.moveCardsToPlayer(cardIds, toPlayerId, handId);
 ```
 
-## Hand Passing: Anti-Pattern vs Safe Pattern
+## Rule Of Thumb
 
-`moveCardsFromHandToHand` appends to destination. That makes in-place cyclic passing unsafe.
-
-### Anti-pattern (in-place cyclic pass)
-
-```typescript
-for (let i = 0; i < order.length; i++) {
-  const fromPlayer = order[i];
-  const toPlayer = order[(i + 1) % order.length];
-  const cardIds = state.player.getHand(fromPlayer, "hand");
-  apis.cardApi.moveCardsFromHandToHand(
-    fromPlayer,
-    "hand",
-    toPlayer,
-    "hand",
-    cardIds,
-  );
-}
-```
+- shared container: `deck`
+- per-player container: `playerHandDefinition`
+- card blueprint: `cardSet`

@@ -1,5 +1,8 @@
+import path from "node:path";
 import { expect, mock, test } from "bun:test";
 
+let latestCompiledResultData: { id: string } | null = null;
+const pullIntoDirectory = mock(async () => undefined);
 const writeScaffoldFiles = mock(async () => undefined);
 const actualFlags = await import("../flags.js");
 const actualFs = await import("../utils/fs.js");
@@ -32,7 +35,7 @@ mock.module("@dreamboard/api-client", () => ({
     error: null,
   })),
   getLatestCompiledResult: mock(async () => ({
-    data: null,
+    data: latestCompiledResultData,
   })),
   findManifests: mock(async () => ({
     data: { currentManifestId: "manifest-1" },
@@ -129,6 +132,10 @@ mock.module("../config/project-config.js", () => ({
   updateProjectState: async () => undefined,
 }));
 
+mock.module("../services/project/sync.js", () => ({
+  pullIntoDirectory,
+}));
+
 mock.module("../utils/errors.js", () => ({
   formatApiError: () => "api error",
 }));
@@ -144,5 +151,29 @@ test("clone command rejects invalid scaffold payloads before writing files", asy
     }),
   ).rejects.toThrow("Invalid scaffold payload");
 
+  expect(writeScaffoldFiles).not.toHaveBeenCalled();
+});
+
+test("clone uses the compiled-result sync path when the project already has a remote result", async () => {
+  latestCompiledResultData = { id: "result-2" };
+
+  await cloneCommand.run({
+    args: {
+      slug: "test-game",
+    },
+  });
+
+  expect(pullIntoDirectory).toHaveBeenCalledWith(
+    {
+      apiBaseUrl: "https://api.example.com",
+      webBaseUrl: "https://web.example.com",
+      token: "token",
+    },
+    path.resolve(process.cwd(), "test-game"),
+    {
+      gameId: "game-1",
+      slug: "test-game",
+    },
+  );
   expect(writeScaffoldFiles).not.toHaveBeenCalled();
 });

@@ -116,9 +116,9 @@ export default defineCommand({
       const ruleId = await getLatestRuleIdSdk(game.id);
 
       const blankManifest: BoardManifest = {
-        version: "1.0.0",
-        components: [],
-        deckDefinitions: [],
+        cardSets: [],
+        decks: [],
+        dice: [],
         playerHandDefinitions: [],
         playerConfig: {
           minPlayers: 2,
@@ -193,7 +193,6 @@ export default defineCommand({
         ruleId,
         manifestId,
         manifestContentHash: contentHash,
-        remoteBaseResultId: undefined,
         apiBaseUrl: config.apiBaseUrl,
         webBaseUrl: config.webBaseUrl,
       });

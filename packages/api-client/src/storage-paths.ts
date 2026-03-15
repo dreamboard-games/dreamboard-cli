@@ -9,11 +9,6 @@
 export const STORAGE_BUCKET = "scripts";
 
 /**
- * Storage bucket for user code edits (uploaded from code editor)
- */
-export const CODE_EDITS_BUCKET = "code-edits";
-
-/**
  * Directory name for source files
  */
 export const SOURCE_DIR = "src";

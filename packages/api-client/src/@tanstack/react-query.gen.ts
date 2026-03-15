@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen.js';
-import { abortSandboxSession, addSeat, assignSeat, cancelConversationJob, createCompiledResult, createGame, createGameRule, createSession, deleteConversation, deleteGame, downloadGameSources, fetchUiBundle, findManifests, getActiveJob, getAgentChatContext, getGame, getGameBySlug, getGameRule, getGameScripts, getGameSources, getJob, getLatestCompiledResult, getLatestGameRule, getManifest, getSessionByShortCode, getSessionStatus, healthCheck, listCompiledResults, listConversations, listGameRules, listGames, type Options, receiveSandboxWebhookComplete, receiveSandboxWebhookEvent, recompileGame, removeSeat, restoreHistory, sandboxAbort, sandboxChat, saveManifest, scaffoldGameSourcesV3, sendSandboxMessage, startGame, submitAction, unassignSeat, updateGame, updateSeat, validateAction } from '../sdk.gen.js';
-import type { AbortSandboxSessionData, AbortSandboxSessionError, AbortSandboxSessionResponse, AddSeatData, AddSeatError, AddSeatResponse, AssignSeatData, AssignSeatError, AssignSeatResponse, CancelConversationJobData, CancelConversationJobError, CancelConversationJobResponse, CreateCompiledResultData, CreateCompiledResultError, CreateCompiledResultResponse, CreateGameData, CreateGameError, CreateGameResponse, CreateGameRuleData, CreateGameRuleError, CreateGameRuleResponse2, CreateSessionData, CreateSessionError, CreateSessionResponse2, DeleteConversationData, DeleteConversationError, DeleteConversationResponse, DeleteGameData, DeleteGameError, DeleteGameResponse2, DownloadGameSourcesData, DownloadGameSourcesError, DownloadGameSourcesResponse, FetchUiBundleData, FetchUiBundleError, FetchUiBundleResponse, FindManifestsData, FindManifestsError, FindManifestsResponse2, GetActiveJobData, GetActiveJobError, GetActiveJobResponse, GetAgentChatContextData, GetAgentChatContextError, GetAgentChatContextResponse, GetGameBySlugData, GetGameBySlugError, GetGameBySlugResponse, GetGameData, GetGameError, GetGameResponse, GetGameRuleData, GetGameRuleError, GetGameRuleResponse, GetGameScriptsData, GetGameScriptsError, GetGameScriptsResponse, GetGameSourcesData, GetGameSourcesError, GetGameSourcesResponse, GetJobData, GetJobError, GetJobResponse, GetLatestCompiledResultData, GetLatestCompiledResultError, GetLatestCompiledResultResponse, GetLatestGameRuleData, GetLatestGameRuleError, GetLatestGameRuleResponse, GetManifestData, GetManifestError, GetManifestResponse, GetSessionByShortCodeData, GetSessionByShortCodeError, GetSessionByShortCodeResponse, GetSessionStatusData, GetSessionStatusError, GetSessionStatusResponse, HealthCheckData, HealthCheckResponse, ListCompiledResultsData, ListCompiledResultsError, ListCompiledResultsResponse2, ListConversationsData, ListConversationsError, ListConversationsResponse, ListGameRulesData, ListGameRulesError, ListGameRulesResponse2, ListGamesData, ListGamesError, ListGamesResponse, ReceiveSandboxWebhookCompleteData, ReceiveSandboxWebhookCompleteError, ReceiveSandboxWebhookCompleteResponse, ReceiveSandboxWebhookEventData, ReceiveSandboxWebhookEventError, ReceiveSandboxWebhookEventResponse, RecompileGameData, RecompileGameError, RecompileGameResponse, RemoveSeatData, RemoveSeatError, RemoveSeatResponse, RestoreHistoryData, RestoreHistoryError, RestoreHistoryResponse2, SandboxAbortData, SandboxAbortError, SandboxAbortResponse, SandboxChatData, SandboxChatError, SandboxChatResponse2, SaveManifestData, SaveManifestError, SaveManifestResponse2, ScaffoldGameSourcesV3Data, ScaffoldGameSourcesV3Error, ScaffoldGameSourcesV3Response, SendSandboxMessageData, SendSandboxMessageError, SendSandboxMessageResponse2, StartGameData, StartGameError, StartGameResponse2, SubmitActionData, SubmitActionError, SubmitActionResponse2, UnassignSeatData, UnassignSeatError, UnassignSeatResponse, UpdateGameData, UpdateGameError, UpdateGameResponse, UpdateSeatData, UpdateSeatError, UpdateSeatResponse, ValidateActionData, ValidateActionError, ValidateActionResponse2 } from '../types.gen.js';
+import { abortSandboxSession, addSeat, assignSeat, cancelConversationJob, createCompiledResult, createGame, createGameRule, createSession, createSourceRevision, createSourceRevisionBundle, deleteConversation, deleteGame, downloadGameSources, fetchUiBundle, findManifests, getActiveJob, getAgentChatContext, getGame, getGameBySlug, getGameRule, getGameScripts, getGameSources, getJob, getLatestCompiledResult, getLatestGameRule, getManifest, getSessionByShortCode, getSessionStatus, healthCheck, listCompiledResults, listConversations, listGameRules, listGames, type Options, queryWorkshopRulebook, receiveSandboxWebhookComplete, receiveSandboxWebhookEvent, removeSeat, restoreHistory, sandboxAbort, sandboxChat, saveManifest, scaffoldGameSourcesV3, sendSandboxMessage, startGame, submitAction, unassignSeat, updateGame, updateSeat, validateAction } from '../sdk.gen.js';
+import type { AbortSandboxSessionData, AbortSandboxSessionError, AbortSandboxSessionResponse, AddSeatData, AddSeatError, AddSeatResponse, AssignSeatData, AssignSeatError, AssignSeatResponse, CancelConversationJobData, CancelConversationJobError, CancelConversationJobResponse, CreateCompiledResultData, CreateCompiledResultError, CreateCompiledResultResponse, CreateGameData, CreateGameError, CreateGameResponse, CreateGameRuleData, CreateGameRuleError, CreateGameRuleResponse2, CreateSessionData, CreateSessionError, CreateSessionResponse2, CreateSourceRevisionBundleData, CreateSourceRevisionBundleError, CreateSourceRevisionBundleResponse, CreateSourceRevisionData, CreateSourceRevisionError, CreateSourceRevisionResponse, DeleteConversationData, DeleteConversationError, DeleteConversationResponse, DeleteGameData, DeleteGameError, DeleteGameResponse2, DownloadGameSourcesData, DownloadGameSourcesError, DownloadGameSourcesResponse, FetchUiBundleData, FetchUiBundleError, FetchUiBundleResponse, FindManifestsData, FindManifestsError, FindManifestsResponse2, GetActiveJobData, GetActiveJobError, GetActiveJobResponse, GetAgentChatContextData, GetAgentChatContextError, GetAgentChatContextResponse, GetGameBySlugData, GetGameBySlugError, GetGameBySlugResponse, GetGameData, GetGameError, GetGameResponse, GetGameRuleData, GetGameRuleError, GetGameRuleResponse, GetGameScriptsData, GetGameScriptsError, GetGameScriptsResponse, GetGameSourcesData, GetGameSourcesError, GetGameSourcesResponse, GetJobData, GetJobError, GetJobResponse, GetLatestCompiledResultData, GetLatestCompiledResultError, GetLatestCompiledResultResponse, GetLatestGameRuleData, GetLatestGameRuleError, GetLatestGameRuleResponse, GetManifestData, GetManifestError, GetManifestResponse, GetSessionByShortCodeData, GetSessionByShortCodeError, GetSessionByShortCodeResponse, GetSessionStatusData, GetSessionStatusError, GetSessionStatusResponse, HealthCheckData, HealthCheckResponse, ListCompiledResultsData, ListCompiledResultsError, ListCompiledResultsResponse2, ListConversationsData, ListConversationsError, ListConversationsResponse, ListGameRulesData, ListGameRulesError, ListGameRulesResponse2, ListGamesData, ListGamesError, ListGamesResponse, QueryWorkshopRulebookData, QueryWorkshopRulebookError, QueryWorkshopRulebookResponse, ReceiveSandboxWebhookCompleteData, ReceiveSandboxWebhookCompleteError, ReceiveSandboxWebhookCompleteResponse, ReceiveSandboxWebhookEventData, ReceiveSandboxWebhookEventError, ReceiveSandboxWebhookEventResponse, RemoveSeatData, RemoveSeatError, RemoveSeatResponse, RestoreHistoryData, RestoreHistoryError, RestoreHistoryResponse2, SandboxAbortData, SandboxAbortError, SandboxAbortResponse, SandboxChatData, SandboxChatError, SandboxChatResponse2, SaveManifestData, SaveManifestError, SaveManifestResponse2, ScaffoldGameSourcesV3Data, ScaffoldGameSourcesV3Error, ScaffoldGameSourcesV3Response, SendSandboxMessageData, SendSandboxMessageError, SendSandboxMessageResponse2, StartGameData, StartGameError, StartGameResponse2, SubmitActionData, SubmitActionError, SubmitActionResponse2, UnassignSeatData, UnassignSeatError, UnassignSeatResponse, UpdateGameData, UpdateGameError, UpdateGameResponse, UpdateSeatData, UpdateSeatError, UpdateSeatResponse, ValidateActionData, ValidateActionError, ValidateActionResponse2 } from '../types.gen.js';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -176,6 +176,26 @@ export const getGameBySlugOptions = (options: Options<GetGameBySlugData>) => que
     queryKey: getGameBySlugQueryKey(options)
 });
 
+export const queryWorkshopRulebookQueryKey = (options: Options<QueryWorkshopRulebookData>) => createQueryKey('queryWorkshopRulebook', options);
+
+/**
+ * Query rulebook text by title
+ *
+ * Search ranked rulebook candidates for the provided title, try up to the top 3 matches, and return extracted text from the first valid PDF found.
+ */
+export const queryWorkshopRulebookOptions = (options: Options<QueryWorkshopRulebookData>) => queryOptions<QueryWorkshopRulebookResponse, QueryWorkshopRulebookError, QueryWorkshopRulebookResponse, ReturnType<typeof queryWorkshopRulebookQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await queryWorkshopRulebook({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: queryWorkshopRulebookQueryKey(options)
+});
+
 export const findManifestsQueryKey = (options: Options<FindManifestsData>) => createQueryKey('findManifests', options);
 
 /**
@@ -220,7 +240,7 @@ export const getManifestQueryKey = (options: Options<GetManifestData>) => create
 /**
  * Get manifest by ID
  *
- * Retrieve a specific manifest version by its ID with full details including the board manifest and thinking notes
+ * Retrieve a specific manifest version by its ID with full board manifest details
  */
 export const getManifestOptions = (options: Options<GetManifestData>) => queryOptions<GetManifestResponse, GetManifestError, GetManifestResponse, ReturnType<typeof getManifestQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
@@ -240,7 +260,7 @@ export const getLatestCompiledResultQueryKey = (options: Options<GetLatestCompil
 /**
  * Get latest compiled result for a game
  *
- * Return the most recent non-deleted compiled result for the specified game.
+ * Return the most recent compiled result for the specified game.
  */
 export const getLatestCompiledResultOptions = (options: Options<GetLatestCompiledResultData>) => queryOptions<GetLatestCompiledResultResponse, GetLatestCompiledResultError, GetLatestCompiledResultResponse, ReturnType<typeof getLatestCompiledResultQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
@@ -276,9 +296,9 @@ export const listCompiledResultsOptions = (options: Options<ListCompiledResultsD
 });
 
 /**
- * Save a compiled result for a game
+ * Compile a source revision for a game
  *
- * Persist metadata for a compiled script bundle. The server derives userId from the auth token and sets timestamps.
+ * Compile a specific source revision with the provided manifest and rule IDs. Returns the newly created compiled result, including failed compilations with diagnostics.
  */
 export const createCompiledResultMutation = (options?: Partial<Options<CreateCompiledResultData>>): UseMutationOptions<CreateCompiledResultResponse, CreateCompiledResultError, Options<CreateCompiledResultData>> => {
     const mutationOptions: UseMutationOptions<CreateCompiledResultResponse, CreateCompiledResultError, Options<CreateCompiledResultData>> = {
@@ -297,9 +317,9 @@ export const createCompiledResultMutation = (options?: Partial<Options<CreateCom
 export const downloadGameSourcesQueryKey = (options: Options<DownloadGameSourcesData>) => createQueryKey('downloadGameSources', options);
 
 /**
- * Download game source files
+ * Download authored game source files
  *
- * Download all uncompiled source files for both APP and UI compilations as a ZIP archive. The archive contains 'app/' and 'ui/' directories with all source files.
+ * Download the authored source files for the selected compiled result as a ZIP archive. The source files are resolved through the compiled result's source revision.
  */
 export const downloadGameSourcesOptions = (options: Options<DownloadGameSourcesData>) => queryOptions<DownloadGameSourcesResponse, DownloadGameSourcesError, DownloadGameSourcesResponse, ReturnType<typeof downloadGameSourcesQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
@@ -317,9 +337,9 @@ export const downloadGameSourcesOptions = (options: Options<DownloadGameSourcesD
 export const getGameSourcesQueryKey = (options: Options<GetGameSourcesData>) => createQueryKey('getGameSources', options);
 
 /**
- * Get game source files
+ * Get authored game source files
  *
- * Retrieve all uncompiled source files for both APP and UI compilations as JSON. Returns a map of file paths to file contents. Optionally specify compiled result IDs to fetch sources from specific versions instead of the latest.
+ * Retrieve authored source files as JSON for the selected compiled result. Source files are resolved through the compiled result's source revision.
  */
 export const getGameSourcesOptions = (options: Options<GetGameSourcesData>) => queryOptions<GetGameSourcesResponse, GetGameSourcesError, GetGameSourcesResponse, ReturnType<typeof getGameSourcesQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
@@ -354,14 +374,33 @@ export const scaffoldGameSourcesV3Mutation = (options?: Partial<Options<Scaffold
 };
 
 /**
- * Recompile latest compiled results
+ * Create a source revision for a game
  *
- * Recompile the latest compiled results (both APP and UI types) for a game using the external compiler service. Creates new compiled result entries for each type. Optionally update the SDK library to the latest version. Can accept file overrides that will be merged with existing sources before compilation.
+ * Create a new authored source revision from an inline change set. The request must be based on the current head revision for the game.
  */
-export const recompileGameMutation = (options?: Partial<Options<RecompileGameData>>): UseMutationOptions<RecompileGameResponse, RecompileGameError, Options<RecompileGameData>> => {
-    const mutationOptions: UseMutationOptions<RecompileGameResponse, RecompileGameError, Options<RecompileGameData>> = {
+export const createSourceRevisionMutation = (options?: Partial<Options<CreateSourceRevisionData>>): UseMutationOptions<CreateSourceRevisionResponse, CreateSourceRevisionError, Options<CreateSourceRevisionData>> => {
+    const mutationOptions: UseMutationOptions<CreateSourceRevisionResponse, CreateSourceRevisionError, Options<CreateSourceRevisionData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await recompileGame({
+            const { data } = await createSourceRevision({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Create a source revision for a game from a gzip bundle
+ *
+ * Create a new authored source revision from a gzip-compressed JSON payload matching CreateSourceRevisionRequest.
+ */
+export const createSourceRevisionBundleMutation = (options?: Partial<Options<CreateSourceRevisionBundleData>>): UseMutationOptions<CreateSourceRevisionBundleResponse, CreateSourceRevisionBundleError, Options<CreateSourceRevisionBundleData>> => {
+    const mutationOptions: UseMutationOptions<CreateSourceRevisionBundleResponse, CreateSourceRevisionBundleError, Options<CreateSourceRevisionBundleData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await createSourceRevisionBundle({
                 ...options,
                 ...fnOptions,
                 throwOnError: true

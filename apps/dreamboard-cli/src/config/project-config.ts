@@ -7,11 +7,7 @@ export async function loadProjectConfig(
   rootDir: string,
 ): Promise<ProjectConfig> {
   const filePath = path.join(rootDir, PROJECT_DIR_NAME, PROJECT_CONFIG_FILE);
-  const config = await readJsonFile<ProjectConfig>(filePath);
-  return {
-    ...config,
-    remoteBaseResultId: config.remoteBaseResultId ?? config.resultId,
-  };
+  return readJsonFile<ProjectConfig>(filePath);
 }
 
 export async function updateProjectState(

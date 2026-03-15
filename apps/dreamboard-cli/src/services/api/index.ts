@@ -7,3 +7,7 @@ export {
   saveManifestSdk,
 } from "./manifest-api.js";
 export { getLatestRuleIdSdk, saveRuleSdk } from "./rule-api.js";
+export {
+  createCompiledResultSdk,
+  createSourceRevisionSdk,
+} from "./source-revisions-api.js";
