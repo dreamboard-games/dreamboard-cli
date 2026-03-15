@@ -71,6 +71,11 @@ const runCommandArgsSchema = configFlagsSchema.extend({
   height: z.string().optional(),
 });
 
+const startCommandArgsSchema = configFlagsSchema.extend({
+  seed: z.string().optional(),
+  players: z.string().optional(),
+});
+
 const loginCommandArgsSchema = configFlagsSchema;
 
 const configCommandArgsSchema = configFlagsSchema.extend({
@@ -101,6 +106,7 @@ export type PushCommandArgs = z.infer<typeof pushCommandArgsSchema>;
 export type StatusCommandArgs = z.infer<typeof statusCommandArgsSchema>;
 export type UpdateCommandArgs = z.infer<typeof updateCommandArgsSchema>;
 export type RunCommandArgs = z.infer<typeof runCommandArgsSchema>;
+export type StartCommandArgs = z.infer<typeof startCommandArgsSchema>;
 export type LoginCommandArgs = z.infer<typeof loginCommandArgsSchema>;
 export type ConfigCommandArgs = z.infer<typeof configCommandArgsSchema>;
 export type AuthCommandArgs = z.infer<typeof authCommandArgsSchema>;
@@ -166,6 +172,10 @@ export function parseUpdateCommandArgs(args: unknown): UpdateCommandArgs {
 
 export function parseRunCommandArgs(args: unknown): RunCommandArgs {
   return parseArgs("run", runCommandArgsSchema, args);
+}
+
+export function parseStartCommandArgs(args: unknown): StartCommandArgs {
+  return parseArgs("start", startCommandArgsSchema, args);
 }
 
 export function parseLoginCommandArgs(args: unknown): LoginCommandArgs {
