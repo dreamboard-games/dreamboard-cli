@@ -1,6 +1,6 @@
 ---
 name: dreamboard
-description: Create multiplayer, rule-enforced, turn-based game on Dreamboard.games platform.
+description: Create multiplayer, rule-enforced, turn-based board game on Dreamboard.games platform.
 metadata:
   short-description: Dreamboard Game Development Workflow
   tags: [dreamboard, cli, game-dev, board-game, turn-based, multiplayer]
@@ -27,22 +27,11 @@ Dreamboard exists to turn a board-game idea into a playable digital prototype qu
   Install with `npm install -g dreamboard`
 - Authenticated via `dreamboard login`
 
-## Core Workflow
+## Building Your First Game
 
-1. Create a game: `dreamboard new <slug> --description "<<short description>>"`
-2. Author `rule.md` and `manifest.json`
-3. Run `dreamboard update` after every manifest or rule change
-4. Implement rules in `app/phases/*.ts` and UI data in `shared/ui-args.ts`
-5. Implement UI in `ui/App.tsx` and `ui/components/*`
-6. Typecheck from the game root: `bun install && bun run typecheck`
-7. Push compiled changes: `dreamboard push`
-8. Generate deterministic bases: `dreamboard test generate`
-9. Run regression scenarios: `dreamboard test run`
-10. Validate the live UI with `dreamboard run --screenshot`
+Read [references/building-your-first-game.md](references/building-your-first-game.md)
 
-## Choose The Right Reference
-
-Read only the reference that matches the task:
+## References
 
 - Rules and manifest:
   [references/rule-authoring.md](references/rule-authoring.md),
@@ -64,10 +53,6 @@ Read only the reference that matches the task:
 - Rejection and edge-case pressure using JSON runtime scenarios:
   [references/adversarial-testing.md](references/adversarial-testing.md)
 
-## Rulebook Imports
-
-Rulebook lookups are temporarily unavailable.
-
 ## Testing Modes
 
 There are two different scenario systems:
@@ -76,16 +61,6 @@ There are two different scenario systems:
   TypeScript scenario files in `test/scenarios/*.scenario.ts` against deterministic generated base snapshots. Use this for regression coverage.
 - `dreamboard run --scenario path/to/file.json`
   JSON action scripts that drive a live session. Use this for debugging flows, reproductions, and adversarial experiments.
-
-Do not mix the two formats.
-
-## UX Bar
-
-UX is part of the implementation, not polish for later.
-
-- Make turn ownership and available actions obvious without reading logs.
-- Keep round-resolution and game-over feedback visible long enough for a player to perceive it.
-- Use `dreamboard run --screenshot` to verify initial state, active player, round resolution, and game-over feedback on realistic viewport sizes.
 
 ## Guardrails
 

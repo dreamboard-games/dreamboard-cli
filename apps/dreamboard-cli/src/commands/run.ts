@@ -34,17 +34,17 @@ import {
   waitForGameReady,
 } from "../ui/playwright-runner.js";
 import { formatApiError } from "../utils/errors.js";
+import {
+  createPersistedRunSession,
+  parseRunSeed,
+  type PersistedRunSession,
+} from "../utils/run-session.js";
 import { parsePositiveInt, sleep } from "../utils/strings.js";
 
 type RunUntil = "YOUR_TURN" | "GAME_ENDED" | "ANY";
 type ObserveEvents = "turns" | "all";
 type ScenarioDriver = "api" | "ui";
 const DEFAULT_NO_EVENT_TIMEOUT_MS = 10_000;
-const DEFAULT_RUN_SEED = 1337;
-const MIN_KOTLIN_LONG = -9_223_372_036_854_775_808n;
-const MAX_KOTLIN_LONG = 9_223_372_036_854_775_807n;
-const MIN_SAFE_SEED = BigInt(Number.MIN_SAFE_INTEGER);
-const MAX_SAFE_SEED = BigInt(Number.MAX_SAFE_INTEGER);
 type RunExitReason =
   | "until_reached"
   | "timeout"
@@ -52,18 +52,6 @@ type RunExitReason =
   | "scenario_completed"
   | "scenario_rejected"
   | "stream_closed";
-
-type PersistedRunSession = {
-  sessionId: string;
-  shortCode: string;
-  gameId: string;
-  seed?: number;
-  compiledResultId?: string;
-  createdAt: string;
-  lastEventId?: string;
-  controllablePlayerIds: string[];
-  yourTurnCount: number;
-};
 
 type PersistedYourTurnContext = {
   sessionId: string;
@@ -686,16 +674,13 @@ async function createAndStartSession(
     );
   }
 
-  return {
+  return createPersistedRunSession({
     sessionId: session.sessionId,
     shortCode: startData.shortCode,
     gameId: session.gameId,
     seed,
     compiledResultId,
-    createdAt: new Date().toISOString(),
-    controllablePlayerIds: [],
-    yourTurnCount: 0,
-  };
+  });
 }
 
 function shouldUseEmbeddedHarness(): boolean {
@@ -1555,28 +1540,6 @@ function parseOptionalPositiveInt(
     return undefined;
   }
   return parsePositiveInt(value, label);
-}
-
-function parseRunSeed(rawSeed: string | undefined): number {
-  const value = rawSeed?.trim();
-  if (!value) {
-    return DEFAULT_RUN_SEED;
-  }
-  if (!/^-?\d+$/.test(value)) {
-    throw new Error("seed must be an integer");
-  }
-
-  const parsed = BigInt(value);
-  if (parsed < MIN_KOTLIN_LONG || parsed > MAX_KOTLIN_LONG) {
-    throw new Error("seed must be within signed 64-bit integer range");
-  }
-  if (parsed < MIN_SAFE_SEED || parsed > MAX_SAFE_SEED) {
-    throw new Error(
-      `seed must be within JavaScript safe integer range (${Number.MIN_SAFE_INTEGER}..${Number.MAX_SAFE_INTEGER})`,
-    );
-  }
-
-  return Number(parsed);
 }
 
 function shortenForLog(value: string, maxLength = 120): string {

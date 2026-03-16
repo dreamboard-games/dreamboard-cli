@@ -18,27 +18,13 @@ import {
   waitForGameReady,
 } from "../ui/playwright-runner.js";
 import { formatApiError } from "../utils/errors.js";
+import {
+  createPersistedRunSession,
+  parseRunSeed,
+} from "../utils/run-session.js";
 import { sleep } from "../utils/strings.js";
 import { parsePlayerCountFlags } from "../flags.js";
 import type { ApiScenarioStep } from "../types.js";
-
-type PersistedRunSession = {
-  sessionId: string;
-  shortCode: string;
-  gameId: string;
-  seed?: number;
-  compiledResultId?: string;
-  createdAt: string;
-  lastEventId?: string;
-  controllablePlayerIds: string[];
-  yourTurnCount: number;
-};
-
-const DEFAULT_RUN_SEED = 1337;
-const MIN_KOTLIN_LONG = -9_223_372_036_854_775_808n;
-const MAX_KOTLIN_LONG = 9_223_372_036_854_775_807n;
-const MIN_SAFE_SEED = BigInt(Number.MIN_SAFE_INTEGER);
-const MAX_SAFE_SEED = BigInt(Number.MAX_SAFE_INTEGER);
 
 export default defineCommand({
   meta: {
@@ -154,16 +140,13 @@ export default defineCommand({
       );
     }
 
-    const session: PersistedRunSession = {
+    const session = createPersistedRunSession({
       sessionId: createdSession.sessionId,
       shortCode: startedSession.shortCode,
       gameId: createdSession.gameId,
       seed,
       compiledResultId: latest.id,
-      createdAt: new Date().toISOString(),
-      controllablePlayerIds: [],
-      yourTurnCount: 0,
-    };
+    });
     await writeJsonFile(sessionFilePath, session);
 
     if (args.scenario) {
@@ -330,26 +313,4 @@ function parseApiScenarioSteps(rawSteps: unknown[]): ApiScenarioStep[] {
   }
 
   return steps;
-}
-
-function parseRunSeed(rawSeed: string | undefined): number {
-  const value = rawSeed?.trim();
-  if (!value) {
-    return DEFAULT_RUN_SEED;
-  }
-  if (!/^-?\d+$/.test(value)) {
-    throw new Error("seed must be an integer");
-  }
-
-  const parsed = BigInt(value);
-  if (parsed < MIN_KOTLIN_LONG || parsed > MAX_KOTLIN_LONG) {
-    throw new Error("seed must be within signed 64-bit integer range");
-  }
-  if (parsed < MIN_SAFE_SEED || parsed > MAX_SAFE_SEED) {
-    throw new Error(
-      `seed must be within JavaScript safe integer range (${Number.MIN_SAFE_INTEGER}..${Number.MAX_SAFE_INTEGER})`,
-    );
-  }
-
-  return Number(parsed);
 }
