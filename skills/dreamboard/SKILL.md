@@ -27,6 +27,10 @@ Dreamboard exists to turn a board-game idea into a playable digital prototype qu
   Install with `npm install -g dreamboard`
 - Authenticated via `dreamboard login`
 
+## Building Your First Game
+
+Read [references/building-your-first-game.md](references/building-your-first-game.md)
+
 ## Core Workflow
 
 1. Create a game: `dreamboard new <slug> --description "<<short description>>"`

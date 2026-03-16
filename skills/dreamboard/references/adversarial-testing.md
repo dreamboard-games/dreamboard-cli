@@ -85,7 +85,7 @@ Create one scenario per pattern so failures are easy to triage.
 3. Prefer `--new-session --seed 1337` while authoring/debugging to avoid random drift.
 4. If turn context is missing, `dreamboard run --scenario ...` will wait for the first `YOUR_TURN` automatically.
 5. API scenarios are strict: if a step gets `ACTION_REJECTED`, the run stops with `scenario_rejected`.
-6. Use `events-extract.ts` to quickly inspect rejection reasons, available actions, and player transitions before editing scenarios.
+6. Use `events-extract.mjs` to quickly inspect rejection reasons, available actions, and player transitions before editing scenarios.
 
 ### Error: `Card is not in your hand`
 

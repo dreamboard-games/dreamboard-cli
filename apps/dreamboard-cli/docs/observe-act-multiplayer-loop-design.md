@@ -290,7 +290,7 @@ Observe output should be concise and parse-friendly:
 3. `apps/dreamboard-cli/src/types.ts`
 4. `apps/dreamboard-cli/src/ui/playwright-runner.ts`
 5. `apps/dreamboard-cli/README.md`
-6. `apps/dreamboard-cli/src/skills/references/scenario-format.md`
+6. `apps/dreamboard-cli/skills/dreamboard/references/scenario-format.md`
 
 ## New files
 
