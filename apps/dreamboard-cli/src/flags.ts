@@ -39,6 +39,7 @@ const pullCommandArgsSchema = configFlagsSchema.extend({
 const pushCommandArgsSchema = configFlagsSchema.extend({
   force: z.boolean().default(false),
   debug: z.boolean().default(false),
+  "skip-local-check": z.boolean().default(false),
 });
 
 const statusCommandArgsSchema = configFlagsSchema.extend({

@@ -1,4 +1,8 @@
-export { findLatestSuccessfulCompiledResult } from "./compiled-results-api.js";
+export {
+  findLatestSuccessfulCompiledResult,
+  getCompiledResultSdk,
+  waitForCompiledResultJobSdk,
+} from "./compiled-results-api.js";
 export { tryGetGameBySlug } from "./game-api.js";
 export {
   getLatestManifestIdSdk,
