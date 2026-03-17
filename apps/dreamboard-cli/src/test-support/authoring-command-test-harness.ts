@@ -17,6 +17,15 @@ type ApiCallResult<T> = {
   response: HttpResponse;
 };
 
+type CompiledResultSummary = {
+  id: string;
+  authoringStateId?: string;
+  success?: boolean;
+  sourceRevisionId?: string;
+  manifestId?: string;
+  ruleId?: string;
+};
+
 type SourceRevisionResult = {
   id: string;
   treeHash: string;
@@ -43,6 +52,7 @@ type CompiledResultDiagnostic =
 type CompiledResultResult = {
   id: string;
   success: boolean;
+  authoringStateId: string;
   sourceRevisionId: string;
   diagnostics?: CompiledResultDiagnostic[];
   parentResultId?: string;
@@ -62,11 +72,13 @@ type CompletionLights = {
 };
 
 type RemoteProjectSources = {
-  resultId: string;
+  authoringStateId: string;
   files: Record<string, string>;
   sourceRevisionId: string;
   treeHash: string;
+  sourceTreeHash?: string;
   manifestId?: string;
+  manifestContentHash?: string;
   manifest?: Record<string, unknown>;
   ruleId?: string;
   ruleText?: string;
@@ -91,11 +103,18 @@ type HarnessCalls = {
   }>;
   collectModifiedStaticSdkFiles: string[];
   configureClient: ResolvedConfig[];
-  createCompiledResultSdk: Array<{
+  getAuthoringHeadSdk: string[];
+  createAuthoringStateSdk: Array<{
     gameId: string;
-    sourceRevisionId: string;
-    manifestId: string;
-    ruleId: string;
+    request: Record<string, unknown>;
+  }>;
+  findCompiledResultsForAuthoringState: Array<{
+    gameId: string;
+    authoringStateId: string;
+  }>;
+  queueCompiledResultJobSdk: Array<{
+    gameId: string;
+    authoringStateId: string;
   }>;
   runLocalTypecheck: string[];
   waitForCompiledResultJobSdk: Array<{
@@ -121,8 +140,8 @@ type HarnessCalls = {
   reconcileRemoteChangesIntoWorkspace: Array<{
     projectRoot: string;
     projectConfig: ProjectConfig;
-    baseResultId: string;
-    latestResultId: string;
+    baseAuthoringStateId: string;
+    latestAuthoringStateId: string;
   }>;
   requireAuth: ResolvedConfig[];
   saveManifestSdk: Array<{
@@ -169,9 +188,10 @@ export type AuthoringCommandTestState = {
   completionLights: CompletionLights | null;
   config: ResolvedConfig;
   consoleCalls: ConsoleCall[];
-  createCompiledResultError: Error | null;
+  createAuthoringStateResult: RemoteProjectSources;
+  queueCompiledResultJobError: Error | null;
   createCompileJobResult: {
-    jobId: string;
+    jobId?: string;
   };
   createCompiledResultResult: CompiledResultResult;
   createSourceRevisionError: Error | null;
@@ -179,11 +199,9 @@ export type AuthoringCommandTestState = {
   dynamicScaffoldError: Error | null;
   dynamicScaffoldResult: DynamicScaffoldResult;
   fetchLatestRemoteSourcesResult: RemoteProjectSources | null;
+  getAuthoringHeadSdkResult: RemoteProjectSources | null;
   findLatestSuccessfulCompiledResultResult: { id: string } | null;
-  getLatestCompiledResultResponse: ApiCallResult<{
-    id: string;
-    sourceRevisionId?: string;
-  }>;
+  findCompiledResultsForAuthoringStateResult: CompiledResultSummary[];
   getLatestManifestIdSdkResult?: string;
   getLatestRuleIdSdkResult: string;
   getLocalDiffResult: LocalDiff;
@@ -232,7 +250,10 @@ function createDefaultState(): AuthoringCommandTestState {
       buildRemoteAlignedSnapshotFiles: [],
       collectModifiedStaticSdkFiles: [],
       configureClient: [],
-      createCompiledResultSdk: [],
+      getAuthoringHeadSdk: [],
+      createAuthoringStateSdk: [],
+      findCompiledResultsForAuthoringState: [],
+      queueCompiledResultJobSdk: [],
       runLocalTypecheck: [],
       waitForCompiledResultJobSdk: [],
       createSourceRevisionSdk: [],
@@ -263,13 +284,26 @@ function createDefaultState(): AuthoringCommandTestState {
       authToken: "token",
     },
     consoleCalls: [],
-    createCompiledResultError: null,
+    createAuthoringStateResult: {
+      authoringStateId: "authoring-2",
+      files: {
+        "app/phases/setup.ts": "export const phase = {}\n",
+      },
+      sourceRevisionId: "source-revision-2",
+      treeHash: "tree-hash-2",
+      sourceTreeHash: "tree-hash-2",
+      manifestId: "manifest-2",
+      manifestContentHash: "content-hash-2",
+      ruleId: "rule-2",
+    },
+    queueCompiledResultJobError: null,
     createCompileJobResult: {
       jobId: "compile-job-1",
     },
     createCompiledResultResult: {
       id: "result-2",
       success: true,
+      authoringStateId: "authoring-2",
       sourceRevisionId: "source-revision-2",
     },
     createSourceRevisionError: null,
@@ -284,19 +318,28 @@ function createDefaultState(): AuthoringCommandTestState {
       },
     },
     fetchLatestRemoteSourcesResult: null,
+    getAuthoringHeadSdkResult: {
+      authoringStateId: "authoring-1",
+      files: {
+        "app/phases/setup.ts": "export const phase = {}\n",
+      },
+      sourceRevisionId: "source-revision-1",
+      treeHash: "tree-hash-1",
+      manifestId: "manifest-1",
+      manifestContentHash: "content-hash-1",
+      ruleId: "rule-1",
+    },
     findLatestSuccessfulCompiledResultResult: {
       id: "result-1",
     },
-    getLatestCompiledResultResponse: {
-      data: {
+    findCompiledResultsForAuthoringStateResult: [
+      {
         id: "result-1",
+        authoringStateId: "authoring-1",
+        success: true,
         sourceRevisionId: "source-revision-1",
       },
-      error: null,
-      response: {
-        status: 200,
-      },
-    },
+    ],
     getLatestManifestIdSdkResult: "manifest-1",
     getLatestRuleIdSdkResult: "rule-1",
     getLocalDiffResult: {
@@ -343,23 +386,39 @@ function createDefaultState(): AuthoringCommandTestState {
     projectConfig: {
       gameId: "game-1",
       slug: "test-game",
-      ruleId: "rule-1",
-      manifestId: "manifest-1",
-      manifestContentHash: "content-hash-1",
-      resultId: "result-1",
-      sourceRevisionId: "source-revision-1",
-      sourceTreeHash: "tree-hash-1",
+      authoring: {
+        authoringStateId: "authoring-1",
+        ruleId: "rule-1",
+        manifestId: "manifest-1",
+        manifestContentHash: "content-hash-1",
+        sourceRevisionId: "source-revision-1",
+        sourceTreeHash: "tree-hash-1",
+      },
+      compile: {
+        latestAttempt: {
+          resultId: "result-1",
+          authoringStateId: "authoring-1",
+          status: "successful",
+        },
+        latestSuccessful: {
+          resultId: "result-1",
+          authoringStateId: "authoring-1",
+        },
+      },
     },
     projectRoot: "/tmp/dreamboard-project",
     readTextFiles: {},
     reconcileRemoteChangesIntoWorkspaceResult: {
       latest: {
-        resultId: "result-2",
+        authoringStateId: "authoring-2",
         files: {
           "app/phases/setup.ts": "export const phase = {}\n",
         },
         sourceRevisionId: "source-revision-2",
         treeHash: "tree-hash-2",
+        manifestId: "manifest-2",
+        manifestContentHash: "content-hash-2",
+        ruleId: "rule-2",
       },
       remoteUserFiles: {},
       written: [],
@@ -430,8 +489,6 @@ mock.module("@dreamboard/api-client", () => ({
             },
     };
   },
-  getLatestCompiledResult: async () =>
-    authoringCommandTestHarness.current.getLatestCompiledResultResponse,
   scaffoldGameSourcesV3: async () => {
     const state = authoringCommandTestHarness.current;
     if (state.dynamicScaffoldError) {
@@ -501,24 +558,44 @@ mock.module("../config/resolve.js", () => ({
 }));
 
 mock.module("../flags.js", () => ({
-  parsePushCommandArgs: (args: Record<string, unknown>) => args,
+  parseCompileCommandArgs: (args: Record<string, unknown>) => args,
+  parsePullCommandArgs: (args: Record<string, unknown>) => args,
   parseStatusCommandArgs: (args: Record<string, unknown>) => args,
-  parseUpdateCommandArgs: (args: Record<string, unknown>) => args,
+  parseSyncCommandArgs: (args: Record<string, unknown>) => args,
 }));
 
 mock.module("../services/api/index.js", () => ({
-  createCompiledResultSdk: async (options: {
+  createAuthoringStateSdk: async (
+    gameId: string,
+    request: Record<string, unknown>,
+  ) => {
+    const state = authoringCommandTestHarness.current;
+    state.calls.createAuthoringStateSdk.push({
+      gameId,
+      request: structuredClone(request),
+    });
+    return structuredClone(state.createAuthoringStateResult);
+  },
+  queueCompiledResultJobSdk: async (options: {
     gameId: string;
-    sourceRevisionId: string;
-    manifestId: string;
-    ruleId: string;
+    authoringStateId: string;
   }) => {
     const state = authoringCommandTestHarness.current;
-    state.calls.createCompiledResultSdk.push(structuredClone(options));
-    if (state.createCompiledResultError) {
-      throw state.createCompiledResultError;
+    state.calls.queueCompiledResultJobSdk.push(structuredClone(options));
+    if (state.queueCompiledResultJobError) {
+      throw state.queueCompiledResultJobError;
     }
     return structuredClone(state.createCompileJobResult);
+  },
+  findCompiledResultsForAuthoringState: async (options: {
+    gameId: string;
+    authoringStateId: string;
+  }) => {
+    const state = authoringCommandTestHarness.current;
+    state.calls.findCompiledResultsForAuthoringState.push(
+      structuredClone(options),
+    );
+    return structuredClone(state.findCompiledResultsForAuthoringStateResult);
   },
   createSourceRevisionSdk: async (
     gameId: string,
@@ -548,6 +625,11 @@ mock.module("../services/api/index.js", () => ({
     const state = authoringCommandTestHarness.current;
     state.calls.getLatestRuleIdSdk.push(gameId);
     return state.getLatestRuleIdSdkResult;
+  },
+  getAuthoringHeadSdk: async (gameId: string) => {
+    const state = authoringCommandTestHarness.current;
+    state.calls.getAuthoringHeadSdk.push(gameId);
+    return structuredClone(state.getAuthoringHeadSdkResult);
   },
   getManifestSdk: async () =>
     structuredClone(authoringCommandTestHarness.current.getManifestSdkResult),
@@ -742,8 +824,8 @@ mock.module("../services/project/sync.js", () => ({
   reconcileRemoteChangesIntoWorkspace: async (options: {
     projectRoot: string;
     projectConfig: ProjectConfig;
-    baseResultId: string;
-    latestResultId: string;
+    baseAuthoringStateId: string;
+    latestAuthoringStateId: string;
   }) => {
     authoringCommandTestHarness.current.calls.reconcileRemoteChangesIntoWorkspace.push(
       {
@@ -761,6 +843,8 @@ mock.module("../services/project/sync.js", () => ({
 mock.module("../utils/errors.js", () => ({
   formatApiError: (_error: unknown, _response: unknown, fallback: string) =>
     fallback,
+  formatCliError: (error: unknown) =>
+    error instanceof Error ? error.message : String(error),
 }));
 
 mock.module("../utils/fs.js", () => ({

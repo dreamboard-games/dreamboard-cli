@@ -16,6 +16,7 @@ import { CONFIG_FLAG_ARGS } from "../command-args.js";
 import { resolveProjectContext } from "../config/resolve.js";
 import { parseConfigFlags } from "../flags.js";
 import { resolveCompiledResultForRun } from "../services/workflows/resolve-run-result.js";
+import { getProjectAuthoringState } from "../services/project/project-state.js";
 import { shouldUseRemoteTestRuntime } from "../services/testing/runtime-mode.js";
 import {
   ensureDir,
@@ -341,10 +342,11 @@ async function resolveTestCommandRuntime(options: {
       options.projectRoot,
       options.projectConfig,
     );
+    const authoring = getProjectAuthoringState(options.projectConfig);
     return {
       gameId: options.projectConfig.gameId,
       compiledResultId: latestCompiledResult.id,
-      manifestHash: options.projectConfig.manifestContentHash,
+      manifestHash: authoring.manifestContentHash,
       cleanup: async () => undefined,
     };
   }
@@ -654,7 +656,7 @@ async function ensureScenarioImportShim(projectRoot: string): Promise<void> {
   // here prevents testing-types.ts from shadowing testing-types.d.ts with a
   // stub that omits AssertContext and all other exported types (TypeScript
   // prefers .ts over .d.ts during module resolution, so a stub .ts makes the
-  // .d.ts types unreachable — causing `dreamboard push` type errors across all
+  // .d.ts types unreachable — causing `dreamboard compile` type errors across all
   // scenario files while `dreamboard test run` passes silently via Bun's
   // lenient type import handling).
   //

@@ -1,10 +1,18 @@
 import { defineCommand } from "citty";
 import consola from "consola";
-import { getGame, getLatestCompiledResult } from "@dreamboard/api-client";
+import { getGame } from "@dreamboard/api-client";
 import { CONFIG_FLAG_ARGS } from "../command-args.js";
 import { resolveProjectContext, configureClient } from "../config/resolve.js";
 import { parseStatusCommandArgs } from "../flags.js";
 import { getLocalDiff } from "../services/project/local-files.js";
+import {
+  findCompiledResultsForAuthoringState,
+  getAuthoringHeadSdk,
+} from "../services/api/index.js";
+import {
+  getProjectAuthoringState,
+  getProjectCompileState,
+} from "../services/project/project-state.js";
 
 export default defineCommand({
   meta: { name: "status", description: "Show local vs remote status" },
@@ -24,21 +32,31 @@ export default defineCommand({
     );
 
     const diff = await getLocalDiff(projectRoot);
-    const localBaseResultId = projectConfig.resultId;
-    let latestRemoteResultId: string | null = null;
+    const localAuthoring = getProjectAuthoringState(projectConfig);
+    const localCompile = getProjectCompileState(projectConfig);
+    let remoteHeadId: string | null = null;
+    let authoredRelation:
+      | "in_sync"
+      | "ahead"
+      | "behind"
+      | "diverged"
+      | "unknown" = "unknown";
+    let compileRelation:
+      | "successful"
+      | "failed"
+      | "never_compiled"
+      | "stale_success" = "never_compiled";
     let completionLights: {
-      rules: boolean;
-      manifest: boolean;
-      phases: boolean;
-      ui: boolean;
+      rules: unknown;
+      manifest: unknown;
+      phases: unknown;
+      ui: unknown;
     } | null = null;
 
     if (config.authToken) {
       await configureClient(config);
-      const { data: latest } = await getLatestCompiledResult({
-        path: { gameId: projectConfig.gameId },
-      });
-      latestRemoteResultId = latest?.id ?? null;
+      const remoteHead = await getAuthoringHeadSdk(projectConfig.gameId);
+      remoteHeadId = remoteHead?.authoringStateId ?? null;
 
       const { data: game } = await getGame({
         path: { gameId: projectConfig.gameId },
@@ -46,12 +64,42 @@ export default defineCommand({
       if (game) {
         completionLights = game.completionLights;
       }
-    }
 
-    const remoteDrift =
-      latestRemoteResultId !== null &&
-      localBaseResultId !== undefined &&
-      latestRemoteResultId !== localBaseResultId;
+      const hasLocalDiff =
+        diff.modified.length > 0 ||
+        diff.added.length > 0 ||
+        diff.deleted.length > 0;
+      if (!localAuthoring.authoringStateId) {
+        authoredRelation = "unknown";
+      } else if (remoteHeadId === null) {
+        authoredRelation = hasLocalDiff ? "ahead" : "unknown";
+      } else if (remoteHeadId === localAuthoring.authoringStateId) {
+        authoredRelation = hasLocalDiff ? "ahead" : "in_sync";
+      } else {
+        authoredRelation = hasLocalDiff ? "diverged" : "behind";
+      }
+
+      if (remoteHeadId) {
+        const remoteResults = await findCompiledResultsForAuthoringState({
+          gameId: projectConfig.gameId,
+          authoringStateId: remoteHeadId,
+        });
+        const latestAttempt = remoteResults[0] ?? null;
+
+        if (latestAttempt?.success) {
+          compileRelation = "successful";
+        } else if (latestAttempt && !latestAttempt.success) {
+          compileRelation = "failed";
+        } else if (
+          localCompile.latestSuccessful &&
+          localCompile.latestSuccessful.authoringStateId !== remoteHeadId
+        ) {
+          compileRelation = "stale_success";
+        } else {
+          compileRelation = "never_compiled";
+        }
+      }
+    }
 
     if (parsedArgs.json) {
       console.log(
@@ -59,9 +107,16 @@ export default defineCommand({
           {
             gameId: projectConfig.gameId,
             slug: projectConfig.slug,
-            localBaseResultId: localBaseResultId ?? null,
-            latestRemoteResultId,
-            remoteDrift,
+            authoring: {
+              localAuthoringStateId: localAuthoring.authoringStateId ?? null,
+              remoteAuthoringStateId: remoteHeadId,
+              relation: authoredRelation,
+            },
+            compile: {
+              relation: compileRelation,
+              latestAttempt: localCompile.latestAttempt ?? null,
+              latestSuccessful: localCompile.latestSuccessful ?? null,
+            },
             authenticated: Boolean(config.authToken),
             localDiff: {
               modified: diff.modified.length,
@@ -102,25 +157,19 @@ export default defineCommand({
       return;
     }
 
-    if (latestRemoteResultId === null) {
-      consola.info("Remote has no compiled results yet.");
-      return;
-    }
-
-    if (!localBaseResultId) {
+    consola.info(
+      `Authored state: ${authoredRelation} (local=${localAuthoring.authoringStateId ?? "unknown"}, remote=${remoteHeadId ?? "none"})`,
+    );
+    consola.info(`Compile state: ${compileRelation}`);
+    if (compileRelation === "failed") {
       consola.warn(
-        `Remote base is unknown. Latest remote result: ${latestRemoteResultId}. Run 'dreamboard update --pull' to reconcile this workspace.`,
+        "Latest compile for the current authored state failed. Fix diagnostics and run 'dreamboard compile' again.",
       );
-      return;
     }
-
-    if (remoteDrift) {
+    if (authoredRelation === "behind" || authoredRelation === "diverged") {
       consola.warn(
-        `Remote drift detected: local base=${localBaseResultId}, remote latest=${latestRemoteResultId}. Run 'dreamboard update --pull' to reconcile.`,
+        "Remote authored changes are available. Run 'dreamboard pull' to reconcile them into this workspace.",
       );
-      return;
     }
-
-    consola.info("Remote is up to date with local base.");
   },
 });

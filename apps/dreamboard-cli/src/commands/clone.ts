@@ -5,7 +5,6 @@ import {
   getGameBySlug,
   getLatestGameRule,
   getManifest,
-  getLatestCompiledResult,
   findManifests,
   scaffoldGameSourcesV3,
 } from "@dreamboard/api-client";
@@ -19,7 +18,11 @@ import { loadGlobalConfig } from "../config/global-config.js";
 import { normalizeSlug } from "../utils/strings.js";
 import { ensureDir, installSkillFile } from "../utils/fs.js";
 import { CONFIG_FLAG_ARGS } from "../command-args.js";
-import { getLatestRuleIdSdk } from "../services/api/index.js";
+import {
+  findCompiledResultsForAuthoringState,
+  getAuthoringHeadSdk,
+  getLatestRuleIdSdk,
+} from "../services/api/index.js";
 import {
   writeManifest,
   writeRule,
@@ -30,6 +33,10 @@ import { validateDynamicScaffoldResponse } from "../services/project/dynamic-sca
 import { updateProjectState } from "../config/project-config.js";
 import { scaffoldStaticWorkspace } from "../services/project/static-scaffold.js";
 import { pullIntoDirectory } from "../services/project/sync.js";
+import {
+  setLatestCompileAttempt,
+  updateProjectAuthoringState,
+} from "../services/project/project-state.js";
 import { formatApiError } from "../utils/errors.js";
 
 export default defineCommand({
@@ -64,15 +71,13 @@ export default defineCommand({
       );
     }
 
-    const { data: latest } = await getLatestCompiledResult({
-      path: { gameId: game.id },
-    });
+    const authoringHead = await getAuthoringHeadSdk(game.id);
 
     const targetDir = path.resolve(process.cwd(), normalizedSlug);
     await ensureDir(targetDir);
 
-    if (!latest?.id) {
-      consola.info("No compiled results found. Scaffolding sources...");
+    if (!authoringHead?.authoringStateId) {
+      consola.info("No remote authored state found. Scaffolding sources...");
 
       const ruleId = await getLatestRuleIdSdk(game.id);
       const { data: manifestsResponse } = await findManifests({
@@ -131,22 +136,49 @@ export default defineCommand({
       await writeManifest(targetDir, manifestResponse.manifest);
       await writeRule(targetDir, latestRuleResponse.ruleText);
       await scaffoldStaticWorkspace(targetDir, "update", { updateSdk: false });
-      await updateProjectState(targetDir, {
+      await updateProjectState(
+        targetDir,
+        updateProjectAuthoringState(
+          {
+            gameId: game.id,
+            slug: normalizedSlug,
+            apiBaseUrl: config.apiBaseUrl,
+            webBaseUrl: config.webBaseUrl,
+          },
+          {
+            ruleId,
+            manifestId,
+            manifestContentHash: manifestResponse.contentHash,
+          },
+        ),
+      );
+      await writeSnapshot(targetDir);
+    } else {
+      const pulledProjectConfig = await pullIntoDirectory(config, targetDir, {
         gameId: game.id,
         slug: normalizedSlug,
-        ruleId,
-        manifestId,
-        manifestContentHash: manifestResponse.contentHash,
         apiBaseUrl: config.apiBaseUrl,
         webBaseUrl: config.webBaseUrl,
       });
-      await writeSnapshot(targetDir);
-    } else {
-      await pullIntoDirectory(config, targetDir, {
-        gameId: game.id,
-        slug: normalizedSlug,
-      });
       await scaffoldStaticWorkspace(targetDir, "update", { updateSdk: false });
+
+      const remoteResults = await findCompiledResultsForAuthoringState({
+        gameId: game.id,
+        authoringStateId: authoringHead.authoringStateId,
+      });
+      const latestSuccess = remoteResults.find(
+        (result: { success: boolean }) => result.success,
+      );
+      if (latestSuccess) {
+        await updateProjectState(
+          targetDir,
+          setLatestCompileAttempt(pulledProjectConfig, {
+            resultId: latestSuccess.id,
+            authoringStateId: latestSuccess.authoringStateId,
+            status: "successful",
+          }),
+        );
+      }
     }
 
     await installSkillFile(targetDir);

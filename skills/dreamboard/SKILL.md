@@ -65,9 +65,9 @@ There are two different scenario systems:
 ## Guardrails
 
 - `manifest.json` and `rule.md` are the source of truth for scaffolding.
-- Run `dreamboard update` after manifest changes to keep generated files in sync.
-- `dreamboard update` is local-first and fails when remote drift is detected.
-- Use `dreamboard update --pull` only when you explicitly need to reconcile unexpected remote changes into the workspace.
+- Run `dreamboard sync` after manifest or rule changes to keep generated files in sync and advance the remote authoring head.
+- Run `dreamboard compile` when you want a new runnable build for the current authored state.
+- Use `dreamboard pull` only when you explicitly need to reconcile unexpected remote authored changes into the workspace.
 - `dreamboard test generate` should be re-run after base changes, compiled-result changes, or game identity changes.
 - Add at least one zero-step `initial-state` scenario so setup invariants fail before action tests begin.
 - Keep `scripts/events-extract.mjs` as a debugging helper for `.dreamboard/run/events.ndjson`; assertions belong in test scenarios.

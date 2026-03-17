@@ -394,6 +394,13 @@ paths:
             minimum: 1
             maximum: 100
             default: 10
+        - name: authoringStateId
+          in: query
+          required: false
+          description: Optional authoring state ID to limit results to a single authored head.
+          schema:
+            type: string
+            format: uuid
       responses:
         "200":
           description: Compiled results retrieved successfully
@@ -408,9 +415,9 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
     post:
-      summary: Compile a source revision for a game
-      description: Queue an asynchronous compile for a specific source revision with the provided manifest and rule IDs. Poll `/api/jobs/{jobId}` and fetch the final compiled result by ID when the job completes.
-      operationId: createCompiledResult
+      summary: Queue a compile job for an authoring state
+      description: Queue an asynchronous compile for a specific authoring state. Poll `/api/jobs/{jobId}` and fetch the final compiled result by ID when the job completes.
+      operationId: queueCompiledResultJob
       security:
         - BearerAuth: []
       tags:
@@ -422,14 +429,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateCompiledResultRequest"
+              $ref: "#/components/schemas/QueueCompiledResultJobRequest"
       responses:
         "202":
           description: Compile job accepted
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CreateCompiledResultResponse"
+                $ref: "#/components/schemas/QueueCompiledResultJobResponse"
         "400":
           $ref: "#/components/responses/BadRequestError"
         "401":
@@ -472,7 +479,7 @@ paths:
   /api/games/{gameId}/download:
     get:
       summary: Download authored game source files
-      description: Download the authored source files for the selected compiled result as a ZIP archive. The source files are resolved through the compiled result's source revision.
+      description: Download the authored source files for the current authoring head as a ZIP archive.
       operationId: downloadGameSources
       security:
         - BearerAuth: []
@@ -497,7 +504,7 @@ paths:
   /api/games/{gameId}/sources:
     get:
       summary: Get authored game source files
-      description: Retrieve authored source files as JSON for the selected compiled result. Source files are resolved through the compiled result's source revision.
+      description: Retrieve authored source files as JSON for the selected authoring state. If no authoring state is provided, the current authoring head is used.
       operationId: getGameSources
       security:
         - BearerAuth: []
@@ -505,10 +512,10 @@ paths:
         - Games
       parameters:
         - $ref: "#/components/parameters/GameId"
-        - name: resultId
+        - name: authoringStateId
           in: query
           required: false
-          description: Optional compiled result ID to fetch sources from. If not provided, uses the latest result.
+          description: Optional authoring state ID to fetch sources from. If not provided, uses the current authoring head.
           schema:
             type: string
             format: uuid
@@ -587,6 +594,68 @@ paths:
           $ref: "#/components/responses/UnauthorizedError"
         "409":
           description: Base source revision does not match the current head revision
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /api/games/{gameId}/authoring/head:
+    get:
+      summary: Get current authoring head for a game
+      description: Retrieve the current remote authoring head for the specified game.
+      operationId: getAuthoringHead
+      security:
+        - BearerAuth: []
+      tags:
+        - Games
+      parameters:
+        - $ref: "#/components/parameters/GameId"
+      responses:
+        "200":
+          description: Current authoring head found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthoringState"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /api/games/{gameId}/authoring/states:
+    post:
+      summary: Advance the authoring head for a game
+      description: Create a new immutable authoring state and make it the current authoring head for the specified game.
+      operationId: createAuthoringState
+      security:
+        - BearerAuth: []
+      tags:
+        - Games
+      parameters:
+        - $ref: "#/components/parameters/GameId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAuthoringStateRequest"
+      responses:
+        "201":
+          description: Authoring state created and promoted to head
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthoringState"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          description: Base authoring state does not match the current head
           content:
             application/json:
               schema:
@@ -3230,6 +3299,10 @@ components:
         userId:
           type: string
           format: uuid
+        authoringStateId:
+          type: string
+          format: uuid
+          description: Authoring state used for this compilation
         manifestId:
           type: string
           format: uuid
@@ -3302,6 +3375,7 @@ components:
         - id
         - gameId
         - userId
+        - authoringStateId
         - manifestId
         - ruleId
         - success
@@ -3321,26 +3395,16 @@ components:
           description: List of compiled results, sorted by creation date (newest first)
       required:
         - results
-    CreateCompiledResultRequest:
+    QueueCompiledResultJobRequest:
       type: object
       properties:
-        sourceRevisionId:
+        authoringStateId:
           type: string
           format: uuid
-          description: Source revision to compile
-        manifestId:
-          type: string
-          format: uuid
-          description: Manifest used for this compilation
-        ruleId:
-          type: string
-          format: uuid
-          description: Game rule used for this compilation
+          description: Authoring state to compile
       required:
-        - sourceRevisionId
-        - manifestId
-        - ruleId
-    CreateCompiledResultResponse:
+        - authoringStateId
+    QueueCompiledResultJobResponse:
       type: object
       description: Accepted compile request response. The compilation continues asynchronously and can be tracked via the returned job ID.
       properties:
@@ -3352,8 +3416,12 @@ components:
         - jobId
     GameSourcesResponse:
       type: object
-      description: Response containing authored source files resolved through a compiled result's source revision.
+      description: Response containing authored source files resolved through an authoring state.
       properties:
+        authoringStateId:
+          type: string
+          format: uuid
+          description: Current or requested authoring state identifier
         files:
           type: object
           additionalProperties:
@@ -3366,16 +3434,15 @@ components:
         treeHash:
           type: string
           description: Deterministic hash of the authored source tree
-        resultId:
-          type: string
-          format: uuid
-          description: ID of the compiled result used to fetch source files
-          nullable: true
         manifestId:
           type: string
           format: uuid
           nullable: true
-          description: ID of the manifest associated with this compiled result
+          description: ID of the manifest associated with this authoring state
+        manifestContentHash:
+          type: string
+          nullable: true
+          description: SHA-256 hash of the canonical manifest content for this authoring state
         manifest:
           $ref: "#/components/schemas/BoardManifest"
           nullable: true
@@ -3384,12 +3451,13 @@ components:
           type: string
           format: uuid
           nullable: true
-          description: ID of the game rule associated with this compiled result
+          description: ID of the game rule associated with this authoring state
         ruleText:
           type: string
           nullable: true
           description: The game rules text content (null if no rule is associated)
       required:
+        - authoringStateId
         - sourceRevisionId
         - treeHash
         - files
@@ -3574,6 +3642,92 @@ components:
         - treeHash
         - fileCount
         - createdAt
+    AuthoringState:
+      type: object
+      description: Immutable authored workspace checkpoint tying together rule, manifest, and source revision.
+      properties:
+        authoringStateId:
+          type: string
+          format: uuid
+          description: Authoring state identifier
+        gameId:
+          type: string
+          format: uuid
+          description: Game identifier
+        userId:
+          type: string
+          format: uuid
+          description: User who created this authoring state
+        parentAuthoringStateId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Parent authoring state identifier
+        sourceRevisionId:
+          type: string
+          format: uuid
+          description: Source revision identifier
+        sourceTreeHash:
+          type: string
+          description: Deterministic hash of the authored source tree
+        manifestId:
+          type: string
+          format: uuid
+          description: Manifest identifier
+        manifestContentHash:
+          type: string
+          description: SHA-256 hash of the canonical manifest content
+        ruleId:
+          type: string
+          format: uuid
+          description: Rule identifier
+        createdAt:
+          type: string
+          format: date-time
+          description: Authoring state creation timestamp
+      required:
+        - authoringStateId
+        - gameId
+        - userId
+        - sourceRevisionId
+        - sourceTreeHash
+        - manifestId
+        - manifestContentHash
+        - ruleId
+        - createdAt
+    CreateAuthoringStateRequest:
+      type: object
+      description: Advance the current authoring head to a new immutable state.
+      properties:
+        baseAuthoringStateId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Expected current authoring head before advancing. Required once a head exists.
+        sourceRevisionId:
+          type: string
+          format: uuid
+          description: Source revision for the next authored state
+        sourceTreeHash:
+          type: string
+          description: Deterministic hash of the authored source tree for the next state
+        manifestId:
+          type: string
+          format: uuid
+          description: Manifest identifier for the next state
+        manifestContentHash:
+          type: string
+          description: SHA-256 hash of the canonical manifest content for the next state
+        ruleId:
+          type: string
+          format: uuid
+          description: Rule identifier for the next state
+      required:
+        - sourceRevisionId
+        - sourceTreeHash
+        - manifestId
+        - manifestContentHash
+        - ruleId
     GameScriptsResponse:
       type: object
       properties:

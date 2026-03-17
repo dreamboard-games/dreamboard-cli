@@ -1,24 +1,35 @@
 import consola from "consola";
 import type { CompiledResult } from "@dreamboard/api-client";
 import type { ProjectConfig } from "../../types.js";
-import { findLatestSuccessfulCompiledResult } from "../api/compiled-results-api.js";
+import { findCompiledResultsForAuthoringState } from "../api/compiled-results-api.js";
+import { getProjectAuthoringState } from "../project/project-state.js";
 
 export async function resolveCompiledResultForRun(
   projectRoot: string,
   projectConfig: ProjectConfig,
 ): Promise<CompiledResult> {
-  const latestSuccess = await findLatestSuccessfulCompiledResult(
-    projectConfig.gameId,
-  );
+  void projectRoot;
+  const authoring = getProjectAuthoringState(projectConfig);
+  if (!authoring.authoringStateId) {
+    throw new Error(
+      "This workspace does not know its authored base yet. Run 'dreamboard sync' first.",
+    );
+  }
+  const latestSuccess = (
+    await findCompiledResultsForAuthoringState({
+      gameId: projectConfig.gameId,
+      authoringStateId: authoring.authoringStateId,
+    })
+  ).find((result) => result.success);
   if (!latestSuccess) {
     throw new Error(
-      "No successful compiled result found. Run 'dreamboard push' first.",
+      "No successful compile exists for the current authored state. Run 'dreamboard compile' first.",
     );
   }
 
-  if (latestSuccess.id !== projectConfig.resultId) {
+  if (latestSuccess.authoringStateId !== authoring.authoringStateId) {
     consola.warn(
-      `Local resultId (${projectConfig.resultId}) differs from latest successful (${latestSuccess.id}).`,
+      `Latest successful compile ${latestSuccess.id} belongs to ${latestSuccess.authoringStateId}, not ${authoring.authoringStateId}.`,
     );
   }
 

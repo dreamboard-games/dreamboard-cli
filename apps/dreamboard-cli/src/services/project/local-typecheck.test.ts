@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { lstat, mkdtemp, mkdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { expect, test } from "bun:test";
@@ -45,3 +45,38 @@ test("runLocalTypecheck does not require Bun on PATH", async () => {
     await rm(tempRoot, { recursive: true, force: true });
   }
 }, 20_000);
+
+test("runLocalTypecheck prefers project-local TypeScript without workspace symlinks", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "db-local-typecheck-"));
+  const localTscPath = path.join(
+    tempRoot,
+    "node_modules",
+    "typescript",
+    "bin",
+    "tsc",
+  );
+
+  try {
+    await mkdir(path.dirname(localTscPath), { recursive: true });
+
+    await Bun.write(
+      localTscPath,
+      [
+        "#!/usr/bin/env node",
+        'process.stderr.write("LOCAL_TSC_SENTINEL\\n");',
+        "process.exit(1);",
+      ].join("\n"),
+    );
+
+    await expect(runLocalTypecheck(tempRoot)).resolves.toEqual({
+      success: false,
+      output: "LOCAL_TSC_SENTINEL",
+    });
+
+    await expect(
+      lstat(path.join(tempRoot, "ui", "node_modules")),
+    ).rejects.toBeDefined();
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});

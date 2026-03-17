@@ -23,12 +23,26 @@ const UI_SDK_NODE_MODULES = path.join(
   "ui-sdk",
   "node_modules",
 );
+const TYPESCRIPT_BIN_PATH_SEGMENTS = [
+  "node_modules",
+  "typescript",
+  "bin",
+  "tsc",
+];
 const TYPESCRIPT_CLI = path.join(
   WORKSPACE_NODE_MODULES,
   "typescript",
   "bin",
   "tsc",
 );
+
+function getProjectNodeModules(projectRoot: string): string {
+  return path.join(projectRoot, "node_modules");
+}
+
+function getProjectTypescriptCli(projectRoot: string): string {
+  return path.join(projectRoot, ...TYPESCRIPT_BIN_PATH_SEGMENTS);
+}
 
 async function pathExists(targetPath: string): Promise<boolean> {
   try {
@@ -55,16 +69,20 @@ async function ensureSymlink(targetPath: string, linkPath: string) {
 async function ensureTypecheckDependencies(
   projectRoot: string,
 ): Promise<string | null> {
+  if (await pathExists(getProjectNodeModules(projectRoot))) {
+    return null;
+  }
+
   if (!(await pathExists(WORKSPACE_NODE_MODULES))) {
-    return `Skipping local typecheck: workspace dependencies are not installed at ${WORKSPACE_NODE_MODULES}.`;
+    return `Skipping local typecheck: project dependencies are not installed at ${getProjectNodeModules(projectRoot)}, and workspace dependencies are not installed at ${WORKSPACE_NODE_MODULES}.`;
   }
   if (!(await pathExists(UI_SDK_NODE_MODULES))) {
-    return `Skipping local typecheck: ui-sdk dependencies are not installed at ${UI_SDK_NODE_MODULES}.`;
+    return `Skipping local typecheck: project dependencies are not installed at ${getProjectNodeModules(projectRoot)}, and ui-sdk dependencies are not installed at ${UI_SDK_NODE_MODULES}.`;
   }
 
   await ensureSymlink(
     WORKSPACE_NODE_MODULES,
-    path.join(projectRoot, "node_modules"),
+    getProjectNodeModules(projectRoot),
   );
   await ensureSymlink(
     UI_SDK_NODE_MODULES,
@@ -74,7 +92,17 @@ async function ensureTypecheckDependencies(
   return null;
 }
 
-async function resolveTypecheckRunner(): Promise<TypecheckRunner | null> {
+async function resolveTypecheckRunner(
+  projectRoot: string,
+): Promise<TypecheckRunner | null> {
+  const localTypescriptCli = getProjectTypescriptCli(projectRoot);
+  if (await pathExists(localTypescriptCli)) {
+    return {
+      command: process.execPath,
+      argsPrefix: [localTypescriptCli],
+    };
+  }
+
   if (await pathExists(TYPESCRIPT_CLI)) {
     return {
       command: process.execPath,
@@ -156,7 +184,7 @@ export async function runLocalTypecheck(
     };
   }
 
-  const runner = await resolveTypecheckRunner();
+  const runner = await resolveTypecheckRunner(projectRoot);
   if (!runner) {
     return {
       success: true,

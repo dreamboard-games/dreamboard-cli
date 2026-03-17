@@ -1214,6 +1214,10 @@ export type CompiledResult = {
     gameId: string;
     userId: string;
     /**
+     * Authoring state used for this compilation
+     */
+    authoringStateId: string;
+    /**
      * Manifest used for this compilation
      */
     manifestId: string;
@@ -1287,25 +1291,17 @@ export type ListCompiledResultsResponse = {
     results: Array<CompiledResult>;
 };
 
-export type CreateCompiledResultRequest = {
+export type QueueCompiledResultJobRequest = {
     /**
-     * Source revision to compile
+     * Authoring state to compile
      */
-    sourceRevisionId: string;
-    /**
-     * Manifest used for this compilation
-     */
-    manifestId: string;
-    /**
-     * Game rule used for this compilation
-     */
-    ruleId: string;
+    authoringStateId: string;
 };
 
 /**
  * Accepted compile request response. The compilation continues asynchronously and can be tracked via the returned job ID.
  */
-export type CreateCompiledResultResponse = {
+export type QueueCompiledResultJobResponse = {
     /**
      * Agent job identifier for the queued compile
      */
@@ -1313,9 +1309,13 @@ export type CreateCompiledResultResponse = {
 };
 
 /**
- * Response containing authored source files resolved through a compiled result's source revision.
+ * Response containing authored source files resolved through an authoring state.
  */
 export type GameSourcesResponse = {
+    /**
+     * Current or requested authoring state identifier
+     */
+    authoringStateId: string;
     /**
      * Map of file path to file content (e.g., 'App.tsx' -> 'export ...')
      */
@@ -1331,19 +1331,19 @@ export type GameSourcesResponse = {
      */
     treeHash: string;
     /**
-     * ID of the compiled result used to fetch source files
-     */
-    resultId?: string;
-    /**
-     * ID of the manifest associated with this compiled result
+     * ID of the manifest associated with this authoring state
      */
     manifestId?: string;
+    /**
+     * SHA-256 hash of the canonical manifest content for this authoring state
+     */
+    manifestContentHash?: string;
     /**
      * The board manifest data (null if no manifest is associated)
      */
     manifest?: BoardManifest;
     /**
-     * ID of the game rule associated with this compiled result
+     * ID of the game rule associated with this authoring state
      */
     ruleId?: string;
     /**
@@ -1503,6 +1503,82 @@ export type SourceRevision = {
      * Revision creation timestamp
      */
     createdAt: string;
+};
+
+/**
+ * Immutable authored workspace checkpoint tying together rule, manifest, and source revision.
+ */
+export type AuthoringState = {
+    /**
+     * Authoring state identifier
+     */
+    authoringStateId: string;
+    /**
+     * Game identifier
+     */
+    gameId: string;
+    /**
+     * User who created this authoring state
+     */
+    userId: string;
+    /**
+     * Parent authoring state identifier
+     */
+    parentAuthoringStateId?: string;
+    /**
+     * Source revision identifier
+     */
+    sourceRevisionId: string;
+    /**
+     * Deterministic hash of the authored source tree
+     */
+    sourceTreeHash: string;
+    /**
+     * Manifest identifier
+     */
+    manifestId: string;
+    /**
+     * SHA-256 hash of the canonical manifest content
+     */
+    manifestContentHash: string;
+    /**
+     * Rule identifier
+     */
+    ruleId: string;
+    /**
+     * Authoring state creation timestamp
+     */
+    createdAt: string;
+};
+
+/**
+ * Advance the current authoring head to a new immutable state.
+ */
+export type CreateAuthoringStateRequest = {
+    /**
+     * Expected current authoring head before advancing. Required once a head exists.
+     */
+    baseAuthoringStateId?: string;
+    /**
+     * Source revision for the next authored state
+     */
+    sourceRevisionId: string;
+    /**
+     * Deterministic hash of the authored source tree for the next state
+     */
+    sourceTreeHash: string;
+    /**
+     * Manifest identifier for the next state
+     */
+    manifestId: string;
+    /**
+     * SHA-256 hash of the canonical manifest content for the next state
+     */
+    manifestContentHash: string;
+    /**
+     * Rule identifier for the next state
+     */
+    ruleId: string;
 };
 
 export type GameScriptsResponse = {
@@ -4065,6 +4141,10 @@ export type ListCompiledResultsData = {
          * Maximum number of results to return. Default is 10.
          */
         limit?: number;
+        /**
+         * Optional authoring state ID to limit results to a single authored head.
+         */
+        authoringStateId?: string;
     };
     url: '/api/games/{gameId}/compiled-results';
 };
@@ -4095,8 +4175,8 @@ export type ListCompiledResultsResponses = {
 
 export type ListCompiledResultsResponse2 = ListCompiledResultsResponses[keyof ListCompiledResultsResponses];
 
-export type CreateCompiledResultData = {
-    body: CreateCompiledResultRequest;
+export type QueueCompiledResultJobData = {
+    body: QueueCompiledResultJobRequest;
     path: {
         /**
          * Unique identifier for the game
@@ -4107,7 +4187,7 @@ export type CreateCompiledResultData = {
     url: '/api/games/{gameId}/compiled-results';
 };
 
-export type CreateCompiledResultErrors = {
+export type QueueCompiledResultJobErrors = {
     /**
      * Bad request - invalid input parameters
      */
@@ -4122,16 +4202,16 @@ export type CreateCompiledResultErrors = {
     500: ErrorResponse;
 };
 
-export type CreateCompiledResultError = CreateCompiledResultErrors[keyof CreateCompiledResultErrors];
+export type QueueCompiledResultJobError = QueueCompiledResultJobErrors[keyof QueueCompiledResultJobErrors];
 
-export type CreateCompiledResultResponses = {
+export type QueueCompiledResultJobResponses = {
     /**
      * Compile job accepted
      */
-    202: CreateCompiledResultResponse;
+    202: QueueCompiledResultJobResponse;
 };
 
-export type CreateCompiledResultResponse2 = CreateCompiledResultResponses[keyof CreateCompiledResultResponses];
+export type QueueCompiledResultJobResponse2 = QueueCompiledResultJobResponses[keyof QueueCompiledResultJobResponses];
 
 export type GetCompiledResultData = {
     body?: never;
@@ -4227,9 +4307,9 @@ export type GetGameSourcesData = {
     };
     query?: {
         /**
-         * Optional compiled result ID to fetch sources from. If not provided, uses the latest result.
+         * Optional authoring state ID to fetch sources from. If not provided, uses the current authoring head.
          */
-        resultId?: string;
+        authoringStateId?: string;
     };
     url: '/api/games/{gameId}/sources';
 };
@@ -4343,6 +4423,90 @@ export type CreateSourceRevisionResponses = {
 };
 
 export type CreateSourceRevisionResponse = CreateSourceRevisionResponses[keyof CreateSourceRevisionResponses];
+
+export type GetAuthoringHeadData = {
+    body?: never;
+    path: {
+        /**
+         * Unique identifier for the game
+         */
+        gameId: string;
+    };
+    query?: never;
+    url: '/api/games/{gameId}/authoring/head';
+};
+
+export type GetAuthoringHeadErrors = {
+    /**
+     * Unauthorized - authentication required
+     */
+    401: ErrorResponse;
+    /**
+     * Resource not found
+     */
+    404: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+};
+
+export type GetAuthoringHeadError = GetAuthoringHeadErrors[keyof GetAuthoringHeadErrors];
+
+export type GetAuthoringHeadResponses = {
+    /**
+     * Current authoring head found
+     */
+    200: AuthoringState;
+};
+
+export type GetAuthoringHeadResponse = GetAuthoringHeadResponses[keyof GetAuthoringHeadResponses];
+
+export type CreateAuthoringStateData = {
+    body: CreateAuthoringStateRequest;
+    path: {
+        /**
+         * Unique identifier for the game
+         */
+        gameId: string;
+    };
+    query?: never;
+    url: '/api/games/{gameId}/authoring/states';
+};
+
+export type CreateAuthoringStateErrors = {
+    /**
+     * Bad request - invalid input parameters
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized - authentication required
+     */
+    401: ErrorResponse;
+    /**
+     * Resource not found
+     */
+    404: ErrorResponse;
+    /**
+     * Base authoring state does not match the current head
+     */
+    409: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+};
+
+export type CreateAuthoringStateError = CreateAuthoringStateErrors[keyof CreateAuthoringStateErrors];
+
+export type CreateAuthoringStateResponses = {
+    /**
+     * Authoring state created and promoted to head
+     */
+    201: AuthoringState;
+};
+
+export type CreateAuthoringStateResponse = CreateAuthoringStateResponses[keyof CreateAuthoringStateResponses];
 
 export type CreateSourceRevisionBundleData = {
     body: Blob | File;

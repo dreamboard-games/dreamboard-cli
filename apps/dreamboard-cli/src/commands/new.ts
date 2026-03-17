@@ -31,6 +31,7 @@ import {
 import { validateDynamicScaffoldResponse } from "../services/project/dynamic-scaffold-response.js";
 import { updateProjectState } from "../config/project-config.js";
 import { scaffoldStaticWorkspace } from "../services/project/static-scaffold.js";
+import { updateProjectAuthoringState } from "../services/project/project-state.js";
 import { formatApiError } from "../utils/errors.js";
 
 export default defineCommand({
@@ -187,15 +188,22 @@ export default defineCommand({
 
       await scaffoldStaticWorkspace(targetDir, "new", { updateSdk: true });
 
-      await updateProjectState(targetDir, {
-        gameId: game.id,
-        slug: normalizedSlug,
-        ruleId,
-        manifestId,
-        manifestContentHash: contentHash,
-        apiBaseUrl: config.apiBaseUrl,
-        webBaseUrl: config.webBaseUrl,
-      });
+      await updateProjectState(
+        targetDir,
+        updateProjectAuthoringState(
+          {
+            gameId: game.id,
+            slug: normalizedSlug,
+            apiBaseUrl: config.apiBaseUrl,
+            webBaseUrl: config.webBaseUrl,
+          },
+          {
+            ruleId,
+            manifestId,
+            manifestContentHash: contentHash,
+          },
+        ),
+      );
       await writeSnapshot(targetDir);
 
       await installSkillFile(targetDir);
@@ -203,7 +211,7 @@ export default defineCommand({
 
       consola.success(`Created new game in ${targetDir}`);
       consola.info(
-        "Next: edit manifest.json, then run 'dreamboard update' to scaffold.",
+        "Next: edit your files, then run 'dreamboard sync' followed by 'dreamboard compile'.",
       );
     } catch (err) {
       consola.warn(`Creation failed, deleting game '${normalizedSlug}'...`);

@@ -36,20 +36,19 @@ const pullCommandArgsSchema = configFlagsSchema.extend({
   force: z.boolean().default(false),
 });
 
-const pushCommandArgsSchema = configFlagsSchema.extend({
+const syncCommandArgsSchema = configFlagsSchema.extend({
   force: z.boolean().default(false),
+  "update-sdk": z.boolean().default(false),
+  yes: z.boolean().default(false),
+});
+
+const compileCommandArgsSchema = configFlagsSchema.extend({
   debug: z.boolean().default(false),
   "skip-local-check": z.boolean().default(false),
 });
 
 const statusCommandArgsSchema = configFlagsSchema.extend({
   json: z.boolean().default(false),
-});
-
-const updateCommandArgsSchema = configFlagsSchema.extend({
-  "update-sdk": z.boolean().default(false),
-  yes: z.boolean().default(false),
-  pull: z.boolean().default(false),
 });
 
 const runCommandArgsSchema = configFlagsSchema.extend({
@@ -103,9 +102,9 @@ export type NewCommandArgs = z.infer<typeof newCommandArgsSchema>;
 export type CloneCommandArgs = z.infer<typeof cloneCommandArgsSchema>;
 export type QueryCommandArgs = z.infer<typeof queryCommandArgsSchema>;
 export type PullCommandArgs = z.infer<typeof pullCommandArgsSchema>;
-export type PushCommandArgs = z.infer<typeof pushCommandArgsSchema>;
+export type SyncCommandArgs = z.infer<typeof syncCommandArgsSchema>;
+export type CompileCommandArgs = z.infer<typeof compileCommandArgsSchema>;
 export type StatusCommandArgs = z.infer<typeof statusCommandArgsSchema>;
-export type UpdateCommandArgs = z.infer<typeof updateCommandArgsSchema>;
 export type RunCommandArgs = z.infer<typeof runCommandArgsSchema>;
 export type StartCommandArgs = z.infer<typeof startCommandArgsSchema>;
 export type LoginCommandArgs = z.infer<typeof loginCommandArgsSchema>;
@@ -159,16 +158,16 @@ export function parsePullCommandArgs(args: unknown): PullCommandArgs {
   return parseArgs("pull", pullCommandArgsSchema, args);
 }
 
-export function parsePushCommandArgs(args: unknown): PushCommandArgs {
-  return parseArgs("push", pushCommandArgsSchema, args);
+export function parseSyncCommandArgs(args: unknown): SyncCommandArgs {
+  return parseArgs("sync", syncCommandArgsSchema, args);
+}
+
+export function parseCompileCommandArgs(args: unknown): CompileCommandArgs {
+  return parseArgs("compile", compileCommandArgsSchema, args);
 }
 
 export function parseStatusCommandArgs(args: unknown): StatusCommandArgs {
   return parseArgs("status", statusCommandArgsSchema, args);
-}
-
-export function parseUpdateCommandArgs(args: unknown): UpdateCommandArgs {
-  return parseArgs("update", updateCommandArgsSchema, args);
 }
 
 export function parseRunCommandArgs(args: unknown): RunCommandArgs {

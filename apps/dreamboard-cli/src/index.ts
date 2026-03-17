@@ -3,9 +3,10 @@ import { IS_PUBLISHED_BUILD } from "./build-target.js";
 import { formatCliError } from "./utils/errors.js";
 import cmdNew from "./commands/new.js";
 import cmdClone from "./commands/clone.js";
-import cmdPush from "./commands/push.js";
+import cmdSync from "./commands/sync.js";
+import cmdCompile from "./commands/compile.js";
+import cmdPull from "./commands/pull.js";
 import cmdStatus from "./commands/status.js";
-import cmdUpdate from "./commands/update.js";
 import cmdRun from "./commands/run.js";
 import cmdStart from "./commands/start.js";
 import cmdQuery from "./commands/query.js";
@@ -31,9 +32,10 @@ process.on("unhandledRejection", handleFatalError);
 const subCommands = {
   new: cmdNew,
   clone: cmdClone,
-  push: cmdPush,
+  sync: cmdSync,
+  compile: cmdCompile,
+  pull: cmdPull,
   status: cmdStatus,
-  update: cmdUpdate,
   run: cmdRun,
   start: cmdStart,
   test: cmdTest,
@@ -46,7 +48,7 @@ const subCommands = {
 const main = defineCommand({
   meta: {
     name: "dreamboard",
-    version: "0.1.6",
+    version: "0.1.7",
     description: "Dreamboard CLI — game development platform",
   },
   subCommands,

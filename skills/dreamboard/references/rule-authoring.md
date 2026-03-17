@@ -135,6 +135,6 @@ Use this template when creating or rewriting `rule.md`:
 
 1. Edit `rule.md` first.
 2. Align `manifest.json` to the updated rules.
-3. Run `dreamboard update`.
+3. Run `dreamboard sync`.
 4. Implement or refine `app/phases/*.ts`.
 5. Validate the flow with `dreamboard run`, `dreamboard test generate`, and `dreamboard test run` as needed.

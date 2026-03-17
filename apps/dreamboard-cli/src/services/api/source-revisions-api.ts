@@ -1,10 +1,10 @@
 import { gzipSync } from "node:zlib";
 import {
-  createCompiledResult,
   createSourceRevision,
   createSourceRevisionBundle,
   type CreateSourceRevisionRequest,
-  type CreateCompiledResultResponse,
+  queueCompiledResultJob,
+  type QueueCompiledResultJobResponse,
   type SourceRevision,
 } from "@dreamboard/api-client";
 import { planSourceRevisionTransport } from "@dreamboard/api-client/source-revisions";
@@ -40,19 +40,15 @@ export async function createSourceRevisionSdk(
   return response.data;
 }
 
-export async function createCompiledResultSdk(options: {
+export async function queueCompiledResultJobSdk(options: {
   gameId: string;
-  sourceRevisionId: string;
-  manifestId: string;
-  ruleId: string;
-}): Promise<CreateCompiledResultResponse> {
-  const { gameId, sourceRevisionId, manifestId, ruleId } = options;
-  const { data, error, response } = await createCompiledResult({
+  authoringStateId: string;
+}): Promise<QueueCompiledResultJobResponse> {
+  const { gameId, authoringStateId } = options;
+  const { data, error, response } = await queueCompiledResultJob({
     path: { gameId },
     body: {
-      sourceRevisionId,
-      manifestId,
-      ruleId,
+      authoringStateId,
     },
   });
 
