@@ -105,6 +105,62 @@ test("push rejects when the remote latest result differs from the local base", a
   expect(state.calls.writeSnapshot).toHaveLength(0);
 });
 
+test("push blocks remote mutations when the local typecheck fails", async () => {
+  const state = currentState();
+  state.getLocalDiffResult = {
+    modified: ["app/phases/setup.ts"],
+    added: [],
+    deleted: [],
+  };
+  state.localTypecheckResult = {
+    success: false,
+    output: "app/phases/setup.ts:12:4 Type error",
+  };
+
+  await expect(
+    pushCommand.run({
+      args: {
+        env: "local",
+      },
+    }),
+  ).rejects.toThrow(
+    "Local typecheck failed. Fix the diagnostics or re-run with --skip-local-check.",
+  );
+
+  expect(state.calls.runLocalTypecheck).toEqual(["/tmp/dreamboard-project"]);
+  expect(state.calls.saveRuleSdk).toHaveLength(0);
+  expect(state.calls.saveManifestSdk).toHaveLength(0);
+  expect(state.calls.createSourceRevisionSdk).toHaveLength(0);
+  expect(state.calls.createCompiledResultSdk).toHaveLength(0);
+  expect(state.calls.waitForCompiledResultJobSdk).toHaveLength(0);
+});
+
+test("push skips the local typecheck when requested", async () => {
+  const state = currentState();
+  state.getLocalDiffResult = {
+    modified: ["app/phases/setup.ts"],
+    added: [],
+    deleted: [],
+  };
+
+  await pushCommand.run({
+    args: {
+      env: "local",
+      "skip-local-check": true,
+    },
+  });
+
+  expect(state.calls.runLocalTypecheck).toHaveLength(0);
+  expect(state.calls.createSourceRevisionSdk).toHaveLength(1);
+  expect(state.calls.createCompiledResultSdk).toHaveLength(1);
+  expect(state.calls.waitForCompiledResultJobSdk).toEqual([
+    {
+      gameId: "game-1",
+      jobId: "compile-job-1",
+    },
+  ]);
+});
+
 test("push performs a full-source upload when no remote result exists", async () => {
   const state = currentState();
   state.projectConfig.resultId = undefined;
@@ -197,6 +253,28 @@ test("push performs a full-source upload when no remote result exists", async ()
     },
   ]);
   expect(state.calls.writeSnapshot).toEqual(["/tmp/dreamboard-project"]);
+});
+
+test("push prints staged compile job progress while polling", async () => {
+  const state = currentState();
+  state.getLocalDiffResult = {
+    modified: ["app/phases/setup.ts"],
+    added: [],
+    deleted: [],
+  };
+
+  await pushCommand.run({
+    args: {
+      env: "local",
+    },
+  });
+
+  expect(consoleMessages("info")).toContain(
+    "Compile queued (queue 1) [queued] Queued in harness",
+  );
+  expect(consoleMessages("info")).toContain(
+    "Compile running [compiling] Compiling in harness",
+  );
 });
 
 test("push uploads an empty source revision when source metadata is missing but only manifest metadata changed", async () => {

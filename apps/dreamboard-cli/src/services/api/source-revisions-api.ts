@@ -3,8 +3,8 @@ import {
   createCompiledResult,
   createSourceRevision,
   createSourceRevisionBundle,
-  type CompiledResult,
   type CreateSourceRevisionRequest,
+  type CreateCompiledResultResponse,
   type SourceRevision,
 } from "@dreamboard/api-client";
 import { planSourceRevisionTransport } from "@dreamboard/api-client/source-revisions";
@@ -45,7 +45,7 @@ export async function createCompiledResultSdk(options: {
   sourceRevisionId: string;
   manifestId: string;
   ruleId: string;
-}): Promise<CompiledResult> {
+}): Promise<CreateCompiledResultResponse> {
   const { gameId, sourceRevisionId, manifestId, ruleId } = options;
   const { data, error, response } = await createCompiledResult({
     path: { gameId },
@@ -58,7 +58,7 @@ export async function createCompiledResultSdk(options: {
 
   if (error || !data) {
     throw new Error(
-      formatApiError(error, response, "Failed to create compiled result"),
+      formatApiError(error, response, "Failed to create compile job"),
     );
   }
 

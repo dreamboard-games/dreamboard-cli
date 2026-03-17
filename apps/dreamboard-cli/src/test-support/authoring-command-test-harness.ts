@@ -97,6 +97,11 @@ type HarnessCalls = {
     manifestId: string;
     ruleId: string;
   }>;
+  runLocalTypecheck: string[];
+  waitForCompiledResultJobSdk: Array<{
+    gameId: string;
+    jobId: string;
+  }>;
   createSourceRevisionSdk: Array<{
     gameId: string;
     request: Record<string, unknown>;
@@ -165,6 +170,9 @@ export type AuthoringCommandTestState = {
   config: ResolvedConfig;
   consoleCalls: ConsoleCall[];
   createCompiledResultError: Error | null;
+  createCompileJobResult: {
+    jobId: string;
+  };
   createCompiledResultResult: CompiledResultResult;
   createSourceRevisionError: Error | null;
   createSourceRevisionResult: SourceRevisionResult;
@@ -189,6 +197,10 @@ export type AuthoringCommandTestState = {
   latestGameResponse: ApiCallResult<{
     completionLights?: CompletionLights;
   }>;
+  localTypecheckResult: {
+    success: boolean;
+    output: string;
+  };
   loadManifestResult: Record<string, unknown>;
   loadRuleResult: string;
   modifiedStaticSdkFiles: string[];
@@ -208,6 +220,7 @@ export type AuthoringCommandTestState = {
     written: string[];
     skipped: string[];
   };
+  waitForCompiledResultJobError: Error | null;
   writeScaffoldFilesError: Error | null;
 };
 
@@ -219,6 +232,8 @@ function createDefaultState(): AuthoringCommandTestState {
       collectModifiedStaticSdkFiles: [],
       configureClient: [],
       createCompiledResultSdk: [],
+      runLocalTypecheck: [],
+      waitForCompiledResultJobSdk: [],
       createSourceRevisionSdk: [],
       fetchLatestRemoteSources: [],
       findLatestSuccessfulCompiledResult: [],
@@ -248,6 +263,9 @@ function createDefaultState(): AuthoringCommandTestState {
     },
     consoleCalls: [],
     createCompiledResultError: null,
+    createCompileJobResult: {
+      jobId: "compile-job-1",
+    },
     createCompiledResultResult: {
       id: "result-2",
       success: true,
@@ -310,6 +328,10 @@ function createDefaultState(): AuthoringCommandTestState {
         status: 200,
       },
     },
+    localTypecheckResult: {
+      success: true,
+      output: "",
+    },
     loadManifestResult: {
       stateMachine: {
         states: [{ name: "setup" }],
@@ -355,6 +377,7 @@ function createDefaultState(): AuthoringCommandTestState {
       written: ["app/phases/setup.ts"],
       skipped: [],
     },
+    waitForCompiledResultJobError: null,
     writeScaffoldFilesError: null,
   };
 }
@@ -494,7 +517,7 @@ mock.module("../services/api/index.js", () => ({
     if (state.createCompiledResultError) {
       throw state.createCompiledResultError;
     }
-    return structuredClone(state.createCompiledResultResult);
+    return structuredClone(state.createCompileJobResult);
   },
   createSourceRevisionSdk: async (
     gameId: string,
@@ -558,6 +581,48 @@ mock.module("../services/api/index.js", () => ({
       ruleText,
     });
     return structuredClone(state.saveRuleSdkResult);
+  },
+  waitForCompiledResultJobSdk: async (options: {
+    gameId: string;
+    jobId: string;
+    onProgress?: (job: {
+      status: string;
+      phase?: string;
+      queuePosition?: number;
+      message?: string;
+    }) => void;
+  }) => {
+    const state = authoringCommandTestHarness.current;
+    state.calls.waitForCompiledResultJobSdk.push({
+      gameId: options.gameId,
+      jobId: options.jobId,
+    });
+    options.onProgress?.({
+      status: "PENDING",
+      phase: "queued",
+      queuePosition: 0,
+      message: "Queued in harness",
+    });
+    options.onProgress?.({
+      status: "RUNNING",
+      phase: "compiling",
+      message: "Compiling in harness",
+    });
+    if (state.waitForCompiledResultJobError) {
+      throw state.waitForCompiledResultJobError;
+    }
+    return {
+      job: {
+        id: options.jobId,
+        jobId: options.jobId,
+        gameId: options.gameId,
+        status: state.createCompiledResultResult.success
+          ? "COMPLETED"
+          : "FAILED",
+        createdCompiledResultId: state.createCompiledResultResult.id,
+      },
+      compiledResult: structuredClone(state.createCompiledResultResult),
+    };
   },
 }));
 
@@ -641,6 +706,14 @@ mock.module("../services/project/static-scaffold.js", () => ({
       mode,
       options: { ...options },
     });
+  },
+}));
+
+mock.module("../services/project/local-typecheck.js", () => ({
+  runLocalTypecheck: async (projectRoot: string) => {
+    const state = authoringCommandTestHarness.current;
+    state.calls.runLocalTypecheck.push(projectRoot);
+    return structuredClone(state.localTypecheckResult);
   },
 }));
 

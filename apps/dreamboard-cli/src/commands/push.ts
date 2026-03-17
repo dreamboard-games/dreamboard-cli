@@ -26,9 +26,11 @@ import {
   saveRuleSdk,
   getLatestRuleIdSdk,
   findLatestSuccessfulCompiledResult,
+  waitForCompiledResultJobSdk,
 } from "../services/api";
 import { updateProjectState } from "../config/project-config.js";
 import { planSourceRevisionTransport } from "@dreamboard/api-client/source-revisions";
+import { runLocalTypecheck } from "../services/project/local-typecheck.js";
 
 function isSourcePath(filePath: string): boolean {
   return (
@@ -83,6 +85,30 @@ function buildSourceChanges(options: {
   return changes;
 }
 
+function formatCompileJobProgressMessage(job: {
+  status: string;
+  phase?: string;
+  queuePosition?: number;
+  message?: string;
+}): string {
+  const phase = job.phase ? ` [${job.phase}]` : "";
+  const detail = job.message ? ` ${job.message}` : "";
+  if (job.status === "PENDING") {
+    const queue =
+      typeof job.queuePosition === "number"
+        ? ` (queue ${job.queuePosition + 1})`
+        : "";
+    return `Compile queued${queue}${phase}${detail}`.trim();
+  }
+  if (job.status === "RUNNING") {
+    return `Compile running${phase}${detail}`.trim();
+  }
+  if (job.status === "FAILED") {
+    return `Compile failed${phase}${detail}`.trim();
+  }
+  return `Compile ${job.status.toLowerCase()}${phase}${detail}`.trim();
+}
+
 export default defineCommand({
   meta: {
     name: "push",
@@ -97,6 +123,12 @@ export default defineCommand({
     debug: {
       type: "boolean",
       description: "Print debug details including source revision payloads",
+      default: false,
+    },
+    "skip-local-check": {
+      type: "boolean",
+      description:
+        "Skip the best-effort local typecheck before remote mutations",
       default: false,
     },
     ...CONFIG_FLAG_ARGS,
@@ -156,6 +188,20 @@ export default defineCommand({
       throw new Error(
         `Remote drift detected. Local base=${knownBaseResultId}, remote latest=${latest.id}. Run 'dreamboard update --pull' to reconcile before pushing.`,
       );
+    }
+
+    if (!parsedArgs["skip-local-check"]) {
+      consola.start("Running local typecheck...");
+      const typecheckResult = await runLocalTypecheck(projectRoot);
+      if (!typecheckResult.success) {
+        if (typecheckResult.output) {
+          consola.error(typecheckResult.output);
+        }
+        throw new Error(
+          "Local typecheck failed. Fix the diagnostics or re-run with --skip-local-check.",
+        );
+      }
+      consola.success("Local typecheck passed.");
     }
 
     const ruleChanged =
@@ -268,11 +314,21 @@ export default defineCommand({
       await persistProjectProgress();
     }
 
-    const compiledResult = await createCompiledResultSdk({
+    const compileJob = await createCompiledResultSdk({
       gameId: currentProjectConfig.gameId,
       sourceRevisionId,
       manifestId,
       ruleId,
+    });
+    if (debug) {
+      consola.info(`[push --debug] compile job=${compileJob.jobId}`);
+    }
+    const { compiledResult } = await waitForCompiledResultJobSdk({
+      gameId: currentProjectConfig.gameId,
+      jobId: compileJob.jobId,
+      onProgress: (job) => {
+        consola.info(formatCompileJobProgressMessage(job));
+      },
     });
 
     await persistProjectProgress({
