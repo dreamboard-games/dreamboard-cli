@@ -2,7 +2,7 @@
 
 import { client } from './client.gen.js';
 import type { Client, Options as Options2, TDataShape } from './client/index.js';
-import type { AbortSandboxSessionData, AbortSandboxSessionErrors, AbortSandboxSessionResponses, AddSeatData, AddSeatErrors, AddSeatResponses, AssignSeatData, AssignSeatErrors, AssignSeatResponses, CancelConversationJobData, CancelConversationJobErrors, CancelConversationJobResponses, CreateCompiledResultData, CreateCompiledResultErrors, CreateCompiledResultResponses, CreateGameData, CreateGameErrors, CreateGameResponses, CreateGameRuleData, CreateGameRuleErrors, CreateGameRuleResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, CreateSourceRevisionBundleData, CreateSourceRevisionBundleErrors, CreateSourceRevisionBundleResponses, CreateSourceRevisionData, CreateSourceRevisionErrors, CreateSourceRevisionResponses, DeleteConversationData, DeleteConversationErrors, DeleteConversationResponses, DeleteGameData, DeleteGameErrors, DeleteGameResponses, DownloadGameSourcesData, DownloadGameSourcesErrors, DownloadGameSourcesResponses, FetchUiBundleData, FetchUiBundleErrors, FetchUiBundleResponses, FindManifestsData, FindManifestsErrors, FindManifestsResponses, GetActiveJobData, GetActiveJobErrors, GetActiveJobResponses, GetAgentChatContextData, GetAgentChatContextErrors, GetAgentChatContextResponses, GetCompiledResultData, GetCompiledResultErrors, GetCompiledResultResponses, GetGameBySlugData, GetGameBySlugErrors, GetGameBySlugResponses, GetGameData, GetGameErrors, GetGameResponses, GetGameRuleData, GetGameRuleErrors, GetGameRuleResponses, GetGameScriptsData, GetGameScriptsErrors, GetGameScriptsResponses, GetGameSourcesData, GetGameSourcesErrors, GetGameSourcesResponses, GetJobData, GetJobErrors, GetJobResponses, GetLatestCompiledResultData, GetLatestCompiledResultErrors, GetLatestCompiledResultResponses, GetLatestGameRuleData, GetLatestGameRuleErrors, GetLatestGameRuleResponses, GetManifestData, GetManifestErrors, GetManifestResponses, GetSessionByShortCodeData, GetSessionByShortCodeErrors, GetSessionByShortCodeResponses, GetSessionStatusData, GetSessionStatusErrors, GetSessionStatusResponses, HealthCheckData, HealthCheckResponses, ListCompiledResultsData, ListCompiledResultsErrors, ListCompiledResultsResponses, ListConversationsData, ListConversationsErrors, ListConversationsResponses, ListGameRulesData, ListGameRulesErrors, ListGameRulesResponses, ListGamesData, ListGamesErrors, ListGamesResponses, QueryWorkshopRulebookData, QueryWorkshopRulebookErrors, QueryWorkshopRulebookResponses, ReceiveSandboxWebhookCompleteData, ReceiveSandboxWebhookCompleteErrors, ReceiveSandboxWebhookCompleteResponses, ReceiveSandboxWebhookEventData, ReceiveSandboxWebhookEventErrors, ReceiveSandboxWebhookEventResponses, RemoveSeatData, RemoveSeatErrors, RemoveSeatResponses, RestoreHistoryData, RestoreHistoryErrors, RestoreHistoryResponses, SandboxAbortData, SandboxAbortErrors, SandboxAbortResponses, SandboxChatData, SandboxChatErrors, SandboxChatResponses, SaveManifestData, SaveManifestErrors, SaveManifestResponses, ScaffoldGameSourcesV3Data, ScaffoldGameSourcesV3Errors, ScaffoldGameSourcesV3Responses, SendSandboxMessageData, SendSandboxMessageErrors, SendSandboxMessageResponses, StartGameData, StartGameErrors, StartGameResponses, StreamConversationData, StreamConversationErrors, StreamConversationResponses, SubmitActionData, SubmitActionErrors, SubmitActionResponses, SubscribeToGameLogsData, SubscribeToGameLogsErrors, SubscribeToGameLogsResponses, SubscribeToSessionEventsData, SubscribeToSessionEventsErrors, SubscribeToSessionEventsResponses, UnassignSeatData, UnassignSeatErrors, UnassignSeatResponses, UpdateGameData, UpdateGameErrors, UpdateGameResponses, UpdateSeatData, UpdateSeatErrors, UpdateSeatResponses, ValidateActionData, ValidateActionErrors, ValidateActionResponses } from './types.gen.js';
+import type { AbortSandboxSessionData, AbortSandboxSessionErrors, AbortSandboxSessionResponses, AddSeatData, AddSeatErrors, AddSeatResponses, AssignSeatData, AssignSeatErrors, AssignSeatResponses, CancelConversationJobData, CancelConversationJobErrors, CancelConversationJobResponses, CreateAuthoringStateData, CreateAuthoringStateErrors, CreateAuthoringStateResponses, CreateGameData, CreateGameErrors, CreateGameResponses, CreateGameRuleData, CreateGameRuleErrors, CreateGameRuleResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, CreateSourceRevisionBundleData, CreateSourceRevisionBundleErrors, CreateSourceRevisionBundleResponses, CreateSourceRevisionData, CreateSourceRevisionErrors, CreateSourceRevisionResponses, DeleteConversationData, DeleteConversationErrors, DeleteConversationResponses, DeleteGameData, DeleteGameErrors, DeleteGameResponses, DownloadGameSourcesData, DownloadGameSourcesErrors, DownloadGameSourcesResponses, FetchUiBundleData, FetchUiBundleErrors, FetchUiBundleResponses, FindManifestsData, FindManifestsErrors, FindManifestsResponses, GetActiveJobData, GetActiveJobErrors, GetActiveJobResponses, GetAgentChatContextData, GetAgentChatContextErrors, GetAgentChatContextResponses, GetAuthoringHeadData, GetAuthoringHeadErrors, GetAuthoringHeadResponses, GetCompiledResultData, GetCompiledResultErrors, GetCompiledResultResponses, GetGameBySlugData, GetGameBySlugErrors, GetGameBySlugResponses, GetGameData, GetGameErrors, GetGameResponses, GetGameRuleData, GetGameRuleErrors, GetGameRuleResponses, GetGameScriptsData, GetGameScriptsErrors, GetGameScriptsResponses, GetGameSourcesData, GetGameSourcesErrors, GetGameSourcesResponses, GetJobData, GetJobErrors, GetJobResponses, GetLatestCompiledResultData, GetLatestCompiledResultErrors, GetLatestCompiledResultResponses, GetLatestGameRuleData, GetLatestGameRuleErrors, GetLatestGameRuleResponses, GetManifestData, GetManifestErrors, GetManifestResponses, GetSessionByShortCodeData, GetSessionByShortCodeErrors, GetSessionByShortCodeResponses, GetSessionStatusData, GetSessionStatusErrors, GetSessionStatusResponses, HealthCheckData, HealthCheckResponses, ListCompiledResultsData, ListCompiledResultsErrors, ListCompiledResultsResponses, ListConversationsData, ListConversationsErrors, ListConversationsResponses, ListGameRulesData, ListGameRulesErrors, ListGameRulesResponses, ListGamesData, ListGamesErrors, ListGamesResponses, QueryWorkshopRulebookData, QueryWorkshopRulebookErrors, QueryWorkshopRulebookResponses, QueueCompiledResultJobData, QueueCompiledResultJobErrors, QueueCompiledResultJobResponses, ReceiveSandboxWebhookCompleteData, ReceiveSandboxWebhookCompleteErrors, ReceiveSandboxWebhookCompleteResponses, ReceiveSandboxWebhookEventData, ReceiveSandboxWebhookEventErrors, ReceiveSandboxWebhookEventResponses, RemoveSeatData, RemoveSeatErrors, RemoveSeatResponses, RestoreHistoryData, RestoreHistoryErrors, RestoreHistoryResponses, SandboxAbortData, SandboxAbortErrors, SandboxAbortResponses, SandboxChatData, SandboxChatErrors, SandboxChatResponses, SaveManifestData, SaveManifestErrors, SaveManifestResponses, ScaffoldGameSourcesV3Data, ScaffoldGameSourcesV3Errors, ScaffoldGameSourcesV3Responses, SendSandboxMessageData, SendSandboxMessageErrors, SendSandboxMessageResponses, StartGameData, StartGameErrors, StartGameResponses, StreamConversationData, StreamConversationErrors, StreamConversationResponses, SubmitActionData, SubmitActionErrors, SubmitActionResponses, SubscribeToGameLogsData, SubscribeToGameLogsErrors, SubscribeToGameLogsResponses, SubscribeToSessionEventsData, SubscribeToSessionEventsErrors, SubscribeToSessionEventsResponses, UnassignSeatData, UnassignSeatErrors, UnassignSeatResponses, UpdateGameData, UpdateGameErrors, UpdateGameResponses, UpdateSeatData, UpdateSeatErrors, UpdateSeatResponses, ValidateActionData, ValidateActionErrors, ValidateActionResponses } from './types.gen.js';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean> = Options2<TData, ThrowOnError> & {
     /**
@@ -174,11 +174,11 @@ export const listCompiledResults = <ThrowOnError extends boolean = false>(option
 });
 
 /**
- * Compile a source revision for a game
+ * Queue a compile job for an authoring state
  *
- * Queue an asynchronous compile for a specific source revision with the provided manifest and rule IDs. Poll `/api/jobs/{jobId}` and fetch the final compiled result by ID when the job completes.
+ * Queue an asynchronous compile for a specific authoring state. Poll `/api/jobs/{jobId}` and fetch the final compiled result by ID when the job completes.
  */
-export const createCompiledResult = <ThrowOnError extends boolean = false>(options: Options<CreateCompiledResultData, ThrowOnError>) => (options.client ?? client).post<CreateCompiledResultResponses, CreateCompiledResultErrors, ThrowOnError>({
+export const queueCompiledResultJob = <ThrowOnError extends boolean = false>(options: Options<QueueCompiledResultJobData, ThrowOnError>) => (options.client ?? client).post<QueueCompiledResultJobResponses, QueueCompiledResultJobErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/games/{gameId}/compiled-results',
     ...options,
@@ -202,7 +202,7 @@ export const getCompiledResult = <ThrowOnError extends boolean = false>(options:
 /**
  * Download authored game source files
  *
- * Download the authored source files for the selected compiled result as a ZIP archive. The source files are resolved through the compiled result's source revision.
+ * Download the authored source files for the current authoring head as a ZIP archive.
  */
 export const downloadGameSources = <ThrowOnError extends boolean = false>(options: Options<DownloadGameSourcesData, ThrowOnError>) => (options.client ?? client).get<DownloadGameSourcesResponses, DownloadGameSourcesErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -213,7 +213,7 @@ export const downloadGameSources = <ThrowOnError extends boolean = false>(option
 /**
  * Get authored game source files
  *
- * Retrieve authored source files as JSON for the selected compiled result. Source files are resolved through the compiled result's source revision.
+ * Retrieve authored source files as JSON for the selected authoring state. If no authoring state is provided, the current authoring head is used.
  */
 export const getGameSources = <ThrowOnError extends boolean = false>(options: Options<GetGameSourcesData, ThrowOnError>) => (options.client ?? client).get<GetGameSourcesResponses, GetGameSourcesErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -244,6 +244,32 @@ export const scaffoldGameSourcesV3 = <ThrowOnError extends boolean = false>(opti
 export const createSourceRevision = <ThrowOnError extends boolean = false>(options: Options<CreateSourceRevisionData, ThrowOnError>) => (options.client ?? client).post<CreateSourceRevisionResponses, CreateSourceRevisionErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/games/{gameId}/source-revisions',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Get current authoring head for a game
+ *
+ * Retrieve the current remote authoring head for the specified game.
+ */
+export const getAuthoringHead = <ThrowOnError extends boolean = false>(options: Options<GetAuthoringHeadData, ThrowOnError>) => (options.client ?? client).get<GetAuthoringHeadResponses, GetAuthoringHeadErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/games/{gameId}/authoring/head',
+    ...options
+});
+
+/**
+ * Advance the authoring head for a game
+ *
+ * Create a new immutable authoring state and make it the current authoring head for the specified game.
+ */
+export const createAuthoringState = <ThrowOnError extends boolean = false>(options: Options<CreateAuthoringStateData, ThrowOnError>) => (options.client ?? client).post<CreateAuthoringStateResponses, CreateAuthoringStateErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/games/{gameId}/authoring/states',
     ...options,
     headers: {
         'Content-Type': 'application/json',

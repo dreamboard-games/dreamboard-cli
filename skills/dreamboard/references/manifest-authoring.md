@@ -11,7 +11,7 @@ Use this guide when editing `manifest.json`.
 
 Keep the full game explanation in `rule.md`. Use the manifest to turn that explanation into typed runtime data.
 
-After editing the manifest, run `dreamboard update` to regenerate scaffolded files such as `shared/manifest.ts` and `app/phases/`.
+After editing the manifest, run `dreamboard sync` to regenerate scaffolded files such as `shared/manifest.ts` and `app/phases/`.
 
 If you are still deciding whether something is a hand, a deck, or a card set, read [hands-vs-decks.md](hands-vs-decks.md) alongside this guide.
 
@@ -314,7 +314,7 @@ Avoid storing:
 
 ## Final Checklist
 
-Before running `dreamboard update`, check that:
+Before running `dreamboard sync`, check that:
 
 - every referenced `cardSetId`, `handId`, `deckId`, resource ID, board ID, and action name exists
 - the manifest only uses documented schema fields
@@ -324,5 +324,5 @@ Before running `dreamboard update`, check that:
 Then run:
 
 ```bash
-dreamboard update
+dreamboard sync
 ```

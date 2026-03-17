@@ -1,13 +1,11 @@
 import { unlink } from "node:fs/promises";
 import path from "node:path";
-import {
-  getGameSources,
-  getLatestCompiledResult,
-  type BoardManifest,
-} from "@dreamboard/api-client";
+import { getGameSources, type BoardManifest } from "@dreamboard/api-client";
 import { MANIFEST_FILE, RULE_FILE } from "../../constants.js";
 import type { ProjectConfig, ResolvedConfig } from "../../types.js";
 import { updateProjectState } from "../../config/project-config.js";
+import { getAuthoringHeadSdk } from "../api/authoring-state-api.js";
+import { updateProjectAuthoringState } from "./project-state.js";
 import { formatApiError } from "../../utils/errors.js";
 import { exists, writeTextFile } from "../../utils/fs.js";
 import {
@@ -23,11 +21,12 @@ import { isAllowedGamePath, isLibraryPath } from "./scaffold-ownership.js";
 const META_FILES = new Set([MANIFEST_FILE, RULE_FILE]);
 
 export type RemoteProjectSources = {
-  resultId: string;
+  authoringStateId: string;
   files: Record<string, string>;
   sourceRevisionId: string;
   treeHash: string;
   manifestId?: string;
+  manifestContentHash?: string;
   manifest?: BoardManifest;
   ruleId?: string;
   ruleText?: string;
@@ -169,7 +168,7 @@ function mergeFileContent(options: {
 
 async function fetchRemoteSources(
   gameId: string,
-  resultId: string,
+  authoringStateId: string,
 ): Promise<RemoteProjectSources> {
   const {
     data: sources,
@@ -177,7 +176,7 @@ async function fetchRemoteSources(
     response: sourcesResponse,
   } = await getGameSources({
     path: { gameId },
-    query: { resultId },
+    query: { authoringStateId },
   });
 
   if (sourcesError || !sources) {
@@ -187,11 +186,12 @@ async function fetchRemoteSources(
   }
 
   return {
-    resultId,
+    authoringStateId: sources.authoringStateId,
     files: normalizeRemoteFiles(sources),
     sourceRevisionId: sources.sourceRevisionId,
     treeHash: sources.treeHash,
     manifestId: sources.manifestId,
+    manifestContentHash: sources.manifestContentHash ?? undefined,
     manifest: sources.manifest,
     ruleId: sources.ruleId,
     ruleText: sources.ruleText,
@@ -201,27 +201,21 @@ async function fetchRemoteSources(
 export async function fetchLatestRemoteSources(
   gameId: string,
 ): Promise<RemoteProjectSources | null> {
-  const { data: latest } = await getLatestCompiledResult({
-    path: { gameId },
-  });
-
-  if (!latest?.id) {
+  const latest = await getAuthoringHeadSdk(gameId);
+  if (!latest?.authoringStateId) {
     return null;
   }
-
-  return fetchRemoteSources(gameId, latest.id);
+  return fetchRemoteSources(gameId, latest.authoringStateId);
 }
 
 export async function pullIntoDirectory(
   config: ResolvedConfig,
   targetDir: string,
   projectConfig: ProjectConfig,
-): Promise<void> {
-  void config;
-
+): Promise<ProjectConfig> {
   const latest = await fetchLatestRemoteSources(projectConfig.gameId);
   if (!latest) {
-    throw new Error("No compiled results found for this game.");
+    throw new Error("No authoring state found for this game.");
   }
 
   await writeSourceFiles(targetDir, latest.files);
@@ -235,28 +229,56 @@ export async function pullIntoDirectory(
     await writeRule(targetDir, latest.ruleText);
   }
 
-  await updateProjectState(targetDir, {
-    ...projectConfig,
-    resultId: latest.resultId,
-    sourceRevisionId: latest.sourceRevisionId,
-    sourceTreeHash: latest.treeHash,
-    manifestId: latest.manifestId ?? projectConfig.manifestId,
-    ruleId: latest.ruleId ?? projectConfig.ruleId,
-  });
+  const pulledProjectConfig = buildPulledProjectConfig(
+    config,
+    projectConfig,
+    latest,
+  );
+  await updateProjectState(targetDir, pulledProjectConfig);
 
   await writeSnapshot(targetDir);
+  return pulledProjectConfig;
+}
+
+export function buildPulledProjectConfig(
+  config: Pick<ResolvedConfig, "apiBaseUrl" | "webBaseUrl">,
+  projectConfig: ProjectConfig,
+  latest: RemoteProjectSources,
+): ProjectConfig {
+  return updateProjectAuthoringState(
+    {
+      ...projectConfig,
+      apiBaseUrl: projectConfig.apiBaseUrl ?? config.apiBaseUrl,
+      webBaseUrl: projectConfig.webBaseUrl ?? config.webBaseUrl,
+    },
+    {
+      authoringStateId: latest.authoringStateId,
+      sourceRevisionId: latest.sourceRevisionId,
+      sourceTreeHash: latest.treeHash,
+      manifestId: latest.manifestId ?? projectConfig.authoring?.manifestId,
+      manifestContentHash:
+        latest.manifestContentHash ??
+        projectConfig.authoring?.manifestContentHash,
+      ruleId: latest.ruleId ?? projectConfig.authoring?.ruleId,
+    },
+  );
 }
 
 export async function reconcileRemoteChangesIntoWorkspace(options: {
   projectRoot: string;
   projectConfig: ProjectConfig;
-  baseResultId: string;
-  latestResultId: string;
+  baseAuthoringStateId: string;
+  latestAuthoringStateId: string;
 }): Promise<RemoteReconcileResult> {
-  const { projectRoot, projectConfig, baseResultId, latestResultId } = options;
+  const {
+    projectRoot,
+    projectConfig,
+    baseAuthoringStateId,
+    latestAuthoringStateId,
+  } = options;
   const [base, latest, localFiles] = await Promise.all([
-    fetchRemoteSources(projectConfig.gameId, baseResultId),
-    fetchRemoteSources(projectConfig.gameId, latestResultId),
+    fetchRemoteSources(projectConfig.gameId, baseAuthoringStateId),
+    fetchRemoteSources(projectConfig.gameId, latestAuthoringStateId),
     collectLocalFiles(projectRoot),
   ]);
 

@@ -15,18 +15,44 @@ export type GlobalConfig = {
   refreshToken?: string;
 };
 
+export type ProjectAuthoringState = {
+  authoringStateId?: string;
+  ruleId?: string;
+  manifestId?: string;
+  manifestContentHash?: string;
+  sourceRevisionId?: string;
+  sourceTreeHash?: string;
+};
+
+export type ProjectCompileAttempt = {
+  resultId?: string;
+  jobId?: string;
+  authoringStateId: string;
+  status: "successful" | "failed";
+  diagnosticsSummary?: string;
+};
+
+export type ProjectCompileState = {
+  latestAttempt?: ProjectCompileAttempt;
+  latestSuccessful?: {
+    resultId: string;
+    authoringStateId: string;
+  };
+};
+
 export type ProjectConfig = {
   gameId: string;
   slug: string;
+  authoring?: ProjectAuthoringState;
+  compile?: ProjectCompileState;
+  apiBaseUrl?: string;
+  webBaseUrl?: string;
   ruleId?: string;
   manifestId?: string;
-  /** SHA-256 hash returned by the server after the last manifest push. Used to detect server-side changes. */
   manifestContentHash?: string;
   resultId?: string;
   sourceRevisionId?: string;
   sourceTreeHash?: string;
-  apiBaseUrl?: string;
-  webBaseUrl?: string;
 };
 
 export type Snapshot = {

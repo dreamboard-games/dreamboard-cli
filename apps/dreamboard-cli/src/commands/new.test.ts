@@ -30,6 +30,11 @@ mock.module("@dreamboard/api-client", () => ({
     error: null,
     response: { status: 200 },
   })),
+  getGame: mock(async () => ({
+    data: { id: "game-1" },
+    error: null,
+    response: { status: 200 },
+  })),
   getLatestGameRule: mock(async () => ({
     data: { ruleText: "" },
     error: null,
@@ -71,7 +76,6 @@ mock.module("../config/resolve.js", () => ({
 mock.module("../flags.js", () => ({
   ...actualFlags,
   parseNewCommandArgs: (args: Record<string, unknown>) => args,
-  parseUpdateCommandArgs: (args: Record<string, unknown>) => args,
   parseCloneCommandArgs: (args: Record<string, unknown>) => args,
 }));
 
@@ -93,6 +97,23 @@ mock.module("../utils/fs.js", () => ({
 
 mock.module("../services/api/index.js", () => ({
   tryGetGameBySlug: async () => null,
+  createAuthoringStateSdk: async () => ({
+    authoringStateId: "authoring-1",
+    sourceRevisionId: "source-revision-1",
+    sourceTreeHash: "tree-hash-1",
+    manifestId: "manifest-1",
+    manifestContentHash: "content-hash",
+    ruleId: "rule-1",
+  }),
+  queueCompiledResultJobSdk: async () => ({
+    jobId: "compile-job-1",
+  }),
+  createSourceRevisionSdk: async () => ({
+    id: "source-revision-1",
+    treeHash: "tree-hash-1",
+  }),
+  findCompiledResultsForAuthoringState: async () => [],
+  getAuthoringHeadSdk: async () => null,
   getLatestRuleIdSdk: async () => "rule-1",
   saveManifestSdk: async () => ({
     manifestId: "manifest-1",
@@ -102,6 +123,14 @@ mock.module("../services/api/index.js", () => ({
   isManifestDifferentFromServer: async () => false,
   saveRuleSdk: async () => ({
     ruleId: "rule-1",
+  }),
+  waitForCompiledResultJobSdk: async () => ({
+    compiledResult: {
+      id: "result-1",
+      authoringStateId: "authoring-1",
+      success: true,
+      sourceRevisionId: "source-revision-1",
+    },
   }),
 }));
 

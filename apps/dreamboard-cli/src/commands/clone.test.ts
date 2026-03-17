@@ -1,14 +1,34 @@
 import path from "node:path";
 import { expect, mock, test } from "bun:test";
 
-let latestCompiledResultData: { id: string } | null = null;
+mock.restore();
+
+let authoringHeadData: {
+  authoringStateId: string;
+  sourceRevisionId: string;
+  sourceTreeHash: string;
+  manifestId: string;
+  manifestContentHash: string;
+  ruleId: string;
+} | null = {
+  authoringStateId: "authoring-1",
+  sourceRevisionId: "source-revision-1",
+  sourceTreeHash: "tree-hash-1",
+  manifestId: "manifest-1",
+  manifestContentHash: "content-hash",
+  ruleId: "rule-1",
+};
 const pullIntoDirectory = mock(async () => undefined);
 const writeScaffoldFiles = mock(async () => undefined);
+const actualApiClient = await import("@dreamboard/api-client");
 const actualFlags = await import("../flags.js");
 const actualFs = await import("../utils/fs.js");
 const actualLocalFiles = await import("../services/project/local-files.js");
+const actualSync = await import("../services/project/sync.js");
+const actualStrings = await import("../utils/strings.js");
 
 mock.module("@dreamboard/api-client", () => ({
+  ...actualApiClient,
   createGame: mock(async () => ({
     data: { id: "game-1" },
     error: null,
@@ -23,6 +43,31 @@ mock.module("@dreamboard/api-client", () => ({
     error: null,
     response: { status: 200 },
   })),
+  getGame: mock(async () => ({
+    data: { id: "game-1" },
+    error: null,
+    response: { status: 200 },
+  })),
+  getGameSources: mock(async () => ({
+    data: {
+      authoringStateId: "authoring-state-2",
+      files: {
+        "app/phases/setup.ts": "export const phase = {}\n",
+      },
+      sourceRevisionId: "source-revision-2",
+      treeHash: "tree-hash-2",
+      manifestId: "manifest-2",
+      manifest: {
+        stateMachine: {
+          states: [{ name: "setup" }],
+        },
+      },
+      ruleId: "rule-2",
+      ruleText: "# Remote rule\n",
+    },
+    error: null,
+    response: { status: 200 },
+  })),
   getLatestGameRule: mock(async () => ({
     data: { ruleText: "" },
     error: null,
@@ -33,9 +78,6 @@ mock.module("@dreamboard/api-client", () => ({
       contentHash: "content-hash",
     },
     error: null,
-  })),
-  getLatestCompiledResult: mock(async () => ({
-    data: latestCompiledResultData,
   })),
   findManifests: mock(async () => ({
     data: { currentManifestId: "manifest-1" },
@@ -74,7 +116,6 @@ mock.module("../config/resolve.js", () => ({
 mock.module("../flags.js", () => ({
   ...actualFlags,
   parseNewCommandArgs: (args: Record<string, unknown>) => args,
-  parseUpdateCommandArgs: (args: Record<string, unknown>) => args,
   parseCloneCommandArgs: (args: Record<string, unknown>) => args,
 }));
 
@@ -83,6 +124,7 @@ mock.module("../config/global-config.js", () => ({
 }));
 
 mock.module("../utils/strings.js", () => ({
+  ...actualStrings,
   normalizeSlug: (value: string) => value,
   titleFromSlug: () => "Test Game",
 }));
@@ -91,11 +133,33 @@ mock.module("../utils/fs.js", () => ({
   ...actualFs,
   ensureDir: async () => undefined,
   installSkillFile: async () => undefined,
-  writeTextFile: async () => undefined,
 }));
 
 mock.module("../services/api/index.js", () => ({
   tryGetGameBySlug: async () => null,
+  createAuthoringStateSdk: async () => ({
+    authoringStateId: "authoring-1",
+    sourceRevisionId: "source-revision-1",
+    sourceTreeHash: "tree-hash-1",
+    manifestId: "manifest-1",
+    manifestContentHash: "content-hash",
+    ruleId: "rule-1",
+  }),
+  queueCompiledResultJobSdk: async () => ({
+    jobId: "compile-job-1",
+  }),
+  createSourceRevisionSdk: async () => ({
+    id: "source-revision-1",
+    treeHash: "tree-hash-1",
+  }),
+  getAuthoringHeadSdk: async () => authoringHeadData,
+  findCompiledResultsForAuthoringState: async () => [
+    {
+      id: "result-2",
+      authoringStateId: "authoring-1",
+      success: true,
+    },
+  ],
   getLatestRuleIdSdk: async () => "rule-1",
   saveManifestSdk: async () => ({
     manifestId: "manifest-1",
@@ -106,25 +170,18 @@ mock.module("../services/api/index.js", () => ({
   saveRuleSdk: async () => ({
     ruleId: "rule-1",
   }),
+  waitForCompiledResultJobSdk: async () => ({
+    compiledResult: {
+      id: "result-1",
+      authoringStateId: "authoring-1",
+      success: true,
+      sourceRevisionId: "source-revision-1",
+    },
+  }),
 }));
 
 mock.module("../services/project/local-files.js", () => ({
   ...actualLocalFiles,
-  collectLocalFiles: async () => ({}),
-  getLocalDiff: async () => ({
-    modified: [],
-    added: [],
-    deleted: [],
-  }),
-  loadManifest: async () => ({
-    stateMachine: {
-      states: [{ name: "setup" }],
-    },
-  }),
-  loadRule: async () => "",
-  writeManifest: async () => undefined,
-  writeRule: async () => undefined,
-  writeSnapshotFromFiles: async () => undefined,
   writeScaffoldFiles,
 }));
 
@@ -133,7 +190,12 @@ mock.module("../config/project-config.js", () => ({
 }));
 
 mock.module("../services/project/sync.js", () => ({
+  ...actualSync,
   pullIntoDirectory,
+}));
+
+mock.module("../services/project/static-scaffold.js", () => ({
+  scaffoldStaticWorkspace: async () => undefined,
 }));
 
 mock.module("../utils/errors.js", () => ({
@@ -143,6 +205,8 @@ mock.module("../utils/errors.js", () => ({
 const cloneCommand = (await import("./clone.ts")).default;
 
 test("clone command rejects invalid scaffold payloads before writing files", async () => {
+  authoringHeadData = null;
+
   await expect(
     cloneCommand.run({
       args: {
@@ -155,7 +219,28 @@ test("clone command rejects invalid scaffold payloads before writing files", asy
 });
 
 test("clone uses the compiled-result sync path when the project already has a remote result", async () => {
-  latestCompiledResultData = { id: "result-2" };
+  authoringHeadData = {
+    authoringStateId: "authoring-1",
+    sourceRevisionId: "source-revision-1",
+    sourceTreeHash: "tree-hash-1",
+    manifestId: "manifest-1",
+    manifestContentHash: "content-hash",
+    ruleId: "rule-1",
+  };
+  pullIntoDirectory.mockImplementation(async () => ({
+    gameId: "game-1",
+    slug: "test-game",
+    apiBaseUrl: "https://api.example.com",
+    webBaseUrl: "https://web.example.com",
+    authoring: {
+      authoringStateId: "authoring-1",
+      sourceRevisionId: "source-revision-1",
+      sourceTreeHash: "tree-hash-1",
+      manifestId: "manifest-1",
+      manifestContentHash: "content-hash",
+      ruleId: "rule-1",
+    },
+  }));
 
   await cloneCommand.run({
     args: {
@@ -173,6 +258,8 @@ test("clone uses the compiled-result sync path when the project already has a re
     {
       gameId: "game-1",
       slug: "test-game",
+      apiBaseUrl: "https://api.example.com",
+      webBaseUrl: "https://web.example.com",
     },
   );
   expect(writeScaffoldFiles).not.toHaveBeenCalled();

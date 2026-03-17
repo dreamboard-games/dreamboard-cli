@@ -71,24 +71,24 @@ Clone an existing game:
 dreamboard clone my-game
 ```
 
-Update local manifest/rule changes and regenerate scaffolded files:
+Sync local authored changes and regenerate scaffolded files:
 
 ```bash
-dreamboard update
-dreamboard update --update-sdk
+dreamboard sync
+dreamboard sync --update-sdk
 ```
 
-If the remote has advanced unexpectedly, `dreamboard update` fails fast and keeps the local workspace as the source of truth. Reconcile explicitly with:
+If the remote has advanced unexpectedly, reconcile authored changes explicitly with:
 
 ```bash
-dreamboard update --pull
+dreamboard pull
 ```
 
-Push local edits (recompile):
+Compile the current authored head:
 
 ```bash
-dreamboard push
-dreamboard push --force
+dreamboard compile
+dreamboard compile --skip-local-check
 ```
 
 Inspect local vs remote state:
@@ -107,7 +107,7 @@ dreamboard run --seed 1337
 dreamboard run --new-session
 ```
 
-If no successful compile exists yet, `dreamboard run` will compile from the latest scaffolded snapshot automatically.
+If no successful compile exists for the current authored state yet, `dreamboard run` will ask you to run `dreamboard compile` first.
 By default, the CLI uses `manifest.json`'s `playerConfig.minPlayers` to decide how many seats to create.
 
 `dreamboard run` now defaults to a wait-and-observe loop when no scenario is provided:

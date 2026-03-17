@@ -2,11 +2,37 @@ import {
   getCompiledResult,
   getJob,
   getLatestCompiledResult,
+  listCompiledResults,
   type CompiledResult,
   type JobDetailResponse,
 } from "@dreamboard/api-client";
 import { formatApiError } from "../../utils/errors.js";
 import { sleep } from "../../utils/strings.js";
+
+function firstNonEmpty(
+  ...values: Array<string | null | undefined>
+): string | null {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function formatTerminalCompileJobMessage(
+  job: Pick<
+    JobDetailResponse,
+    "jobId" | "status" | "phase" | "message" | "errorMessage"
+  >,
+): string {
+  const detail = firstNonEmpty(job.errorMessage, job.message);
+  const phase = firstNonEmpty(job.phase);
+  const prefix = `Compile ${job.status.toLowerCase()}${phase ? ` [${phase}]` : ""}`;
+  return detail
+    ? `${prefix}: ${detail}`
+    : `${prefix}: job ${job.jobId} ended before a compiled result was created.`;
+}
 
 export async function findLatestSuccessfulCompiledResult(
   gameId: string,
@@ -16,6 +42,26 @@ export async function findLatestSuccessfulCompiledResult(
     query: { successOnly: true },
   });
   return data ?? null;
+}
+
+export async function findCompiledResultsForAuthoringState(options: {
+  gameId: string;
+  authoringStateId: string;
+}): Promise<CompiledResult[]> {
+  const { gameId, authoringStateId } = options;
+  const { data, error, response } = await listCompiledResults({
+    path: { gameId },
+    query: {
+      limit: 100,
+      authoringStateId,
+    },
+  });
+  if (error || !data) {
+    throw new Error(
+      formatApiError(error, response, "Failed to list compiled results"),
+    );
+  }
+  return data.results;
 }
 
 export async function getCompiledResultSdk(
@@ -69,9 +115,7 @@ export async function waitForCompiledResultJobSdk(options: {
       const compiledResultId =
         job.createdCompiledResultId ?? job.createdAppScriptId;
       if (!compiledResultId) {
-        throw new Error(
-          job.errorMessage ?? `Compile job ${jobId} finished without a result.`,
-        );
+        throw new Error(formatTerminalCompileJobMessage(job));
       }
 
       const compiledResult = await getCompiledResultSdk(
@@ -82,9 +126,7 @@ export async function waitForCompiledResultJobSdk(options: {
     }
 
     if (job.status === "CANCELLED" || job.status === "INTERRUPTED") {
-      throw new Error(
-        job.errorMessage ?? `Compile job ${jobId} ${job.status.toLowerCase()}.`,
-      );
+      throw new Error(formatTerminalCompileJobMessage(job));
     }
 
     await sleep(1000);

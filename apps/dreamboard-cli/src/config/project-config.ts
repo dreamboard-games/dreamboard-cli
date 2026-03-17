@@ -3,11 +3,46 @@ import type { ProjectConfig } from "../types.js";
 import { PROJECT_DIR_NAME, PROJECT_CONFIG_FILE } from "../constants.js";
 import { ensureDir, exists, readJsonFile, writeJsonFile } from "../utils/fs.js";
 
+function normalizeProjectConfig(config: ProjectConfig): ProjectConfig {
+  const authoring = config.authoring ?? {
+    authoringStateId: undefined,
+    ruleId: config.ruleId,
+    manifestId: config.manifestId,
+    manifestContentHash: config.manifestContentHash,
+    sourceRevisionId: config.sourceRevisionId,
+    sourceTreeHash: config.sourceTreeHash,
+  };
+  const compile = config.compile ?? {
+    latestAttempt: config.resultId
+      ? {
+          resultId: config.resultId,
+          authoringStateId: authoring.authoringStateId ?? "",
+          status: "successful",
+        }
+      : undefined,
+    latestSuccessful: config.resultId
+      ? {
+          resultId: config.resultId,
+          authoringStateId: authoring.authoringStateId ?? "",
+        }
+      : undefined,
+  };
+
+  return {
+    gameId: config.gameId,
+    slug: config.slug,
+    authoring,
+    compile,
+    apiBaseUrl: config.apiBaseUrl,
+    webBaseUrl: config.webBaseUrl,
+  };
+}
+
 export async function loadProjectConfig(
   rootDir: string,
 ): Promise<ProjectConfig> {
   const filePath = path.join(rootDir, PROJECT_DIR_NAME, PROJECT_CONFIG_FILE);
-  return readJsonFile<ProjectConfig>(filePath);
+  return normalizeProjectConfig(await readJsonFile<ProjectConfig>(filePath));
 }
 
 export async function updateProjectState(
@@ -16,7 +51,10 @@ export async function updateProjectState(
 ): Promise<void> {
   const dir = path.join(rootDir, PROJECT_DIR_NAME);
   await ensureDir(dir);
-  await writeJsonFile(path.join(dir, PROJECT_CONFIG_FILE), config);
+  await writeJsonFile(
+    path.join(dir, PROJECT_CONFIG_FILE),
+    normalizeProjectConfig(config),
+  );
 }
 
 export async function findProjectRoot(

@@ -10,8 +10,8 @@ Use this as the default end-to-end workflow for a new Dreamboard game. The goal 
    Refer to
    - [references/rule-authoring.md](rule-authoring.md),
    - [references/manifest-authoring.md](manifest-authoring.md)
-3. Run `dreamboard update` after every manifest or rule change
-   Quality bar: do this immediately after each rule or manifest edit so generated scaffold, types, and framework assumptions stay in sync. Do not keep coding against stale generated files.
+3. Run `dreamboard sync` after every manifest or rule change
+   Quality bar: do this immediately after each rule or manifest edit so generated scaffold, types, and remote authored state stay in sync. Do not keep coding against stale generated files.
 4. Implement rules in `app/phases/*.ts` and UI data in `shared/ui-args.ts`
    Quality bar: every gameplay phase must be implemented end to end. Cover all rule branches, all legal player actions, all transitions, all round-resolution logic, and all game-end paths. `shared/ui-args.ts` must provide enough data for the UI to render every playable state without guessing or reconstructing hidden game logic in React.
    Refer to
@@ -24,10 +24,10 @@ Use this as the default end-to-end workflow for a new Dreamboard game. The goal 
    Quality bar: the entire game must be playable through the UI, including setup, core turns, confirmations, resolution states, errors and disabled states, and end-of-game feedback. Follow the styling requirements in [ui-style-guide.md](ui-style-guide.md). Avoid half-finished interfaces such as raw debug JSON, missing controls, placeholder labels, or flows that require reading logs to understand what to do next.
    Refer to
    - [references/ui-best-practices.md](ui-best-practices.md)
-6. Typecheck from the game root: `bun install && bun run typecheck`
+6. Typecheck from the game root: `npm install && npm run typecheck`
    Quality bar: typecheck must pass cleanly from the game root with no ignored errors and no dead code left behind from iteration.
-7. Push compiled changes: `dreamboard push`
-   Quality bar: the pushed build should reflect the same rules and UI you validated locally, with no pending local-only fixes or known desync between authored files and compiled output.
+7. Compile the current authored state: `dreamboard compile`
+   Quality bar: the compiled build should reflect the same rules and UI you validated locally, with no pending local-only fixes or known desync between authored files and the remote authored state.
 8. Generate deterministic bases for testing: `dreamboard test generate`
    Quality bar: regenerate bases whenever initial setup, compiled behavior, or game identity changes. The generated bases should be stable enough that regressions are easy to spot.
 9. Run regression scenarios: `dreamboard test run`
@@ -39,7 +39,7 @@ Use this as the default end-to-end workflow for a new Dreamboard game. The goal 
     Refer to
     - [references/adversarial-testing.md](adversarial-testing.md)
 
-Do not treat UI, rules, and tests as separate finish-later tracks. A game is only complete when the authored rules, app logic, UI flow, pushed build, and regression coverage all agree on the same behavior.
+Do not treat UI, rules, and tests as separate finish-later tracks. A game is only complete when the authored rules, app logic, UI flow, compiled build, and regression coverage all agree on the same behavior.
 
 ## What "Done" Means
 

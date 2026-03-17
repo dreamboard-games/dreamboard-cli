@@ -142,7 +142,7 @@ test("migrates legacy scenario testing import to local testing-types", async () 
   }
 });
 
-test("fails push preflight when shared static files are missing", async () => {
+test("fails compile preflight when shared static files are missing", async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "db-static-scaffold-"));
   const missingFilePath = path.join(tempRoot, "shared", "index.ts");
 
@@ -151,7 +151,7 @@ test("fails push preflight when shared static files are missing", async () => {
     await rm(missingFilePath, { force: true });
 
     await expect(assertCliStaticScaffoldComplete(tempRoot)).rejects.toThrow(
-      "dreamboard update",
+      "dreamboard sync",
     );
     await expect(assertCliStaticScaffoldComplete(tempRoot)).rejects.toThrow(
       "shared/index.ts",
@@ -161,7 +161,7 @@ test("fails push preflight when shared static files are missing", async () => {
   }
 });
 
-test("fails push preflight when sdk scaffold files are missing", async () => {
+test("fails compile preflight when sdk scaffold files are missing", async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "db-static-scaffold-"));
   const missingFilePath = path.join(
     tempRoot,
@@ -183,7 +183,7 @@ test("fails push preflight when sdk scaffold files are missing", async () => {
   }
 });
 
-test("fails push preflight when cli static files are deleted locally", async () => {
+test("fails compile preflight when cli static files are deleted locally", async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "db-static-scaffold-"));
 
   try {
@@ -194,7 +194,7 @@ test("fails push preflight when cli static files are deleted locally", async () 
     ).rejects.toThrow("deleted");
     await expect(
       assertCliStaticScaffoldComplete(tempRoot, ["ui/sdk/components/Card.tsx"]),
-    ).rejects.toThrow("dreamboard update");
+    ).rejects.toThrow("dreamboard sync");
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }

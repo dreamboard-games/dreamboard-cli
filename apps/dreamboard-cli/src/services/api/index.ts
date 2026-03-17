@@ -1,4 +1,9 @@
 export {
+  createAuthoringStateSdk,
+  getAuthoringHeadSdk,
+} from "./authoring-state-api.js";
+export {
+  findCompiledResultsForAuthoringState,
   findLatestSuccessfulCompiledResult,
   getCompiledResultSdk,
   waitForCompiledResultJobSdk,
@@ -12,6 +17,6 @@ export {
 } from "./manifest-api.js";
 export { getLatestRuleIdSdk, saveRuleSdk } from "./rule-api.js";
 export {
-  createCompiledResultSdk,
   createSourceRevisionSdk,
+  queueCompiledResultJobSdk,
 } from "./source-revisions-api.js";

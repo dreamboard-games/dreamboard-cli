@@ -11,6 +11,7 @@ import consola from "consola";
 import type { ProjectConfig } from "../../types.js";
 import { exists } from "../../utils/fs.js";
 import { hashContent } from "../../utils/crypto.js";
+import { getProjectAuthoringState } from "../project/project-state.js";
 import { loadManifest } from "../project/local-files.js";
 
 const READY_PREFIX = "HARNESS_READY ";
@@ -186,6 +187,7 @@ async function prepareLocalHarnessFixture(options: {
   const bundleHash = hashContent(bundleContent);
   const gameSlug =
     options.projectConfig.slug || path.basename(options.projectRoot);
+  const authoring = getProjectAuthoringState(options.projectConfig);
 
   return {
     bundleRoot,
@@ -194,14 +196,11 @@ async function prepareLocalHarnessFixture(options: {
       options.projectConfig.gameId,
       `game:${gameSlug}:${options.projectRoot}`,
     ),
-    manifestId: normalizeUuid(
-      options.projectConfig.manifestId,
-      `manifest:${manifestHash}`,
-    ),
+    manifestId: normalizeUuid(authoring.manifestId, `manifest:${manifestHash}`),
     compiledResultId: stableUuid(`compiled:${manifestHash}:${bundleHash}`),
     ruleId: normalizeUuid(
-      options.projectConfig.ruleId,
-      `rule:${gameSlug}:${options.projectConfig.ruleId ?? "local"}`,
+      authoring.ruleId,
+      `rule:${gameSlug}:${authoring.ruleId ?? "local"}`,
     ),
     gameSlug,
     gameName: toTitleCase(gameSlug),
