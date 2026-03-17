@@ -211,10 +211,13 @@ Public repo layout:
 
 ```bash
 apps/dreamboard-cli/   # CLI code
+packages/api-client/   # public generated API client
+packages/sdk-types/    # public authoring + scaffold contract
 skills/                # public skill source
 ```
 
 Important: `apps/dreamboard-cli/skills` is not the published skill location. In the public repo, skills belong at top-level `skills/`.
+The public mirror also needs fresh copies of `packages/api-client` and `packages/sdk-types`, because the published CLI bundles against those workspace packages during `build:published`.
 Keep local-only assets out of `skills/dreamboard/`; that tree is mirrored to GitHub and staged for npm publish.
 
 Build a staged public package:

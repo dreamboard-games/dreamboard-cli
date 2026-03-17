@@ -409,7 +409,7 @@ paths:
           $ref: "#/components/responses/InternalServerError"
     post:
       summary: Compile a source revision for a game
-      description: Compile a specific source revision with the provided manifest and rule IDs. Returns the newly created compiled result, including failed compilations with diagnostics.
+      description: Queue an asynchronous compile for a specific source revision with the provided manifest and rule IDs. Poll `/api/jobs/{jobId}` and fetch the final compiled result by ID when the job completes.
       operationId: createCompiledResult
       security:
         - BearerAuth: []
@@ -424,8 +424,39 @@ paths:
             schema:
               $ref: "#/components/schemas/CreateCompiledResultRequest"
       responses:
-        "201":
-          description: Compiled result created
+        "202":
+          description: Compile job accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateCompiledResultResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /api/games/{gameId}/compiled-results/{compiledResultId}:
+    parameters:
+      - $ref: "#/components/parameters/GameId"
+      - name: compiledResultId
+        in: path
+        required: true
+        description: Unique identifier for the compiled result
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get compiled result by ID
+      description: Fetch a specific compiled result for a game, including failed results and diagnostics.
+      operationId: getCompiledResult
+      security:
+        - BearerAuth: []
+      tags:
+        - Games
+      responses:
+        "200":
+          description: Compiled result found
           content:
             application/json:
               schema:
@@ -434,6 +465,8 @@ paths:
           $ref: "#/components/responses/BadRequestError"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
         "500":
           $ref: "#/components/responses/InternalServerError"
   /api/games/{gameId}/download:
@@ -3243,6 +3276,14 @@ components:
           type: string
           nullable: true
           description: Key/path for compiled UI artifacts. Null when UI compilation fails.
+        appFingerprint:
+          type: string
+          nullable: true
+          description: Deterministic fingerprint for the APP target inputs used by this compilation.
+        uiFingerprint:
+          type: string
+          nullable: true
+          description: Deterministic fingerprint for the UI target inputs used by this compilation.
         sourceRevisionId:
           type: string
           format: uuid
@@ -3299,6 +3340,16 @@ components:
         - sourceRevisionId
         - manifestId
         - ruleId
+    CreateCompiledResultResponse:
+      type: object
+      description: Accepted compile request response. The compilation continues asynchronously and can be tracked via the returned job ID.
+      properties:
+        jobId:
+          type: string
+          format: uuid
+          description: Agent job identifier for the queued compile
+      required:
+        - jobId
     GameSourcesResponse:
       type: object
       description: Response containing authored source files resolved through a compiled result's source revision.
@@ -3624,6 +3675,7 @@ components:
       enum:
         - APP_BUILD
         - UI_BUILD
+        - COMPILED_RESULT_BUILD
         - MODAL_SANDBOX
     AgentJobStatus:
       type: string
@@ -5385,6 +5437,28 @@ components:
             $ref: "#/components/schemas/ConversationSummary"
       required:
         - conversations
+    CompileJobCacheStatus:
+      type: string
+      description: Cache result for a specific compile target.
+      enum:
+        - hit
+        - miss
+    CompileJobCacheSummary:
+      type: object
+      description: Cache reuse summary for an async compile job.
+      properties:
+        app:
+          $ref: "#/components/schemas/CompileJobCacheStatus"
+          nullable: true
+        ui:
+          $ref: "#/components/schemas/CompileJobCacheStatus"
+          nullable: true
+    JobNumericMetrics:
+      type: object
+      description: Arbitrary numeric metrics recorded for a job. Keys are implementation-defined.
+      additionalProperties:
+        type: integer
+        format: int64
     JobDetailResponse:
       type: object
       description: Detailed information for an agent job
@@ -5424,6 +5498,28 @@ components:
           format: date-time
           nullable: true
           description: When the job completed
+        phase:
+          type: string
+          nullable: true
+          description: Current compile phase for COMPILED_RESULT_BUILD jobs.
+        queuePosition:
+          type: integer
+          format: int32
+          nullable: true
+          description: Zero-based queue position for queued compile jobs, when known.
+        cache:
+          $ref: "#/components/schemas/CompileJobCacheSummary"
+          nullable: true
+        message:
+          type: string
+          nullable: true
+          description: User-facing status message for the current phase or terminal result.
+        timings:
+          $ref: "#/components/schemas/JobNumericMetrics"
+          nullable: true
+        memory:
+          $ref: "#/components/schemas/JobNumericMetrics"
+          nullable: true
         createdRuleId:
           type: string
           format: uuid
@@ -5439,6 +5535,11 @@ components:
           format: uuid
           nullable: true
           description: App script (compiled result) ID created by this job
+        createdCompiledResultId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Compiled result ID created by this job
       required:
         - jobId
         - gameId

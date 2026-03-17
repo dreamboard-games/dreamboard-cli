@@ -1258,6 +1258,14 @@ export type CompiledResult = {
      */
     uiStorageKey?: string;
     /**
+     * Deterministic fingerprint for the APP target inputs used by this compilation.
+     */
+    appFingerprint?: string;
+    /**
+     * Deterministic fingerprint for the UI target inputs used by this compilation.
+     */
+    uiFingerprint?: string;
+    /**
      * Source revision used to produce this compilation
      */
     sourceRevisionId: string;
@@ -1292,6 +1300,16 @@ export type CreateCompiledResultRequest = {
      * Game rule used for this compilation
      */
     ruleId: string;
+};
+
+/**
+ * Accepted compile request response. The compilation continues asynchronously and can be tracked via the returned job ID.
+ */
+export type CreateCompiledResultResponse = {
+    /**
+     * Agent job identifier for the queued compile
+     */
+    jobId: string;
 };
 
 /**
@@ -1568,7 +1586,7 @@ export type AgentChatContextResponse = {
 /**
  * Type of agent job
  */
-export type AgentJobType = 'APP_BUILD' | 'UI_BUILD' | 'MODAL_SANDBOX';
+export type AgentJobType = 'APP_BUILD' | 'UI_BUILD' | 'COMPILED_RESULT_BUILD' | 'MODAL_SANDBOX';
 
 /**
  * Status of an agent job
@@ -3117,6 +3135,26 @@ export type ConversationsListResponse = {
 };
 
 /**
+ * Cache result for a specific compile target.
+ */
+export type CompileJobCacheStatus = 'hit' | 'miss';
+
+/**
+ * Cache reuse summary for an async compile job.
+ */
+export type CompileJobCacheSummary = {
+    app?: CompileJobCacheStatus;
+    ui?: CompileJobCacheStatus;
+};
+
+/**
+ * Arbitrary numeric metrics recorded for a job. Keys are implementation-defined.
+ */
+export type JobNumericMetrics = {
+    [key: string]: number;
+};
+
+/**
  * Detailed information for an agent job
  */
 export type JobDetailResponse = {
@@ -3151,6 +3189,21 @@ export type JobDetailResponse = {
      */
     completedAt?: string;
     /**
+     * Current compile phase for COMPILED_RESULT_BUILD jobs.
+     */
+    phase?: string;
+    /**
+     * Zero-based queue position for queued compile jobs, when known.
+     */
+    queuePosition?: number;
+    cache?: CompileJobCacheSummary;
+    /**
+     * User-facing status message for the current phase or terminal result.
+     */
+    message?: string;
+    timings?: JobNumericMetrics;
+    memory?: JobNumericMetrics;
+    /**
      * Rule ID created by this job
      */
     createdRuleId?: string;
@@ -3162,6 +3215,10 @@ export type JobDetailResponse = {
      * App script (compiled result) ID created by this job
      */
     createdAppScriptId?: string;
+    /**
+     * Compiled result ID created by this job
+     */
+    createdCompiledResultId?: string;
 };
 
 /**
@@ -4069,12 +4126,58 @@ export type CreateCompiledResultError = CreateCompiledResultErrors[keyof CreateC
 
 export type CreateCompiledResultResponses = {
     /**
-     * Compiled result created
+     * Compile job accepted
      */
-    201: CompiledResult;
+    202: CreateCompiledResultResponse;
 };
 
-export type CreateCompiledResultResponse = CreateCompiledResultResponses[keyof CreateCompiledResultResponses];
+export type CreateCompiledResultResponse2 = CreateCompiledResultResponses[keyof CreateCompiledResultResponses];
+
+export type GetCompiledResultData = {
+    body?: never;
+    path: {
+        /**
+         * Unique identifier for the game
+         */
+        gameId: string;
+        /**
+         * Unique identifier for the compiled result
+         */
+        compiledResultId: string;
+    };
+    query?: never;
+    url: '/api/games/{gameId}/compiled-results/{compiledResultId}';
+};
+
+export type GetCompiledResultErrors = {
+    /**
+     * Bad request - invalid input parameters
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized - authentication required
+     */
+    401: ErrorResponse;
+    /**
+     * Resource not found
+     */
+    404: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+};
+
+export type GetCompiledResultError = GetCompiledResultErrors[keyof GetCompiledResultErrors];
+
+export type GetCompiledResultResponses = {
+    /**
+     * Compiled result found
+     */
+    200: CompiledResult;
+};
+
+export type GetCompiledResultResponse = GetCompiledResultResponses[keyof GetCompiledResultResponses];
 
 export type DownloadGameSourcesData = {
     body?: never;
