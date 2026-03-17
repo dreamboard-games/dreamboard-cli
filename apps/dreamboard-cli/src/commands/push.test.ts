@@ -161,6 +161,34 @@ test("push skips the local typecheck when requested", async () => {
   ]);
 });
 
+test("push warns and continues when local typecheck tooling is unavailable", async () => {
+  const state = currentState();
+  state.getLocalDiffResult = {
+    modified: ["app/phases/setup.ts"],
+    added: [],
+    deleted: [],
+  };
+  state.localTypecheckResult = {
+    success: true,
+    skipped: true,
+    output:
+      "Skipping local typecheck: TypeScript CLI was not found in workspace dependencies or on PATH.",
+  };
+
+  await pushCommand.run({
+    args: {
+      env: "local",
+    },
+  });
+
+  expect(consoleMessages("warn")).toContain(
+    "Skipping local typecheck: TypeScript CLI was not found in workspace dependencies or on PATH.",
+  );
+  expect(consoleMessages("success")).not.toContain("Local typecheck passed.");
+  expect(state.calls.createSourceRevisionSdk).toHaveLength(1);
+  expect(state.calls.createCompiledResultSdk).toHaveLength(1);
+});
+
 test("push performs a full-source upload when no remote result exists", async () => {
   const state = currentState();
   state.projectConfig.resultId = undefined;
