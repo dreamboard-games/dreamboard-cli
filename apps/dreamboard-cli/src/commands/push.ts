@@ -193,15 +193,20 @@ export default defineCommand({
     if (!parsedArgs["skip-local-check"]) {
       consola.start("Running local typecheck...");
       const typecheckResult = await runLocalTypecheck(projectRoot);
-      if (!typecheckResult.success) {
+      if (typecheckResult.skipped) {
+        if (typecheckResult.output) {
+          consola.warn(typecheckResult.output);
+        }
+      } else if (!typecheckResult.success) {
         if (typecheckResult.output) {
           consola.error(typecheckResult.output);
         }
         throw new Error(
           "Local typecheck failed. Fix the diagnostics or re-run with --skip-local-check.",
         );
+      } else {
+        consola.success("Local typecheck passed.");
       }
-      consola.success("Local typecheck passed.");
     }
 
     const ruleChanged =

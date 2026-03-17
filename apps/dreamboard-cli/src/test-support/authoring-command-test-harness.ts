@@ -200,6 +200,7 @@ export type AuthoringCommandTestState = {
   localTypecheckResult: {
     success: boolean;
     output: string;
+    skipped?: boolean;
   };
   loadManifestResult: Record<string, unknown>;
   loadRuleResult: string;

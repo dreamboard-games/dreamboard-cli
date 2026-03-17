@@ -1,0 +1,47 @@
+import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { expect, test } from "bun:test";
+import { runLocalTypecheck } from "./local-typecheck.js";
+import { scaffoldStaticWorkspace } from "./static-scaffold.js";
+
+const TYPECHECK_FIXTURE_ROOT = path.resolve(
+  import.meta.dir,
+  "__fixtures__/static-typecheck",
+);
+
+async function seedDynamicFilesForTypecheck(tempRoot: string): Promise<void> {
+  const fixtureFiles = [
+    "shared/manifest.ts",
+    "shared/ui-args.ts",
+    "app/generated/guards.ts",
+    "ui/App.tsx",
+  ] as const;
+
+  for (const relativePath of fixtureFiles) {
+    const sourcePath = path.join(TYPECHECK_FIXTURE_ROOT, relativePath);
+    const targetPath = path.join(tempRoot, relativePath);
+    await mkdir(path.dirname(targetPath), { recursive: true });
+    await Bun.write(targetPath, await Bun.file(sourcePath).text());
+  }
+}
+
+test("runLocalTypecheck does not require Bun on PATH", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "db-local-typecheck-"));
+  const originalPath = process.env.PATH;
+
+  try {
+    await scaffoldStaticWorkspace(tempRoot, "new", { updateSdk: true });
+    await seedDynamicFilesForTypecheck(tempRoot);
+
+    process.env.PATH = "";
+
+    await expect(runLocalTypecheck(tempRoot)).resolves.toEqual({
+      success: true,
+      output: "",
+    });
+  } finally {
+    process.env.PATH = originalPath;
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+}, 20_000);
