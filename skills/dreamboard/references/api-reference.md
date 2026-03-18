@@ -2,7 +2,7 @@
 
 Use this page as a lookup while writing `app/phases/*.ts`.
 
-This is a reference-first document, not a modeling guide. For schema design, use [manifest-authoring.md](manifest-authoring.md). For hand-vs-deck decisions, use [hands-vs-decks.md](hands-vs-decks.md).
+This is a reference-first document, not a modeling guide. For schema design, use [manifest-authoring.md](manifest-authoring.md). For hand-vs-deck decisions, use [hands-vs-decks.md](hands-vs-decks.md). For board patterns from app logic through UI rendering, use [board-systems.md](board-systems.md).
 
 ## Read APIs (`ctx.state.*`)
 
@@ -44,6 +44,56 @@ This is a reference-first document, not a modeling guide. For schema design, use
 | -------------------- | ------------- | ------------------------------------- |
 | `.getGlobalState()`  | `GlobalState` | Global variables from manifest schema |
 | `.getCurrentState()` | `StateName`   | Current state machine state           |
+
+### `state.hexBoard`
+
+| Method                                        | Returns                  | Description              |
+| --------------------------------------------- | ------------------------ | ------------------------ |
+| `.getTile(boardId, tileId)`                   | `HexTileState`           | Get one tile             |
+| `.getAllTiles(boardId)`                       | `HexTileState[]`         | Get all tiles            |
+| `.getEdge(boardId, edgeId)`                   | `HexEdgeState \| null`   | Get one placed edge      |
+| `.getAllEdges(boardId)`                       | `HexEdgeState[]`         | Get all placed edges     |
+| `.getVertex(boardId, vertexId)`               | `HexVertexState \| null` | Get one placed vertex    |
+| `.getAllVertices(boardId)`                    | `HexVertexState[]`       | Get all placed vertices  |
+| `.getAdjacentTiles(boardId, tileId)`          | `HexTileState[]`         | Neighbor tiles           |
+| `.getTilesByOwner(boardId, ownerId)`          | `HexTileState[]`         | Owned tiles              |
+| `.getEdgesByOwner(boardId, ownerId)`          | `HexEdgeState[]`         | Owned edges              |
+| `.getVerticesByOwner(boardId, ownerId)`       | `HexVertexState[]`       | Owned vertices           |
+| `.getEdgesAdjacentToTile(boardId, tileId)`    | `HexEdgeState[]`         | Edges touching a tile    |
+| `.getVerticesAdjacentToTile(boardId, tileId)` | `HexVertexState[]`       | Vertices touching a tile |
+
+### `state.networkBoard`
+
+| Method                                | Returns                    | Description       |
+| ------------------------------------- | -------------------------- | ----------------- |
+| `.getNode(boardId, nodeId)`           | `NetworkNodeState \| null` | Get one node      |
+| `.getAllNodes(boardId)`               | `NetworkNodeState[]`       | Get all nodes     |
+| `.getEdge(boardId, edgeId)`           | `NetworkEdgeState \| null` | Get one edge      |
+| `.getAllEdges(boardId)`               | `NetworkEdgeState[]`       | Get all edges     |
+| `.getPiece(boardId, pieceId)`         | `NetworkPieceState`        | Get one piece     |
+| `.getAllPieces(boardId)`              | `NetworkPieceState[]`      | Get all pieces    |
+| `.getConnectedNodes(boardId, nodeId)` | `NetworkNodeState[]`       | Neighboring nodes |
+
+### `state.squareBoard`
+
+| Method                           | Returns              | Description               |
+| -------------------------------- | -------------------- | ------------------------- |
+| `.getCell(boardId, row, col)`    | `SquareCellState`    | Get one cell              |
+| `.getPieceAt(boardId, row, col)` | `SquarePieceState`   | Get the piece on a cell   |
+| `.getPiece(boardId, pieceId)`    | `SquarePieceState`   | Get one piece by ID       |
+| `.getAllCells(boardId)`          | `SquareCellState[]`  | Get all non-default cells |
+| `.getAllPieces(boardId)`         | `SquarePieceState[]` | Get all pieces            |
+
+### `state.trackBoard`
+
+| Method                             | Returns                   | Description                       |
+| ---------------------------------- | ------------------------- | --------------------------------- |
+| `.getSpace(boardId, spaceId)`      | `TrackSpaceState`         | Get one space                     |
+| `.getAllSpaces(boardId)`           | `TrackSpaceState[]`       | Get all spaces                    |
+| `.getSpaceByIndex(boardId, index)` | `TrackSpaceState \| null` | Look up by track index            |
+| `.getPiece(boardId, pieceId)`      | `TrackPieceState`         | Get one piece                     |
+| `.getAllPieces(boardId)`           | `TrackPieceState[]`       | Get all pieces                    |
+| `.getNextSpaces(boardId, spaceId)` | `TrackSpaceState[]`       | Supports linear or branching flow |
 
 ## Mutation APIs (`ctx.apis.*`)
 
@@ -117,6 +167,55 @@ Internal-only key-value store. **UI cannot access these values.**
 | -------------------------- | ------------------------- |
 | `.roll(dieId)`             | Roll a die                |
 | `.setValue(dieId, value?)` | Set die to specific value |
+
+### Board APIs (`apis.hexApi`, `apis.networkApi`, `apis.squareApi`, `apis.trackApi`)
+
+These four APIs are the engine-backed board mutation surface. In generated type files you may also see this described as `BoardApi`, with nested members like `BoardApi.hex` and `BoardApi.square`. In phase handlers, the generated context exposes them directly on `ctx.apis`.
+
+`ZoneMap` and `SlotSystem` are not part of this engine-backed surface. They are UI patterns documented in [board-systems.md](board-systems.md).
+
+### `apis.hexApi`
+
+| Method                                                               | Description                               |
+| -------------------------------------------------------------------- | ----------------------------------------- |
+| `.updateTile(boardId, tileId, owner?, typeId?, label?, properties?)` | Update or initialize a tile               |
+| `.placeEdge(boardId, hex1, hex2)`                                    | Create a placed edge between two tiles    |
+| `.updateEdge(boardId, edgeId, owner?, typeId?, properties?)`         | Update a placed edge                      |
+| `.placeVertex(boardId, hex1, hex2, hex3)`                            | Create a placed vertex across three tiles |
+| `.updateVertex(boardId, vertexId, owner?, typeId?, properties?)`     | Update a placed vertex                    |
+| `.setTilePosition(boardId, tileId, q, r)`                            | Override tile coordinates                 |
+| `.shuffleTilePositions(boardId, tileIds?)`                           | Shuffle some or all tile positions        |
+
+### `apis.networkApi`
+
+| Method                                                               | Description                        |
+| -------------------------------------------------------------------- | ---------------------------------- |
+| `.updateNode(boardId, nodeId, owner?, typeId?, label?, properties?)` | Update a node                      |
+| `.placeEdge(boardId, from, to)`                                      | Create an edge between nodes       |
+| `.updateEdge(boardId, edgeId, owner?, typeId?, label?, properties?)` | Update an edge                     |
+| `.movePiece(boardId, pieceId, toNodeId)`                             | Move a piece onto a node           |
+| `.removePiece(boardId, pieceId)`                                     | Remove a piece from the board      |
+| `.setNodePosition(boardId, nodeId, x, y)`                            | Override node coordinates          |
+| `.shuffleNodePositions(boardId, nodeIds?)`                           | Shuffle some or all node positions |
+
+### `apis.squareApi`
+
+| Method                                                         | Description             |
+| -------------------------------------------------------------- | ----------------------- |
+| `.updateCell(boardId, row, col, owner?, typeId?, properties?)` | Update one cell         |
+| `.placePiece(boardId, pieceId, row, col, typeId, owner?)`      | Place a piece on a cell |
+| `.movePiece(boardId, pieceId, toRow, toCol)`                   | Move a piece            |
+| `.removePiece(boardId, pieceId)`                               | Remove a piece          |
+
+### `apis.trackApi`
+
+| Method                                                                | Description                  |
+| --------------------------------------------------------------------- | ---------------------------- |
+| `.updateSpace(boardId, spaceId, owner?, typeId?, name?, properties?)` | Update one space             |
+| `.setSpacePosition(boardId, spaceId, index, x, y, nextSpaces?)`       | Set layout and track flow    |
+| `.placePiece(boardId, pieceId, spaceId, typeId?, owner?)`             | Place a piece on a space     |
+| `.movePiece(boardId, pieceId, toSpaceId)`                             | Move a piece along the track |
+| `.removePiece(boardId, pieceId)`                                      | Remove a piece               |
 
 ## Typed KV Store
 

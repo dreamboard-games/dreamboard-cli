@@ -68,14 +68,61 @@ Use these from `./sdk/components/`.
 
 ### Board components
 
-| Component      | Use case                      | Hook                              |
-| -------------- | ----------------------------- | --------------------------------- |
-| `SquareGrid`   | Chess, checkers, grid tactics | `useSquareBoard(boardId)`         |
-| `HexGrid`      | Hex maps and wargames         | `useHexBoard(boardId)`            |
-| `TrackBoard`   | Race tracks and score tracks  | `useTrackBoard(boardId)`          |
-| `NetworkGraph` | Connected-node boards         | `useNetworkBoard(boardId)`        |
-| `ZoneMap`      | Area-control boards           | `useZoneMap(zones, pieces)`       |
-| `SlotSystem`   | Worker placement              | `useSlotSystem(slots, occupants)` |
+| Component      | Use case                      | Primary hook                      | Authoritative source                    |
+| -------------- | ----------------------------- | --------------------------------- | --------------------------------------- |
+| `SquareGrid`   | Chess, checkers, grid tactics | `useSquareBoard(boardId)`         | Engine square board                     |
+| `HexGrid`      | Hex maps and wargames         | `useHexBoard(boardId)`            | Engine hex board                        |
+| `TrackBoard`   | Race tracks and score tracks  | `useTrackBoard(boardId)`          | Engine track board                      |
+| `NetworkGraph` | Connected-node boards         | `useNetworkBoard(boardId)`        | Engine network board                    |
+| `ZoneMap`      | Area-control boards           | `useZoneMap(zones, pieces)`       | `getUIArgs()` projection from app state |
+| `SlotSystem`   | Worker placement              | `useSlotSystem(slots, occupants)` | `getUIArgs()` projection from app state |
+
+For the full board workflow, including `BoardApi` usage in app logic and the distinction between engine-backed boards and UI-only patterns, see [board-systems.md](board-systems.md).
+
+## Board Data Flow
+
+- `HexGrid`, `SquareGrid`, `TrackBoard`, and `NetworkGraph` should read their structure directly from `use*Board(boardId)`.
+- Use `getUIArgs()` for transient UI concerns around those boards: legal targets, placement mode, selected IDs, previews, or hover metadata.
+- `ZoneMap` and `SlotSystem` do not have engine board definitions. Build their `zones`, `pieces`, `slots`, or `occupants` arrays in `getUIArgs()` from authoritative app state.
+- If React can derive something cheaply from a board hook, do not also send it through `getUIArgs()`.
+
+## Board-Specific Notes
+
+### `HexGrid`
+
+- Pair with `useHexBoard(boardId)`.
+- Best for Catan-style tiles, roads, settlements, territory hexes, and movement on axial coordinates.
+- Use `interactiveVertices` and `interactiveEdges` for placement UX, but keep legality checks in app logic.
+
+### `SquareGrid`
+
+- Pair with `useSquareBoard(boardId)` for authoritative board state.
+- Add `useSquareGrid(...)` only when the UI needs helper math such as neighbors, blocked cells, or algebraic coordinates.
+- Keep highlights, legal moves, and drag/selection state outside the board model.
+
+### `TrackBoard`
+
+- Pair with `useTrackBoard(boardId)`.
+- Use for laps, score tracks, branching race paths, or circular movement.
+- Put move previews and legal-destination indicators in `getUIArgs()`.
+
+### `NetworkGraph`
+
+- Pair with `useNetworkBoard(boardId)`.
+- Use for city-route maps, graphs, transit networks, and adjacency-based movement.
+- Add `useNetworkGraph(nodes, edges, pieces)` only for extra view-side graph helpers.
+
+### `ZoneMap`
+
+- Use when your game is expressed as named regions instead of one of Dreamboard's built-in engine board types.
+- Return zone definitions and zone pieces through `getUIArgs()`.
+- Keep rule ownership and scoring in app state, not inside local React state.
+
+### `SlotSystem`
+
+- Use for worker placement and action-space layouts.
+- Return slot definitions and occupants through `getUIArgs()`.
+- Let the UI inspect occupancy with `useSlotSystem`, but let the app remain authoritative about whether a placement is legal.
 
 ## Layout Guidelines
 

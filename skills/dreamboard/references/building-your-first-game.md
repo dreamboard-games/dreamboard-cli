@@ -17,6 +17,7 @@ Use this as the default end-to-end workflow for a new Dreamboard game. The goal 
    Refer to
    - [references/phase-handlers.md](phase-handlers.md),
    - [references/api-reference.md](api-reference.md),
+   - [references/board-systems.md](board-systems.md),
    - [references/hands-vs-decks.md](hands-vs-decks.md),
    - [references/all-players-tracking.md](all-players-tracking.md),
    - [references/app-best-practices.md](app-best-practices.md)
