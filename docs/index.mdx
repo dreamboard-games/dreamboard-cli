@@ -1,0 +1,154 @@
+---
+title: "Introduction"
+description: "Dreamboard helps board game designers prototype rule-enforced multiplayer games fast, with no coding experience required to start."
+---
+
+Dreamboard is an agent-native framework for board game designers who want to go from idea to playable prototype fast. You describe the game, the agent drafts the first pass, and Dreamboard turns it into a fully rule-enforced multiplayer prototype with mobile-friendly UI, instant rooms, and shareable quicklinks.
+
+You do not need coding experience to start. Dreamboard can generate the first version of your game structure, rules, and interface for you, then keep them aligned as the design changes.
+
+Why designers use it:
+
+- Prototype ideas in hours instead of waiting weeks for a custom implementation.
+- Playtest with fully rule-enforced multiplayer instead of asking players to self-police the rules.
+- Share a mobile-friendly room link instantly and keep iterating after every playtest.
+- Rely on type-safe guardrails so the game structure, rules, and UI stay in sync as the game evolves.
+
+## Quick example
+
+`Can't Stop` is a strong showcase for how Dreamboard works end to end.
+
+- `manifest.json` can define the shared track board, dice, and climber pieces.
+- The rules can enforce legal dice pairings, temporary progress, busts, and claimed columns.
+- The UI can stay simple and mobile-friendly: board state, current dice options, and a few tap targets.
+
+It is small enough to understand quickly, but rich enough to show the main Dreamboard promise: fast iteration on a real multiplayer game, not just a static mockup.
+
+## Three layers, one iteration loop
+
+You do not need to write these by hand on day one. The point is that Dreamboard keeps them aligned as rules and components change.
+
+### `manifest.json`
+
+The manifest defines the components in your game: player count, boards, cards, pieces, dice, zones, and setup options.
+
+```json
+{
+  "players": { "minPlayers": 2, "maxPlayers": 4, "optimalPlayers": 3 },
+  "boards": [
+    {
+      "id": "mountain",
+      "name": "Mountain",
+      "kind": "track",
+      "scope": "shared"
+    }
+  ],
+  "pieceTypes": [{ "id": "climber", "name": "Climber" }],
+  "dieTypes": [{ "id": "d6", "name": "D6" }],
+  "dieSeeds": [{ "id": "die-a", "typeId": "d6" }, { "id": "die-b", "typeId": "d6" }]
+}
+```
+
+### Reducer
+
+The reducer is where the rules live. It decides what a player is allowed to do, what is illegal, and how the game changes after each move.
+
+```ts
+import { z } from "zod";
+import {
+  defineAction,
+  definePhase,
+  setActivePlayers,
+} from "@dreamboard/app-sdk/reducer";
+
+const choosePairing = defineAction<GameContract>()({
+  params: z.object({
+    sums: z.tuple([z.number(), z.number()]),
+  }),
+  validate({ state, input }) {
+    const legalPairings = state.publicState.legalPairings;
+    const isLegal = legalPairings.some(
+      ([left, right]) =>
+        left === input.params.sums[0] && right === input.params.sums[1],
+    );
+
+    if (!isLegal) {
+      return {
+        errorCode: "ILLEGAL_PAIRING",
+        message: "That dice pairing is not legal for this roll.",
+      };
+    }
+
+    return null;
+  },
+  reduce({ state, input, accept, effects }) {
+    return accept(
+      {
+        ...state,
+        publicState: {
+          ...state.publicState,
+          temporaryColumns: [
+            ...state.publicState.temporaryColumns,
+            ...input.params.sums,
+          ],
+        },
+      },
+      [effects.transition("rollOrStop")],
+    );
+  },
+});
+
+export const turn = definePhase<GameContract>()({
+  kind: "player",
+  state: z.object({}),
+  initialState: () => ({}),
+  enter({ state, accept }) {
+    return accept(setActivePlayers(state, [state.publicState.currentPlayerId]));
+  },
+  actions: {
+    choosePairing,
+  },
+});
+```
+
+### UI
+
+The UI shows players what is happening and sends their choices back to the rules engine. It does not need to reimplement the rules.
+
+```tsx
+export function PlayerView() {
+  const actions = useActions();
+
+  return (
+    <>
+      <h1>Can't Stop</h1>
+      <button
+        onClick={() => actions.dispatch({ type: "choosePairing", params: { sums: [6, 8] } })}
+      >
+        Advance 6 and 8
+      </button>
+    </>
+  );
+}
+```
+
+## How Dreamboard compares
+
+| Platform | Best fit | Where Dreamboard is different |
+| --- | --- | --- |
+| Board Game Arena | Polished online adaptations on the BGA platform | Dreamboard is aimed at earlier-stage prototyping and does not assume you are ready for a platform-specific implementation or a developer-heavy workflow |
+| Tabletopia | Browser-based sandbox playtesting with no-programming setup | Dreamboard focuses on rule-enforced multiplayer instead of manual sandbox play |
+| Tabletop Simulator | Open-ended physics sandbox, Workshop mods, and deep simulation freedom | Dreamboard focuses on faster structured iteration, mobile-friendly play, and shareable web rooms instead of a general-purpose simulation sandbox |
+| Screentop.gg | Very fast collaborative browser prototypes and instant invite-link playtests | Dreamboard adds rule enforcement and stronger guardrails when the prototype needs more than a shared sandbox |
+
+## Why this matters
+
+Dreamboard is built for the messy part of game design: the stage where rules change daily, components are still moving, and every playtest teaches you something new.
+
+You can start in plain language, but the framework still gives you real guardrails:
+
+- The manifest describes the components, setup, and structure of the game.
+- The reducer owns rule enforcement, turn flow, and multiplayer correctness.
+- The UI stays focused on presentation and player interaction.
+
+Start with [Quickstart](/docs/quickstart) for the local flow, then use [Manifest authoring](/docs/reference/manifest-authoring) as the schema reference.
