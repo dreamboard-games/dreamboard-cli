@@ -201,6 +201,7 @@ dreamboard run --screenshot --output ./shot.png --delay 1500 --width 1440 --heig
 ## Skill Source
 
 - Public skill source lives under `skills/dreamboard/`.
+- `skills/dreamboard/references/*.md` are generated from `docs/` via `pnpm run sync:skill-docs`.
 - `dreamboard new` installs the bundled skill into `.agents/skills/dreamboard/` in the generated game project.
 - The Node helper script for run-artifact inspection is `.agents/skills/dreamboard/scripts/events-extract.mjs`.
 - Public GitHub repo for the CLI is [dreamboard-games/dreamboard-cli](https://github.com/dreamboard-games/dreamboard-cli).

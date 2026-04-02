@@ -9,6 +9,7 @@
     "build": "pnpm --dir apps/dreamboard-cli run build",
     "docs:broken-links": "pnpm mint broken-links",
     "docs:dev": "pnpm mint dev",
+    "skills:sync-docs": "pnpm --dir apps/dreamboard-cli run sync:skill-docs",
     "docs:validate": "pnpm mint validate",
     "stage:publish": "pnpm --dir apps/dreamboard-cli run stage:publish",
     "pack:publish": "pnpm --dir apps/dreamboard-cli run pack:publish"

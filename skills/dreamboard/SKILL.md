@@ -1,5 +1,5 @@
 ---
-name: dreamboard-cli
+name: dreamboard
 description: Create multiplayer, rule-enforced, turn-based game on Dreamboard.games platform.
 metadata:
   short-description: Dreamboard Game Development Workflow
@@ -10,7 +10,8 @@ metadata:
 
 ## Goal
 
-Create and iterate on a Dreamboard game locally, then sync rules, scaffold, UI, and tests back to the platform.
+Create and iterate on a Dreamboard game locally, then sync authored changes,
+compile, run, and test against the current reducer-native scaffold.
 
 ## Prereqs
 
@@ -18,16 +19,41 @@ Create and iterate on a Dreamboard game locally, then sync rules, scaffold, UI, 
   Install with `npm install -g dreamboard`
 - Authenticated via `dreamboard login`
 
-## Overview
+## Source Of Truth
 
-This skill covers the full local-to-platform workflow for shipping a Dreamboard game:
+Use the generated reference files in `references/` as the detailed reference
+set. They are synced from the public docs with
+`pnpm --dir apps/dreamboard-cli run sync:skill-docs`.
 
-- Create a new game workspace from the CLI scaffold.
-- Author the canonical game contract in `rule.md` and `manifest.json`.
-- Sync authored changes after rule or manifest updates with `dreamboard sync`.
-- Implement gameplay logic across the app phases and expose complete UI data for every playable state.
-- Build a production-quality UI that is fully playable, not a placeholder, and follows the shared style guide.
-- Compile the current authored head with `dreamboard compile` and validate the integrated experience with deterministic tests and runtime checks.
+- Quickstart:
+  [references/quickstart.md](references/quickstart.md)
+- Tutorial:
+  [references/building-your-first-game.md](references/building-your-first-game.md)
+- Rules:
+  [references/rule-authoring.md](references/rule-authoring.md)
+- Manifest:
+  [references/manifest-authoring.md](references/manifest-authoring.md)
+- Reducer:
+  [references/reducer.md](references/reducer.md)
+- Game interface:
+  [references/game-interface.md](references/game-interface.md)
+- Testing:
+  [references/testing.md](references/testing.md)
+
+## Current Scaffold
+
+The current scaffold centers on these files:
+
+- authored source:
+  `rule.md`, `manifest.json`
+- reducer:
+  `app/game-contract.ts`, `app/game.ts`, `app/phases/*.ts`,
+  `app/setup-profiles.ts`
+- UI:
+  `ui/App.tsx`
+- tests:
+  `test/bases/*.base.ts`, `test/scenarios/*.scenario.ts`,
+  `test/testing-types.ts`
 
 ## Command Flow
 
@@ -46,39 +72,19 @@ Quick rule:
 - compile failed but you have not edited files since: `dreamboard compile` again
 - remote authored head moved: `dreamboard pull` first
 
-## Building Your First Game
+## Workflow
 
-Read [references/building-your-first-game.md](references/building-your-first-game.md)
+Use this order by default:
 
-## Reference
-
-- Rules and manifest:
-  [references/rule-authoring.md](references/rule-authoring.md),
-  [references/manifest-authoring.md](references/manifest-authoring.md)
-- App logic and engine concepts:
-  [references/phase-handlers.md](references/phase-handlers.md),
-  [references/api-reference.md](references/api-reference.md),
-  [references/board-systems.md](references/board-systems.md),
-  [references/hands-vs-decks.md](references/hands-vs-decks.md),
-  [references/all-players-tracking.md](references/all-players-tracking.md),
-  [references/app-best-practices.md](references/app-best-practices.md)
-- UI and UX:
-  [references/ui-best-practices.md](references/ui-best-practices.md),
-  [references/ui-style-guide.md](references/ui-style-guide.md),
-  genre references under `references/ui-genre-*.md`
-- TypeScript regression harness (`dreamboard test generate/run`):
-  [references/test-harness.md](references/test-harness.md)
-- Rejection and edge-case pressure using JSON runtime scenarios:
-  [references/adversarial-testing.md](references/adversarial-testing.md)
-
-## Testing Modes
-
-There are two different scenario systems:
-
-- `dreamboard test generate` / `dreamboard test run`
-  TypeScript scenario files in `test/scenarios/*.scenario.ts` against deterministic generated base snapshots. Use this for regression coverage.
-- `dreamboard run --scenario path/to/file.json`
-  JSON action scripts that drive a live session. Use this for debugging flows, reproductions, and adversarial experiments.
+1. Write or revise `rule.md`.
+2. Align `manifest.json` to the rules.
+3. Run `dreamboard sync`.
+4. Implement reducer state, phases, actions, and views in `app/`.
+5. Implement the playable UI in `ui/App.tsx`.
+6. Run `dreamboard compile`.
+7. Generate test artifacts with `dreamboard test generate`.
+8. Run scenarios with `dreamboard test run`.
+9. Validate the local runtime with `dreamboard run`.
 
 ## Guardrails
 
@@ -87,29 +93,30 @@ There are two different scenario systems:
 - `dreamboard pull` reconciles authored divergence into the current workspace.
 - `dreamboard compile` is separate from authored sync; failed compiles do not mean the workspace needs a pull or another sync unless you changed authored files again.
 - Use `dreamboard status` to distinguish authored sync from compile health before deciding whether the next command should be `sync`, `compile`, or `pull`.
-- `dreamboard test generate` should be re-run after base changes, compiled-result changes, or game identity changes.
-- Add at least one zero-step `initial-state` scenario so setup invariants fail before action tests begin.
-- Keep `scripts/events-extract.ts` as a debugging helper for `.dreamboard/run/events.ndjson`; assertions belong in test scenarios.
+- Re-run `dreamboard test generate` after runtime-shape changes in `manifest.json` or `app/`.
+- Keep reducer-owned UI data in views; do not reintroduce the old `shared/ui-args.ts` pattern in new scaffolds.
 
 ## Editable Surface
 
 Edit:
 
+- `rule.md`
+- `manifest.json`
+- `app/game-contract.ts`
+- `app/game.ts`
 - `app/phases/*.ts`
-- `shared/ui-args.ts`
+- `app/setup-profiles.ts`
 - `ui/App.tsx`
-- `ui/components/*`
-- `ui/sdk/components/*`
+- `test/bases/*.base.ts`
+- `test/scenarios/*.scenario.ts`
 
-Do not edit framework-owned files such as:
+Do not edit generated or framework-owned files such as:
 
 - `app/index.ts`
-- `app/sdk/*`
-- `app/generated/*`
+- `shared/manifest-contract.ts`
+- `shared/generated/ui-contract.ts`
 - `ui/index.tsx`
-- `ui/sdk/context/*`
-- `ui/sdk/hooks/*`
-- `ui/sdk/types/*`
+- `test/generated/*`
 
 ## Framework Feedback
 
