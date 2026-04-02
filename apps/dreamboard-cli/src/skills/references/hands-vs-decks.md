@@ -1,86 +1,125 @@
-# Hands vs Decks
+# Shared vs Per-Player Zones
 
-The framework distinguishes between **Hands** and **Decks**. Confusing them causes silent bugs.
+Use this guide when you are deciding how to model a card container in
+`manifest.json`.
 
-## Definitions
+Dreamboard now uses one manifest concept for table containers:
 
-| Concept  | Manifest key                  | Type ID  | Access API                               | Description                                                  |
-| -------- | ----------------------------- | -------- | ---------------------------------------- | ------------------------------------------------------------ |
-| **Hand** | `playerHandDefinitions`       | `HandId` | `state.player.getHand(playerId, handId)` | Cards owned by a specific player. Per-player.                |
-| **Deck** | `components` (type: `"deck"`) | `DeckId` | `state.deck.getCards(deckId)`            | Shared card piles (draw pile, discard, battle zone). Global. |
+- `cardSets`: what cards exist
+- `zones`: where components can live at the table
 
-## Key rule
+The important choice is the zone `scope`.
 
-A player's collection of cards is always a **Hand** (`HandId`), even if the real-world game calls it a "deck."
+For the full manifest schema, see [manifest-authoring.md](manifest-authoring.md).
 
-For example, in the War card game, each player's face-down pile is called a "deck" in real life, but in the framework it's defined as a **Hand** with id `"player-deck"` under `playerHandDefinitions`.
+## Quick Decision Rule
 
-## Manifest Example (War card game)
+1. If you are defining the cards themselves, use a `cardSet`.
+2. If the whole table shares one container, use a zone with
+   `scope: "shared"`.
+3. If each player gets their own copy of the container, use a zone with
+   `scope: "perPlayer"`.
+
+## Canonical Meanings
+
+| Concept | Manifest key | Use it for |
+| --- | --- | --- |
+| Card set | `cardSets` | Card content and card schema |
+| Shared zone | `zones` with `scope: "shared"` | Shared piles or shared card areas |
+| Per-player zone | `zones` with `scope: "perPlayer"` | One separate container per player |
+
+## Naming Rule
+
+Use the Dreamboard meaning, not the tabletop nickname.
+
+If a real-world game says each player has a "deck", but each player owns a
+separate pile, model it as a per-player zone.
+
+Examples:
+
+- a player's draw pile in War is a per-player zone
+- a player's scored pile is a per-player zone
+- the shared draw pile in Poker is a shared zone
+- the shared discard pile is a shared zone
+- a shared trick area is a shared zone
+
+## Common Mistakes
+
+- Do not model separate per-player containers as one shared zone.
+- Do not model a communal area as a per-player zone just because cards stay
+  there for a while.
+- Do not create multiple `cardSets` when the cards are the same and only the
+  containers differ.
+
+Visibility is separate from ownership:
+
+- if each player has their own container, it is still a `perPlayer` zone
+- set `visibility: "public"` if other players should be able to see that zone
+
+## Example
 
 ```json
 {
-  "components": [
-    { "type": "deck", "id": "main-deck", "name": "Main Deck" },
-    { "type": "deck", "id": "battle-zone", "name": "Battle Zone" },
-    { "type": "deck", "id": "war-pile", "name": "War Pile" }
+  "cardSets": [
+    {
+      "type": "preset",
+      "id": "standard_52_deck",
+      "name": "Standard 52-Card Deck"
+    }
   ],
-  "playerHandDefinitions": [
+  "zones": [
+    {
+      "id": "main-deck",
+      "name": "Main Deck",
+      "scope": "shared",
+      "allowedCardSetIds": ["standard_52_deck"]
+    },
+    {
+      "id": "battle-zone",
+      "name": "Battle Zone",
+      "scope": "shared",
+      "allowedCardSetIds": ["standard_52_deck"],
+      "visibility": "public"
+    },
     {
       "id": "player-deck",
-      "displayName": "Your Deck",
+      "name": "Your Deck",
+      "scope": "perPlayer",
+      "allowedCardSetIds": ["standard_52_deck"],
       "visibility": "ownerOnly"
     },
-    { "id": "won-pile", "displayName": "Won Cards", "visibility": "ownerOnly" }
+    {
+      "id": "won-pile",
+      "name": "Won Cards",
+      "scope": "perPlayer",
+      "allowedCardSetIds": ["standard_52_deck"],
+      "visibility": "public"
+    }
   ]
 }
 ```
 
-- `"player-deck"` → **HandId** (per-player) → `state.player.getHand(playerId, "player-deck")`
-- `"battle-zone"` → **DeckId** (shared) → `state.deck.getCards("battle-zone")`
-- `"war-pile"` → **DeckId** (shared) → `state.deck.getCards("war-pile")`
+In that example:
 
-## Moving Cards
+- `standard_52_deck` defines the cards
+- `main-deck` and `battle-zone` are shared zones
+- `player-deck` and `won-pile` are per-player zones
 
-```typescript
-// Hand → Deck (player plays card to shared area)
-apis.cardApi.moveCardsFromHandToDeck(playerId, handId, cardIds, deckId);
+## Related Reducer Helpers
 
-// Deck → Hand (deal from shared pile to player)
-apis.deckApi.moveCardsFromDeckToPlayer(deckId, playerId, handId, count);
-
-// Hand → Hand (pass cards between players)
-apis.cardApi.moveCardsFromHandToHand(
-  fromPlayer,
-  fromHand,
-  toPlayer,
-  toHand,
-  cardIds,
-);
-
-// Deck → Deck (move all cards between shared piles)
-apis.deckApi.moveCardsFromDeckToDeck(fromDeckId, toDeckId);
-
-// Any card → Hand (move specific cards to a player)
-apis.cardApi.moveCardsToPlayer(cardIds, toPlayerId, handId);
+```ts
+import {
+  getPlayerZoneCards,
+  getSharedZoneCards,
+  moveCardBetweenPlayerZones,
+  moveCardBetweenSharedZones,
+  moveCardFromPlayerZoneToSharedZone,
+  moveCardFromSharedZoneToPlayerZone,
+} from "@dreamboard/app-sdk/reducer";
 ```
 
-## Hand Passing: Anti-Pattern vs Safe Pattern
+## Rule Of Thumb
 
-`moveCardsFromHandToHand` appends to destination. That makes in-place cyclic passing unsafe.
-
-### Anti-pattern (in-place cyclic pass)
-
-```typescript
-for (let i = 0; i < order.length; i++) {
-  const fromPlayer = order[i];
-  const toPlayer = order[(i + 1) % order.length];
-  const cardIds = state.player.getHand(fromPlayer, "hand");
-  apis.cardApi.moveCardsFromHandToHand(
-    fromPlayer,
-    "hand",
-    toPlayer,
-    "hand",
-    cardIds,
-  );
-}
-```
+- shared container: zone with `scope: "shared"`
+- one copy per player: zone with `scope: "perPlayer"`
+- card blueprint: `cardSet`

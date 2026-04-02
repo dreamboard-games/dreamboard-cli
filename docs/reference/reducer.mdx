@@ -1,0 +1,699 @@
+---
+title: "Reducer"
+description: "Reference for authoring Dreamboard reducer-native games with @dreamboard/app-sdk/reducer."
+---
+
+`@dreamboard/app-sdk/reducer` is Dreamboard's reducer-native authoring surface.
+Use it to define state schemas, phases, actions, prompts, continuations, views,
+setup profiles, and runtime bundles.
+
+It does **not** define manifest topology. Keep authored player counts, zones,
+boards, cards, pieces, dice, and setup metadata in
+[Manifest authoring](/docs/reference/manifest-authoring).
+
+## Package boundary
+
+Use the reducer framework for:
+
+- manifest-backed reducer state schemas
+- phase flow and player action handling
+- prompts, continuations, and reducer-owned windows
+- player-facing view projection
+- setup bootstrap steps
+- runtime bundle creation
+
+Do **not** use the reducer framework for:
+
+- `manifest.json` topology authoring
+- generated manifest-contract output
+- React UI component authoring
+- CLI test-harness scenario authoring
+
+## Import surface
+
+Import reducer helpers from `@dreamboard/app-sdk/reducer`.
+
+```ts
+import {
+  createReducerBundle,
+  defineAction,
+  defineChoicePrompt,
+  defineContinuation,
+  defineGame,
+  defineGameContract,
+  definePhase,
+  definePrompt,
+  definePromptContinuation,
+  defineSetupProfilesFor,
+  defineView,
+  defineWindowContinuation,
+  getPlayerZoneCards,
+  getSharedZoneCards,
+  moveCardFromPlayerZoneToSharedZone,
+  setActivePlayers,
+  setPhaseState,
+} from "@dreamboard/app-sdk/reducer";
+```
+
+`@dreamboard/app-sdk` currently re-exports the same surface, but
+`@dreamboard/app-sdk/reducer` is the explicit reducer import path.
+
+## `defineGameContract(...)`
+
+`defineGameContract(...)` binds the generated manifest contract to the reducer's
+shared, per-player, and hidden state schemas.
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `manifest` | Yes | Generated manifest contract from `shared/manifest-contract` |
+| `state.public` | Yes | Shared state visible to every player |
+| `state.private` | Yes | Per-player server-only state |
+| `state.hidden` | Yes | Reducer-only state that never reaches clients |
+| `state.initial.public` | No | Lazy initializer for `publicState` |
+| `state.initial.private` | No | Lazy initializer for one player's private state |
+| `state.initial.hidden` | No | Lazy initializer for `hiddenState` |
+
+Initializers receive:
+
+- `manifest`
+- `table`
+- `playerIds`
+- `playerId` for `state.initial.private`
+- `rngSeed`
+- `setup`
+
+```ts
+import { z } from "zod";
+import { defineGameContract } from "@dreamboard/app-sdk/reducer";
+import { manifestContract, ids } from "../shared/manifest-contract";
+
+export const gameContract = defineGameContract({
+  manifest: manifestContract,
+  state: {
+    public: z.object({
+      currentJudgeId: ids.playerId,
+      winnerPlayerId: ids.playerId.nullable(),
+    }),
+    private: z.object({
+      secretNotes: z.array(z.string()),
+    }),
+    hidden: z.object({
+      seededRoundId: z.string(),
+    }),
+    initial: {
+      public: ({ playerIds }) => ({
+        currentJudgeId: playerIds[0],
+        winnerPlayerId: null,
+      }),
+      private: () => ({
+        secretNotes: [],
+      }),
+      hidden: ({ rngSeed }) => ({
+        seededRoundId: `round-${rngSeed ?? 0}`,
+      }),
+    },
+  },
+});
+```
+
+## `defineGame(...)`
+
+`defineGame(...)` assembles the reducer definition that `createReducerBundle(...)`
+executes.
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `contract` | Yes | Output from `defineGameContract(...)` |
+| `phases` | Yes | Phase registry; object keys are the phase names |
+| `initialPhase` | No | Default starting phase unless a setup profile overrides it |
+| `setupProfiles` | No | Typed setup-profile overrides and bootstrap steps |
+| `views` | No | Named player-facing view projections |
+| `root.system` | No | Root-level system handlers |
+| `root.selectors` | No | Root-level derived selectors |
+
+If you omit `initialPhase`, the first registered phase is used.
+
+```ts
+import { defineGame } from "@dreamboard/app-sdk/reducer";
+import { gameContract } from "./game-contract";
+import { phases } from "./phases";
+import { playerView } from "./player-view";
+import { setupProfiles } from "./setup-profiles";
+
+export default defineGame({
+  contract: gameContract,
+  initialPhase: "dealCards",
+  setupProfiles,
+  phases,
+  views: {
+    player: playerView,
+  },
+});
+```
+
+## `defineSetupProfilesFor(...)` and `defineSetupProfiles(...)`
+
+Use setup profiles when the selected setup should change the initial phase,
+bootstrap authored inventory, or both.
+
+`defineSetupProfilesFor(manifestContract)<SetupProfileId>()(...)` is the
+manifest-aware helper for app code. `defineSetupProfiles<SetupProfileId>()(...)`
+is the generic helper when you already control the setup-profile ID union.
+
+### `SetupProfileDefinition`
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `initialPhase` | No | Overrides `defineGame(...).initialPhase` for that setup |
+| `bootstrap` | No | Ordered setup bootstrap steps applied before play starts |
+
+### `SetupBootstrapStep`
+
+| Variant | Required fields | Notes |
+| --- | --- | --- |
+| `type: "shuffle"` | `container` | Shuffles a shared zone, player zone, or board container |
+| `type: "move"` | `from`, `to` | Moves explicit or counted components between containers or onto board spaces |
+| `type: "deal"` | `from`, `to`, `count` | Deals from a shared source into a per-player destination template |
+
+For `move` steps:
+
+- `from` must be a container reference
+- `to` may be a container reference or a board-space reference
+- use `count` for top-of-container movement
+- use `componentIds` for exact authored components
+
+For `deal` steps:
+
+- `from` must be a shared zone or shared board container
+- `to` must be a player zone or player board container template
+- `playerIds` is optional; omit it to target every player
+
+```ts
+import {
+  defineSetupProfilesFor,
+  type SetupProfileDefinition,
+} from "@dreamboard/app-sdk/reducer";
+import {
+  manifestContract,
+  type SetupProfileId,
+} from "../shared/manifest-contract";
+
+export const setupProfiles = defineSetupProfilesFor(
+  manifestContract,
+)<SetupProfileId>()({
+  "draft-setup": {
+    initialPhase: "draft",
+    bootstrap: [
+      {
+        type: "shuffle",
+        container: {
+          type: "sharedZone",
+          zoneId: "draw-deck",
+        },
+      },
+      {
+        type: "deal",
+        from: {
+          type: "sharedZone",
+          zoneId: "draw-deck",
+        },
+        to: {
+          type: "playerZone",
+          zoneId: "main-hand",
+        },
+        count: 5,
+      },
+      {
+        type: "move",
+        from: {
+          type: "sharedBoardContainer",
+          boardId: "market-board",
+          containerId: "offer-row",
+        },
+        to: {
+          type: "sharedBoardSpace",
+          boardId: "market-board",
+          spaceId: "slot-a",
+        },
+        count: 1,
+      },
+    ],
+  } satisfies SetupProfileDefinition<"draft", typeof manifestContract>,
+});
+```
+
+## `definePhase(...)`
+
+`definePhase(...)` declares one reducer phase.
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `kind` | No | `auto` or `player` |
+| `state` | Yes | Zod schema for phase-local state |
+| `initialState` | No | Initializes `state.phases[phaseName]` |
+| `enter` | No | Runs on initialization and on transitions into the phase |
+| `actions` | No | Player actions available in this phase |
+| `prompts` | No | Prompt registry for this phase |
+| `continuations` | No | Continuation registry for prompt or window resumes |
+| `windows` | No | Window registry; `id` defaults to the object key |
+| `system` | No | Handlers for `effects.dispatchSystem(...)` and scheduled inputs |
+| `selectors` | No | Named derived selectors |
+
+`initialState(...)` receives `manifest`, `state`, `playerIds`, and `setup`.
+
+`enter(...)` receives the same reducer callback helpers as actions, plus
+`event`, which is either `initialize` or `transition`.
+
+Use `kind: "auto"` for phases that should resolve immediately from reducer
+logic without waiting for a player action. Use `kind: "player"` for phases that
+wait for one or more active players to submit actions.
+
+```ts
+import { z } from "zod";
+import { definePhase, setActivePlayers } from "@dreamboard/app-sdk/reducer";
+import type { GameContract } from "../game-contract";
+
+export const placeThing = definePhase<GameContract>()({
+  kind: "player",
+  state: z.object({}),
+  initialState: () => ({}),
+  enter({ state, accept }) {
+    return accept(setActivePlayers(state, [state.publicState.currentJudgeId]));
+  },
+});
+```
+
+Continuation IDs and window IDs default to their registry keys when you omit
+`id`.
+
+## `defineAction(...)`
+
+`defineAction(...)` declares one typed player action.
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `params` | Yes | Zod schema for `input.params` |
+| `displayName` | No | Metadata label |
+| `description` | No | Metadata description |
+| `errorCodes` | No | Declared rejection codes |
+| `available` | No | UI/runtime availability filter for `getAvailableActions(...)` |
+| `validate` | No | Returns `null` or `{ errorCode, message }` |
+| `reduce` | Yes | Returns `accept(...)`, `reject(...)`, or a `{ state, effects }` object |
+
+Keep hard legality checks in `validate(...)` or `reduce(...)`. `available(...)`
+only filters the surfaced available-action list.
+
+```ts
+import { z } from "zod";
+import { defineAction } from "@dreamboard/app-sdk/reducer";
+import type { GameContract } from "../game-contract";
+
+const placeThing = defineAction<GameContract>()({
+  params: z.object({
+    cardId: z.string(),
+    ringId: z.string(),
+  }),
+  validate({ state, input }) {
+    if (!state.flow.activePlayers.includes(input.playerId)) {
+      return {
+        errorCode: "NOT_YOUR_TURN",
+        message: "It is not your turn.",
+      };
+    }
+    return null;
+  },
+  reduce({ state, input, accept, effects }) {
+    return accept(state, [effects.transition("judgeRings")]);
+  },
+});
+```
+
+## `definePrompt(...)` and `defineChoicePrompt(...)`
+
+Use prompts when reducer flow must pause and resume later with a typed response.
+
+### Prompt vs window
+
+Use a prompt when you want one player to answer a reducer-owned request with a
+typed response payload.
+
+Use a window when you want the runtime to open a richer interactive session
+that can target one or more players, accept multiple action types, and close
+under a runtime close policy.
+
+Prompts are narrower and response-focused. Windows are broader and
+session-focused.
+
+### `definePrompt(...)`
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `id` | Yes | Prompt type ID |
+| `title` | No | Default title |
+| `responseSchema` | Yes | Zod schema for the response payload |
+
+```ts
+const judgeNotePrompt = definePrompt<GameContract>()({
+  id: "judge-note",
+  title: "Explain the ruling",
+  responseSchema: z.object({
+    note: z.string().min(1),
+  }),
+});
+```
+
+### `defineChoicePrompt(...)`
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `id` | Yes | Prompt type ID |
+| `title` | No | Default title |
+| `options` | Yes | Non-empty option list; response type is inferred from option IDs |
+
+```ts
+const judgePlacementPrompt = defineChoicePrompt<GameContract>()({
+  id: "judge-placement",
+  title: "Where should this thing actually go?",
+  options: [
+    { id: "ring-1", label: "Ring 1" },
+    { id: "ring-2", label: "Ring 2" },
+    { id: "discard", label: "Not in any ring" },
+  ] as const,
+});
+```
+
+When you open a choice prompt, any runtime `options` override must still use the
+declared option IDs.
+
+## `definePromptContinuation(...)`, `defineWindowContinuation(...)`, and `defineContinuation(...)`
+
+Continuations resume typed reducer logic after a prompt response or window
+action.
+
+| Helper | Resume source | Typed input |
+| --- | --- | --- |
+| `definePromptContinuation(...)` | One declared prompt | `input.promptId` and prompt-typed `input.response` |
+| `defineWindowContinuation(...)` | Window action | `input.windowId`, `input.actionType`, and typed `input.response` |
+| `defineContinuation(...)` | Shared prompt or window flow | Union on `input.source` |
+
+### `definePromptContinuation(...)`
+
+```ts
+const resolvePlacement = definePromptContinuation<GameContract>()({
+  prompt: judgePlacementPrompt,
+  data: z.object({
+    pendingCardId: z.string(),
+  }),
+  reduce({ state, input, accept, effects }) {
+    return accept(state, [effects.closePrompt(input.promptId)]);
+  },
+});
+```
+
+### `defineWindowContinuation(...)`
+
+```ts
+const reviewWindow = {
+  id: "review-window",
+} as const;
+
+const resolveReview = defineWindowContinuation<GameContract>()({
+  data: z.object({
+    pendingCardId: z.string(),
+  }),
+  response: z.object({
+    actionType: z.literal("confirm"),
+    params: z.object({
+      approved: z.boolean(),
+    }),
+    windowId: z.literal("review-window"),
+  }),
+  reduce({ state, input, accept }) {
+    return accept(state);
+  },
+});
+```
+
+### `defineContinuation(...)`
+
+Use the shared helper when one continuation should accept either prompt or
+window resumes and branch on `input.source`.
+
+```ts
+const resolveSharedPlacement = defineContinuation<GameContract>()({
+  data: z.object({
+    pendingCardId: z.string(),
+  }),
+  response: judgePlacementPrompt.responseSchema,
+  reduce({ state, input, accept }) {
+    if (input.source !== "prompt") {
+      return accept(state);
+    }
+    return accept(state);
+  },
+});
+```
+
+## `defineView(...)`
+
+Views are typed, player-facing projections of reducer state.
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `schema` | Yes | Zod schema for the projected payload |
+| `project` | Yes | Maps reducer state to one player's view |
+
+`project(...)` receives `state`, `playerId`, `runtime`, `manifest`, and the
+same callback helpers as phases and actions.
+
+```ts
+import { z } from "zod";
+import { defineView } from "@dreamboard/app-sdk/reducer";
+import type { GameContract } from "./game-contract";
+
+export const playerView = defineView<GameContract>()({
+  schema: z.object({
+    turn: z.number(),
+    isJudge: z.boolean(),
+  }),
+  project({ state, playerId }) {
+    return {
+      turn: state.flow.turn,
+      isJudge: playerId === state.publicState.currentJudgeId,
+    };
+  },
+});
+```
+
+## Reducer callback helpers
+
+Reducer callbacks such as `enter(...)`, `validate(...)`, `reduce(...)`,
+continuation reducers, and view projectors receive shared runtime helpers.
+
+| Helper | Notes |
+| --- | --- |
+| `accept(state, effects?)` | Successful reducer result |
+| `reject(errorCode, message?)` | Immediate rejection |
+| `manifest` | Generated manifest contract |
+| `setup` | Selected setup profile plus resolved option values |
+| `currentPhase` | Current phase name |
+| `playerOrder` | Full turn order |
+| `activePlayers` | Current active player IDs |
+| `getPhaseState(phaseName?)` | Reads current or named phase state |
+| `promptByInstanceId(promptId)` | Reads one open prompt instance |
+| `windowByInstanceId(windowId)` | Reads one open window instance |
+
+### `effects`
+
+Use `effects` to queue runtime side effects alongside an accepted state.
+
+| Effect helper | Notes |
+| --- | --- |
+| `effects.transition(phaseName)` | Transition into another phase |
+| `effects.openPrompt(prompt, { to, resume, title?, payload?, options? })` | Open a prompt and bind a continuation token |
+| `effects.closePrompt(promptId)` | Close one open prompt instance |
+| `effects.openWindow(window, { closePolicy?, addressedTo?, payload?, resume? })` | Open a reducer-owned window |
+| `effects.closeWindow(windowId)` | Close one open window instance |
+| `effects.shuffleSharedZone(zoneId)` | Shuffle a shared zone/deck |
+| `effects.dealCardsToPlayerZone(fromZoneId, playerId, toZoneId, count)` | Deal cards from a shared zone into a player zone |
+| `effects.sample(from, sampleId, resume, count?)` | Sample cards and resume a continuation |
+| `effects.dispatchSystem(event, payload?)` | Queue a system event immediately |
+| `effects.scheduleTiming(timing, event, payload?)` | Queue a timed system input |
+
+Prompt and window instance IDs are branded runtime IDs. Use the values returned
+by the runtime state instead of raw strings.
+
+```ts
+enter({ state, accept, effects }) {
+  return accept(state, [
+    effects.openPrompt(judgePlacementPrompt, {
+      to: "player-1",
+      resume: resolvePlacement({ pendingCardId: "a-dog" }),
+      options: [
+        { id: "ring-1", label: "Ring 1" },
+        { id: "discard", label: "Not in any ring" },
+      ],
+    }),
+    effects.transition("judgeRings"),
+  ]);
+}
+```
+
+## Table helpers
+
+Reducer table helpers are immutable. Each mover returns a cloned table or state.
+
+### Flow and zones
+
+| Helper | Returns | Notes |
+| --- | --- | --- |
+| `setActivePlayers(state, playerIds)` | State copy | Replaces `flow.activePlayers` |
+| `setPhaseState(state, phaseName, phaseState)` | State copy | Writes one phase-local state value |
+| `getSharedZoneCards(table, zoneId)` | `readonly string[]` | Reads a shared zone or shared deck |
+| `getPlayerZoneCards(table, playerId, zoneId)` | `readonly string[]` | Reads a per-player zone or hand |
+| `addCardToSharedZone(table, zoneId, cardId, playedBy?)` | Table copy | Appends a card to a shared zone |
+| `removeCardFromSharedZone(table, zoneId, cardId)` | Table copy | Removes a card from a shared zone |
+| `moveCardFromPlayerZoneToSharedZone({ ... })` | Table copy | Moves one card from a player zone to a shared zone |
+| `moveCardBetweenSharedZones({ ... })` | Table copy | Moves one card between shared zones |
+
+```ts
+const handCards = getPlayerZoneCards(state.table, input.playerId, "things-hand");
+
+const nextTable = moveCardFromPlayerZoneToSharedZone({
+  table: state.table,
+  playerId: input.playerId,
+  fromZoneId: "things-hand",
+  toZoneId: "ring-1",
+  cardId: input.params.cardId,
+  playedBy: input.playerId,
+});
+```
+
+### Boards and containers
+
+| Helper | Returns | Notes |
+| --- | --- | --- |
+| `getBoard(table, boardId)` | Board state | Works for shared and per-player board IDs |
+| `getSpace(table, boardId, spaceId)` | Space state | Reads one board space |
+| `getContainer(table, boardId, containerId)` | Container state | Reads one board container |
+| `getBoardsByTypeId(table, typeId)` | Board ID array | Finds boards by authored `typeId` |
+| `getSpacesByTypeId(table, boardId, typeId)` | Space ID array | Finds spaces by authored `typeId` |
+| `getRelatedSpaces(table, boardId, spaceId, relationTypeId)` | Space ID array | Traverses typed board relations |
+| `getAdjacentSpaces(table, boardId, spaceId)` | Space ID array | Shortcut for `relationTypeId: "adjacent"` |
+| `getComponentsOnSpace(table, boardId, spaceId)` | Component ID array | Reads ordered occupants on a space |
+| `getComponentsInContainer(table, boardId, containerId)` | Component ID array | Reads ordered occupants in a container |
+| `moveComponentToSpace(table, componentId, boardId, spaceId)` | Table copy | Moves any component onto a board space |
+| `moveComponentToContainer(table, componentId, boardId, containerId)` | Table copy | Moves any component into a board container |
+| `assertCardAllowedInContainer(table, boardId, containerId, componentId)` | `void` | Throws if a card-set restriction would be violated |
+
+### Hex-board helpers
+
+| Helper | Returns | Notes |
+| --- | --- | --- |
+| `getHexBoard(table, boardId)` | Hex board state | Narrows a board to `layout: "hex"` |
+| `getHexSpace(table, boardId, spaceId)` | Hex space state | Reads one hex space |
+| `getHexSpaceAt(table, boardId, q, r)` | Hex space or `undefined` | Looks up by axial coordinates |
+| `getEdge(table, boardId, edgeId)` | Edge state | Reads one hex edge |
+| `getVertex(table, boardId, vertexId)` | Vertex state | Reads one hex vertex |
+| `getEdgesByTypeId(table, boardId, typeId)` | Edge ID array | Finds edges by authored `typeId` |
+| `getVerticesByTypeId(table, boardId, typeId)` | Vertex ID array | Finds vertices by authored `typeId` |
+| `moveComponentToEdge(table, componentId, boardId, edgeId)` | Table copy | Moves a component onto a hex edge |
+| `moveComponentToVertex(table, componentId, boardId, vertexId)` | Table copy | Moves a component onto a hex vertex |
+
+## `applySetupBootstrap(...)`
+
+`applySetupBootstrap(state, steps)` applies the same bootstrap language used by
+`setupProfiles[*].bootstrap`.
+
+Use it when you need the setup bootstrap logic directly, such as in reducer
+runtime tests or custom initialization code.
+
+```ts
+import { applySetupBootstrap } from "@dreamboard/app-sdk/reducer";
+
+const nextState = applySetupBootstrap(state, [
+  {
+    type: "shuffle",
+    container: {
+      type: "sharedZone",
+      zoneId: "draw-deck",
+    },
+  },
+  {
+    type: "deal",
+    from: {
+      type: "sharedZone",
+      zoneId: "draw-deck",
+    },
+    to: {
+      type: "playerZone",
+      zoneId: "main-hand",
+    },
+    count: 5,
+  },
+]);
+```
+
+Card-set compatibility is enforced for zones and board containers while bootstrap
+steps run.
+
+## `createReducerBundle(...)`
+
+`createReducerBundle(...)` converts a reducer definition into the runtime bundle
+consumed by the Dreamboard runtime.
+
+```ts
+import game from "./game";
+import { createReducerBundle } from "@dreamboard/app-sdk/reducer";
+
+export default createReducerBundle(game);
+```
+
+### Returned runtime methods
+
+| Method | Notes |
+| --- | --- |
+| `initialize({ table, playerIds, rngSeed?, setup? })` | Creates the initial reducer state, applies setup overrides, and enters the initial phase |
+| `initializePhase({ state, to })` | Initializes one phase state block |
+| `validateInput({ state, input })` | Validates one runtime input |
+| `reduce({ state, input })` | Applies one input without draining follow-up effects |
+| `dispatch({ state, input })` | Applies one input and drains runtime effects |
+| `getAvailableActions({ state, playerId })` | Returns surfaced action metadata for one player |
+| `getView({ state, playerId, viewId? })` | Projects one named reducer view; defaults to `player` |
+
+The bundle also exposes reducer metadata registries such as `actions`,
+`prompts`, `views`, `windows`, `continuations`, and `metadata`.
+
+## High-value type utilities
+
+`@dreamboard/app-sdk/reducer` also exports type helpers for reducer authoring.
+
+| Type | Use |
+| --- | --- |
+| `GameStateOf<Source>` | Resolved reducer state for a contract or full game definition |
+| `PhaseMapOf<Contract>` | Type-check a `phases` object against the contract's phase-name union |
+| `ViewOfDefinition<Definition, ViewName>` | Inferred payload for one registered view |
+| `ActionParamsOfDefinition<Definition, ActionName>` | Inferred params for a named action across phases |
+| `ActionParamsOfDefinitionPhase<Definition, PhaseName, ActionName>` | Inferred params for one phase-local action |
+| `PromptIdsOfDefinition<Definition>` | Prompt ID union for a reducer definition |
+| `PromptResponseOfDefinition<Definition, PromptId>` | Response payload for one prompt |
+| `WindowActionNamesOfDefinition<Definition, WindowId>` | Window action-name union for one registered window |
+| `WindowActionParamsOfDefinition<Definition, WindowId, ActionName>` | Inferred params payload for one window action |
+
+```ts
+import type {
+  ActionParamsOfDefinitionPhase,
+  GameStateOf,
+  PhaseMapOf,
+  ViewOfDefinition,
+} from "@dreamboard/app-sdk/reducer";
+
+type GameState = GameStateOf<typeof game>;
+type Phases = PhaseMapOf<typeof gameContract>;
+type PlayerView = ViewOfDefinition<typeof game, "player">;
+type PlaceThingParams = ActionParamsOfDefinitionPhase<
+  typeof game,
+  "placeThing",
+  "placeThing"
+>;
+```
