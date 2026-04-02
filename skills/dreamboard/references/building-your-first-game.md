@@ -416,7 +416,7 @@ export default function App() {
 }
 ```
 
-This is intentionally plain. The important part is that:
+The important part is that:
 
 - the die exists in authored game structure
 - the reducer updates the die value and the score together
@@ -508,12 +508,3 @@ If you need live randomness in authored reducer logic, do not call
 The main walkthrough stays deterministic so the rule, reducer, UI, and test
 snippets all line up exactly. See [Reducer](./reducer.md) for the
 runtime-random versions.
-
-## Related references
-
-- [Quickstart](./quickstart.md)
-- [Rule authoring](./rule-authoring.md)
-- [Manifest authoring](./manifest-authoring.md)
-- [Reducer](./reducer.md)
-- [Game interface](./game-interface.md)
-- [Testing](./testing.md)

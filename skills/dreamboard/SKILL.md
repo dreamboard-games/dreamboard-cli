@@ -19,16 +19,17 @@ compile, run, and test against the current reducer-native scaffold.
   Install with `npm install -g dreamboard`
 - Authenticated via `dreamboard login`
 
-## Source Of Truth
+## Buliding Your First Game
+See [tutorials/building-your-first-game.md](references/building-your-first-game.md)
 
-Use the generated reference files in `references/` as the detailed reference
-set. They are synced from the public docs with
-`pnpm --dir apps/dreamboard-cli run sync:skill-docs`.
+## References
 
 - Quickstart:
   [references/quickstart.md](references/quickstart.md)
 - Tutorial:
   [references/building-your-first-game.md](references/building-your-first-game.md)
+- CLI:
+  [references/cli.md](references/cli.md)
 - Rules:
   [references/rule-authoring.md](references/rule-authoring.md)
 - Manifest:
@@ -117,6 +118,9 @@ Do not edit generated or framework-owned files such as:
 - `shared/generated/ui-contract.ts`
 - `ui/index.tsx`
 - `test/generated/*`
+
+## Offical Documentation
+Visit https://dreamboard.games/docs
 
 ## Framework Feedback
 

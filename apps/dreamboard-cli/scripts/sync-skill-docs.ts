@@ -22,6 +22,11 @@ const DOCS_TO_COPY = [
     outputName: "building-your-first-game.md",
   },
   {
+    sourcePath: "reference/cli.mdx",
+    docsHref: "/docs/reference/cli",
+    outputName: "cli.md",
+  },
+  {
     sourcePath: "reference/rule-authoring.mdx",
     docsHref: "/docs/reference/rule-authoring",
     outputName: "rule-authoring.md",

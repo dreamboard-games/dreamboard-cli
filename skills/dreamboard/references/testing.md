@@ -247,10 +247,3 @@ This page documents the scaffolded reducer-native test workspace.
 If you also use `dreamboard run` for manual debugging or operational inspection,
 treat that as a separate workflow. It is useful for ad hoc runtime exploration,
 but it is not the primary authored test surface for a new Dreamboard project.
-
-## Related references
-
-- [Quickstart](./quickstart.md)
-- [Reducer](./reducer.md)
-- [Game interface](./game-interface.md)
-- [Building your first game](./building-your-first-game.md)

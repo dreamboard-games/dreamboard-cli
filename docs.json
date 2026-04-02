@@ -28,6 +28,7 @@
           {
             "group": "Reference",
             "pages": [
+              "docs/reference/cli",
               "docs/reference/rule-authoring",
               "docs/reference/manifest-authoring",
               "docs/reference/reducer",
@@ -47,6 +48,10 @@
     {
       "source": "/quickstart",
       "destination": "/docs/quickstart"
+    },
+    {
+      "source": "/reference/cli",
+      "destination": "/docs/reference/cli"
     },
     {
       "source": "/reference/manifest-authoring",
