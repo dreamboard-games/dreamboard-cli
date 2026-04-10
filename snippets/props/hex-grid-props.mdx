@@ -1,0 +1,84 @@
+{/* Generated from packages/ui-sdk/src/components/board/HexGrid.tsx */}
+{/* Run `pnpm docs:gen-props` to regenerate. Do not edit directly. */}
+
+<ParamField path="tiles" type="HexTileState[]" required>
+  Tile definitions
+</ParamField>
+<ParamField path="edges" type="HexEdgeState[]" required>
+  Edge definitions (for Catan-style roads) - defaults to empty
+</ParamField>
+<ParamField path="vertices" type="HexVertexState[]" required>
+  Vertex definitions (for Catan-style settlements) - defaults to empty
+</ParamField>
+<ParamField path="orientation" type="HexOrientation">
+  Hex orientation
+</ParamField>
+<ParamField path="hexSize" type="number">
+  Hex size (radius in pixels)
+</ParamField>
+<ParamField path="renderTile" type="(tile: HexTileState) => ReactNode" required>
+  Custom tile renderer - required, receives tile data centered at (0,0)
+</ParamField>
+<ParamField path="renderEdge" type="(edge: HexEdgeState, position: EdgePosition) => ReactNode" required>
+  Custom edge renderer - required
+</ParamField>
+<ParamField path="renderVertex" type="(vertex: HexVertexState, position: { x: number; y: number }) => ReactNode" required>
+  Custom vertex renderer - required
+</ParamField>
+<ParamField path="width" type="number | string">
+  Container width (use "100%" for responsive)
+</ParamField>
+<ParamField path="height" type="number | string">
+  Container height (use "100%" for responsive)
+</ParamField>
+<ParamField path="enablePanZoom" type="boolean">
+  Enable pan and zoom
+</ParamField>
+<ParamField path="initialZoom" type="number">
+  Initial zoom level
+</ParamField>
+<ParamField path="minZoom" type="number">
+  Min zoom level
+</ParamField>
+<ParamField path="maxZoom" type="number">
+  Max zoom level
+</ParamField>
+<ParamField path="className" type="string">
+  Additional class names
+</ParamField>
+<ParamField path="interactiveVertices" type="boolean">
+  Enable interactive vertex overlay - auto-generates clickable points at all 6 corners of each tile (deduplicated where tiles meet)
+</ParamField>
+<ParamField path="interactiveEdges" type="boolean">
+  Enable interactive edge overlay - auto-generates clickable edges at all 6 sides of each tile (deduplicated where tiles meet)
+</ParamField>
+<ParamField path="onInteractiveVertexClick" type="(vertex: InteractiveVertex) => void">
+  Called when an interactive vertex is clicked
+</ParamField>
+<ParamField path="onInteractiveVertexEnter" type="(vertex: InteractiveVertex) => void">
+  Called when mouse enters an interactive vertex
+</ParamField>
+<ParamField path="onInteractiveVertexLeave" type="(vertex: InteractiveVertex) => void">
+  Called when mouse leaves an interactive vertex
+</ParamField>
+<ParamField path="onInteractiveEdgeClick" type="(edge: InteractiveEdge) => void">
+  Called when an interactive edge is clicked
+</ParamField>
+<ParamField path="onInteractiveEdgeEnter" type="(edge: InteractiveEdge) => void">
+  Called when mouse enters an interactive edge
+</ParamField>
+<ParamField path="onInteractiveEdgeLeave" type="(edge: InteractiveEdge) => void">
+  Called when mouse leaves an interactive edge
+</ParamField>
+<ParamField path="renderInteractiveVertex" type="(vertex: InteractiveVertex, isHovered: boolean) => ReactNode">
+  Custom renderer for interactive vertices. If not provided, uses DefaultInteractiveVertex.
+</ParamField>
+<ParamField path="renderInteractiveEdge" type="(edge: InteractiveEdge, isHovered: boolean) => ReactNode">
+  Custom renderer for interactive edges. If not provided, uses DefaultInteractiveEdge.
+</ParamField>
+<ParamField path="interactiveVertexSize" type="number">
+  Size of interactive vertex touch targets (default: 12)
+</ParamField>
+<ParamField path="interactiveEdgeSize" type="number">
+  Size of interactive edge touch targets (default: 10)
+</ParamField>

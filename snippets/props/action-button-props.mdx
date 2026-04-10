@@ -1,0 +1,42 @@
+{/* Generated from packages/ui-sdk/src/components/ActionButton.tsx */}
+{/* Run `pnpm docs:gen-props` to regenerate. Do not edit directly. */}
+
+<ParamField path="label" type="string" required>
+  Action label
+</ParamField>
+<ParamField path="description" type="string">
+  Action description
+</ParamField>
+<ParamField path="cost" type="Record<string, number>">
+  Resource cost (optional)
+</ParamField>
+<ParamField path="currentResources" type="Record<string, number>">
+  Current resources for affordability check
+</ParamField>
+<ParamField path="resourceDefs" type="ResourceDefinition[]">
+  Resource definitions for cost display
+</ParamField>
+<ParamField path="available" type="boolean">
+  Whether action is available
+</ParamField>
+<ParamField path="disabledReason" type="string">
+  Reason why disabled (shown as tooltip)
+</ParamField>
+<ParamField path="loading" type="boolean">
+  Whether action is loading
+</ParamField>
+<ParamField path="icon" type="ComponentType<{ className?: string; strokeWidth?: number; 'aria-hidden'?: string; }>">
+  Icon component
+</ParamField>
+<ParamField path="variant" type="'primary' | 'secondary' | 'danger' | 'success'">
+  Color variant
+</ParamField>
+<ParamField path="size" type="'sm' | 'md' | 'lg'">
+  Size variant
+</ParamField>
+<ParamField path="onClick" type="() => void" required>
+  Click handler
+</ParamField>
+<ParamField path="className" type="string">
+  Additional class names
+</ParamField>

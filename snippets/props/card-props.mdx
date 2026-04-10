@@ -1,0 +1,24 @@
+{/* Generated from packages/ui-sdk/src/components/Card.tsx */}
+{/* Run `pnpm docs:gen-props` to regenerate. Do not edit directly. */}
+
+<ParamField path="card" type="CardItem" required>
+  Card data to display
+</ParamField>
+<ParamField path="selected" type="boolean">
+  Whether the card is selected
+</ParamField>
+<ParamField path="disabled" type="boolean">
+  Whether the card can be interacted with
+</ParamField>
+<ParamField path="size" type="'sm' | 'md' | 'lg'">
+  Size variant
+</ParamField>
+<ParamField path="faceDown" type="boolean">
+  Whether to show the card face-down
+</ParamField>
+<ParamField path="renderContent" type="(card: CardItem) => React.ReactNode">
+  Custom render function for card content
+</ParamField>
+<ParamField path="onCardClick" type="(cardId: string) => void">
+  Click handler (called with card ID)
+</ParamField>

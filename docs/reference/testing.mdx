@@ -109,7 +109,7 @@ Use `defineScenario(...)` from `test/testing-types.ts`.
 | `id` | Yes | Scenario identifier |
 | `description` | No | Short human-readable summary |
 | `from` | Yes | Base ID from `test/bases/*.base.ts` |
-| `runners` | No | Defaults to reducer runner |
+| `runners` | No | `"reducer"` (default), `"embedded"`, or `"browser"` |
 | `when` | Yes | Async action flow |
 | `then` | Yes | Assertions over state, view, and history |
 
@@ -128,15 +128,11 @@ export default defineScenario({
     await game.action("player-1", "rollDie", {});
     await game.action("player-2", "rollDie", {});
   },
-  then: ({ publicState, view, expect, history }) => {
-    const state = publicState();
-
-    expect(state.lastRoll).toBe(6);
-    expect(state.scores["player-1"]).toBe(9);
-    expect(state.scores["player-2"]).toBe(12);
-    expect(state.winnerPlayerId).toBe("player-2");
+  then: ({ state, view, expect }) => {
+    expect(state()).toBe("takeTurn");
     expect(view("player-2").winnerPlayerId).toBe("player-2");
-    expect(history().accepted().length).toBe(6);
+    expect(view("player-1").scores["player-1"]).toBe(9);
+    expect(view("player-2").scores["player-2"]).toBe(12);
   },
 });
 ```
@@ -164,15 +160,28 @@ Use these in `when(...)` and `then(...)`:
 
 | Helper | Notes |
 | --- | --- |
-| `phase()` | Current reducer phase name |
-| `publicState()` | Current shared reducer state |
-| `view(playerId)` | Projected player view |
-| `runtime()` | Runtime metadata |
-| `history()` | Accepted and rejected inputs |
-| `expect(...)` | Built-in assertion API |
+| `state()` | Current phase name (`StateName`) |
+| `view(playerId)` | Projected `GameView` for one player |
+| `players()` | Ordered `PlayerId[]` for the session |
+| `prompts(playerId)` | Active `PromptInstance[]` addressed to that player |
+| `windows(playerId)` | Active `WindowInstance[]` visible to that player |
+| `expect(value)` | Built-in assertion API (see matchers below) |
 
-`then(...)` also exposes `hiddenState()` unless the active runner omits hidden
-state access.
+`state()` returns the phase name, not the raw reducer state. Assert game-specific
+values through `view(playerId)`, which returns the typed `GameView` projected by
+your reducer.
+
+### `expect` matchers
+
+| Matcher | Notes |
+| --- | --- |
+| `.toBe(expected)` | Strict equality (`===`) |
+| `.toEqual(expected)` | Deep equality |
+| `.toBeDefined()` | Not `undefined` |
+| `.toBeUndefined()` | Is `undefined` |
+| `.toBeNull()` | Is `null` |
+| `.toContain(expected)` | Array includes value or string includes substring |
+| `.toBeGreaterThanOrEqual(n)` | Numeric `>=` |
 
 ## Generated testing types
 
@@ -182,10 +191,9 @@ It re-exports:
 
 - `defineBase(...)`
 - `defineScenario(...)`
-- `phaseCommands`
-- `windowCommands`
-- reducer-derived types such as `GameState`, `GameView`, `ActionName`, and
-  `PromptId`
+- `phaseCommands`, `windowCommands`
+- Types: `GameView`, `ActionName`, `ActionParams<Name>`, `ActionCommandForPhase<Name>`, `StateName`, `PlayerId`, `PromptId`, `PromptResponse<Name>`, `WindowId`, `WindowActionName<Name>`, `WindowActionParams<Name, Action>`
+- `TestRunner` (`"reducer" | "embedded" | "browser"`)
 
 Import from `../testing-types` instead of reaching into `test/generated/*`
 directly.
@@ -218,11 +226,9 @@ Prefer direct reducer-native assertions for:
 Typical checks:
 
 ```ts
-then: ({ phase, history, expect, publicState }) => {
-  expect(history().rejected().length).toBe(1);
-  expect(history().accepted().length).toBe(0);
-  expect(phase()).toBe("takeTurn");
-  expect(publicState().winnerPlayerId).toBe(null);
+then: ({ state, view, expect }) => {
+  expect(state()).toBe("takeTurn");
+  expect(view("player-1").winnerPlayerId).toBeNull();
 };
 ```
 
@@ -242,6 +248,4 @@ Common symptoms:
 
 This page documents the scaffolded reducer-native test workspace.
 
-If you also use `dreamboard run` for manual debugging or operational inspection,
-treat that as a separate workflow. It is useful for ad hoc runtime exploration,
-but it is not the primary authored test surface for a new Dreamboard project.
+Use `dreamboard dev` to play the game manually in the browser. Use `dreamboard test` for automated reducer-native assertions.

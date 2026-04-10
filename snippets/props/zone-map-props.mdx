@@ -1,0 +1,36 @@
+{/* Generated from packages/ui-sdk/src/components/board/ZoneMap.tsx */}
+{/* Run `pnpm docs:gen-props` to regenerate. Do not edit directly. */}
+
+<ParamField path="zones" type="ZoneDefinition[]" required>
+  Zone definitions
+</ParamField>
+<ParamField path="pieces" type="ZonePiece[]" required>
+  Pieces in zones
+</ParamField>
+<ParamField path="renderZone" type="(zone: ZoneDefinition, pieces: ZonePiece[]) => ReactNode" required>
+  Required zone renderer - receives zone data and pieces in that zone
+</ParamField>
+<ParamField path="backgroundImage" type="string">
+  Background image URL
+</ParamField>
+<ParamField path="width" type="number | string">
+  Container width (use "100%" for responsive)
+</ParamField>
+<ParamField path="height" type="number | string">
+  Container height (use "100%" for responsive)
+</ParamField>
+<ParamField path="enablePanZoom" type="boolean">
+  Enable pan and zoom
+</ParamField>
+<ParamField path="initialZoom" type="number">
+  Initial zoom level
+</ParamField>
+<ParamField path="minZoom" type="number">
+  Min zoom level
+</ParamField>
+<ParamField path="maxZoom" type="number">
+  Max zoom level
+</ParamField>
+<ParamField path="className" type="string">
+  Additional class names
+</ParamField>

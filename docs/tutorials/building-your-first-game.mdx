@@ -177,18 +177,6 @@ export const gameContract = defineGameContract({
     public: publicStateSchema,
     private: privateStateSchema,
     hidden: hiddenStateSchema,
-    initial: {
-      public: ({ playerIds }) => ({
-        currentPlayerId: playerIds[0],
-        winnerPlayerId: null,
-        lastRoll: null,
-        scores: Object.fromEntries(playerIds.map((playerId) => [playerId, 0])),
-      }),
-      private: () => ({}),
-      hidden: () => ({
-        rollCount: 0,
-      }),
-    },
   },
 });
 
@@ -346,6 +334,18 @@ import { playerView } from "./player-view";
 
 export default defineGame({
   contract: gameContract,
+  initial: {
+    public: ({ playerIds }) => ({
+      currentPlayerId: playerIds[0],
+      winnerPlayerId: null,
+      lastRoll: null,
+      scores: Object.fromEntries(playerIds.map((playerId) => [playerId, 0])),
+    }),
+    private: () => ({}),
+    hidden: () => ({
+      rollCount: 0,
+    }),
+  },
   initialPhase: "takeTurn",
   phases,
   views: {
@@ -455,16 +455,12 @@ export default defineScenario({
     await game.action("player-1", "rollDie", {});
     await game.action("player-2", "rollDie", {});
   },
-  then: ({ publicState, view, expect, history, phase }) => {
-    const state = publicState();
-
-    expect(phase()).toBe("takeTurn");
-    expect(state.lastRoll).toBe(6);
-    expect(state.scores["player-1"]).toBe(9);
-    expect(state.scores["player-2"]).toBe(12);
-    expect(state.winnerPlayerId).toBe("player-2");
+  then: ({ state, view, expect }) => {
+    expect(state()).toBe("takeTurn");
+    expect(view("player-1").scores["player-1"]).toBe(9);
+    expect(view("player-2").scores["player-2"]).toBe(12);
     expect(view("player-2").winnerPlayerId).toBe("player-2");
-    expect(history().accepted().length).toBe(6);
+    expect(view("player-1").lastRoll).toBe(6);
   },
 });
 ```
@@ -478,10 +474,10 @@ dreamboard test run
 
 ## 10. Run the game locally
 
-Use the local runtime to verify the same flow manually:
+Start the local dev server to play the game in the browser:
 
 ```bash
-dreamboard run
+dreamboard dev
 ```
 
 If you edit `rule.md` or `manifest.json`, run `dreamboard sync` again before

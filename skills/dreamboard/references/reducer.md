@@ -80,18 +80,6 @@ shared, per-player, and hidden state schemas.
 | `state.public` | Yes | Shared state visible to every player |
 | `state.private` | Yes | Per-player server-only state |
 | `state.hidden` | Yes | Reducer-only state that never reaches clients |
-| `state.initial.public` | No | Lazy initializer for `publicState` |
-| `state.initial.private` | No | Lazy initializer for one player's private state |
-| `state.initial.hidden` | No | Lazy initializer for `hiddenState` |
-
-Initializers receive:
-
-- `manifest`
-- `table`
-- `playerIds`
-- `playerId` for `state.initial.private`
-- `rngSeed`
-- `setup`
 
 ```ts
 import { z } from "zod";
@@ -111,18 +99,6 @@ export const gameContract = defineGameContract({
     hidden: z.object({
       seededRoundId: z.string(),
     }),
-    initial: {
-      public: ({ playerIds }) => ({
-        currentJudgeId: playerIds[0],
-        winnerPlayerId: null,
-      }),
-      private: () => ({
-        secretNotes: [],
-      }),
-      hidden: ({ rngSeed }) => ({
-        seededRoundId: `round-${rngSeed ?? 0}`,
-      }),
-    },
   },
 });
 ```
@@ -238,6 +214,9 @@ executes.
 | Field | Required | Notes |
 | --- | --- | --- |
 | `contract` | Yes | Output from `defineGameContract(...)` |
+| `initial.public` | No | Lazy initializer for `publicState` |
+| `initial.private` | No | Lazy initializer for one player's private state |
+| `initial.hidden` | No | Lazy initializer for `hiddenState` |
 | `phases` | Yes | Phase registry; object keys are the phase names |
 | `initialPhase` | No | Default starting phase unless a setup profile overrides it |
 | `setupProfiles` | No | Typed setup-profile overrides and bootstrap steps |
@@ -246,6 +225,15 @@ executes.
 | `root.selectors` | No | Root-level derived selectors |
 
 If you omit `initialPhase`, the first registered phase is used.
+
+Initializers receive:
+
+- `manifest`
+- `table`
+- `playerIds`
+- `playerId` for `initial.private`
+- `rngSeed`
+- `setup`
 
 ```ts
 import { defineGame } from "@dreamboard/app-sdk/reducer";
@@ -256,6 +244,18 @@ import { setupProfiles } from "./setup-profiles";
 
 export default defineGame({
   contract: gameContract,
+  initial: {
+    public: ({ playerIds }) => ({
+      currentJudgeId: playerIds[0],
+      winnerPlayerId: null,
+    }),
+    private: () => ({
+      secretNotes: [],
+    }),
+    hidden: ({ rngSeed }) => ({
+      seededRoundId: `round-${rngSeed ?? 0}`,
+    }),
+  },
   initialPhase: "dealCards",
   setupProfiles,
   phases,
@@ -364,7 +364,7 @@ export const setupProfiles = defineSetupProfilesFor(
 | --- | --- | --- |
 | `kind` | No | `auto` or `player` |
 | `state` | Yes | Zod schema for phase-local state |
-| `initialState` | No | Initializes `state.phases[phaseName]` |
+| `initialState` | No | Initializes `state.phase` when the phase becomes current |
 | `enter` | No | Runs on initialization and on transitions into the phase |
 | `actions` | No | Player actions available in this phase |
 | `prompts` | No | Prompt registry for this phase |
@@ -377,6 +377,10 @@ export const setupProfiles = defineSetupProfilesFor(
 
 `enter(...)` receives the same reducer callback helpers as actions, plus
 `event`, which is either `initialize` or `transition`.
+
+Inside a phase callback, `state.phase` is strongly typed from that phase's
+`state` schema. Dreamboard no longer stores a `state.phases` map or exposes
+`getPhaseState(...)`.
 
 Use `kind: "auto"` for phases that should resolve immediately from reducer
 logic without waiting for a player action. Use `kind: "player"` for phases that
@@ -616,7 +620,6 @@ continuation reducers, and view projectors receive shared runtime helpers.
 | `currentPhase` | Current phase name |
 | `playerOrder` | Full turn order |
 | `activePlayers` | Current active player IDs |
-| `getPhaseState(phaseName?)` | Reads current or named phase state |
 | `promptByInstanceId(promptId)` | Reads one open prompt instance |
 | `windowByInstanceId(windowId)` | Reads one open window instance |
 
@@ -713,7 +716,7 @@ Reducer table helpers are immutable. Each mover returns a cloned table or state.
 | Helper | Returns | Notes |
 | --- | --- | --- |
 | `setActivePlayers(state, playerIds)` | State copy | Replaces `flow.activePlayers` |
-| `setPhaseState(state, phaseName, phaseState)` | State copy | Writes one phase-local state value |
+| `setPhaseState(state, phaseState)` | State copy | Replaces the current `state.phase` value |
 | `getSharedZoneCards(table, zoneId)` | `readonly string[]` | Reads a shared zone or shared deck |
 | `getPlayerZoneCards(table, playerId, zoneId)` | `readonly string[]` | Reads a per-player zone or hand |
 | `addCardToSharedZone(table, zoneId, cardId, playedBy?)` | Table copy | Appends a card to a shared zone |
@@ -819,7 +822,7 @@ export default createReducerBundle(game);
 | Method | Notes |
 | --- | --- |
 | `initialize({ table, playerIds, rngSeed?, setup? })` | Creates the initial reducer state, applies setup overrides, and enters the initial phase |
-| `initializePhase({ state, to })` | Initializes one phase state block |
+| `initializePhase({ state, to })` | Transitions into one phase and initializes its `state.phase` value |
 | `validateInput({ state, input })` | Validates one runtime input |
 | `reduce({ state, input })` | Applies one input without draining follow-up effects |
 | `dispatch({ state, input })` | Applies one input and drains runtime effects |

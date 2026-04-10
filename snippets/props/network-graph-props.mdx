@@ -1,0 +1,48 @@
+{/* Generated from packages/ui-sdk/src/components/board/NetworkGraph.tsx */}
+{/* Run `pnpm docs:gen-props` to regenerate. Do not edit directly. */}
+
+<ParamField path="nodes" type="NetworkNode[]" required>
+  Network nodes
+</ParamField>
+<ParamField path="edges" type="NetworkEdge[]" required>
+  Network edges - defaults to empty
+</ParamField>
+<ParamField path="pieces" type="NetworkPiece[]" required>
+  Pieces/tokens on nodes - defaults to empty
+</ParamField>
+<ParamField path="renderNode" type="(node: NetworkNode, pieces: NetworkPiece[]) => ReactNode" required>
+  Custom node renderer - required, receives node centered at its position
+</ParamField>
+<ParamField path="renderEdge" type="(edge: NetworkEdge, fromNode: NetworkNode, toNode: NetworkNode) => ReactNode" required>
+  Custom edge renderer - required
+</ParamField>
+<ParamField path="renderPiece" type="(piece: NetworkPiece, position: { x: number; y: number }) => ReactNode" required>
+  Custom piece renderer - required
+</ParamField>
+<ParamField path="width" type="number | string">
+  Container width (use "100%" for responsive)
+</ParamField>
+<ParamField path="height" type="number | string">
+  Container height (use "100%" for responsive)
+</ParamField>
+<ParamField path="nodeRadius" type="number">
+  Node radius for bounds calculation
+</ParamField>
+<ParamField path="enablePanZoom" type="boolean">
+  Enable pan and zoom
+</ParamField>
+<ParamField path="initialZoom" type="number">
+  Initial zoom level
+</ParamField>
+<ParamField path="minZoom" type="number">
+  Min zoom level
+</ParamField>
+<ParamField path="maxZoom" type="number">
+  Max zoom level
+</ParamField>
+<ParamField path="padding" type="number">
+  Padding around content
+</ParamField>
+<ParamField path="className" type="string">
+  Additional class names
+</ParamField>

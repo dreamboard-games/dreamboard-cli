@@ -78,18 +78,6 @@ shared, per-player, and hidden state schemas.
 | `state.public` | Yes | Shared state visible to every player |
 | `state.private` | Yes | Per-player server-only state |
 | `state.hidden` | Yes | Reducer-only state that never reaches clients |
-| `state.initial.public` | No | Lazy initializer for `publicState` |
-| `state.initial.private` | No | Lazy initializer for one player's private state |
-| `state.initial.hidden` | No | Lazy initializer for `hiddenState` |
-
-Initializers receive:
-
-- `manifest`
-- `table`
-- `playerIds`
-- `playerId` for `state.initial.private`
-- `rngSeed`
-- `setup`
 
 ```ts
 import { z } from "zod";
@@ -109,18 +97,6 @@ export const gameContract = defineGameContract({
     hidden: z.object({
       seededRoundId: z.string(),
     }),
-    initial: {
-      public: ({ playerIds }) => ({
-        currentJudgeId: playerIds[0],
-        winnerPlayerId: null,
-      }),
-      private: () => ({
-        secretNotes: [],
-      }),
-      hidden: ({ rngSeed }) => ({
-        seededRoundId: `round-${rngSeed ?? 0}`,
-      }),
-    },
   },
 });
 ```
@@ -191,6 +167,10 @@ index manifest-authored fields without falling back to `Record<string, unknown>`
 | `BoardContainerFieldsByBoardId` | Runtime board ID -> per-container `fields` shape |
 | `HexEdgeFieldsByBoardId` | Runtime hex board ID -> per-edge `fields` shape |
 | `HexVertexFieldsByBoardId` | Runtime hex board ID -> per-vertex `fields` shape |
+| `SquareEdgeFieldsByBoardId` | Runtime square board ID -> per-edge `fields` shape |
+| `SquareVertexFieldsByBoardId` | Runtime square board ID -> per-vertex `fields` shape |
+| `TiledEdgeFieldsByBoardId` | Runtime tiled board ID -> per-edge `fields` shape |
+| `TiledVertexFieldsByBoardId` | Runtime tiled board ID -> per-vertex `fields` shape |
 | `PieceFieldsByTypeId` | Piece type ID -> piece `properties` shape |
 | `DieFieldsByTypeId` | Die type ID -> die `properties` shape |
 
@@ -202,14 +182,14 @@ helpers.
 | Helper | Notes |
 | --- | --- |
 | `boardIdsByBaseId` | Expands authored base board IDs into runtime board IDs |
-| `boardLayoutById` | Runtime board ID -> `generic` or `hex` |
+| `boardLayoutById` | Runtime board ID -> `generic`, `hex`, or `square` |
 | `boardIdsByTypeId` | Reducer-facing board `typeId` -> runtime board IDs |
 | `spaceIdsByBoardId` | Runtime board ID -> all space IDs on that board |
 | `spaceIdsByTypeId` | Space `typeId` -> matching space IDs |
 | `containerIdsByBoardId` | Runtime board ID -> board container IDs |
 | `relationTypeIdsByBoardId` | Runtime board ID -> relation `typeId`s |
-| `edgeIdsByTypeId` | Hex edge `typeId` -> edge IDs |
-| `vertexIdsByTypeId` | Hex vertex `typeId` -> vertex IDs |
+| `edgeIdsByTypeId` | Tiled edge `typeId` -> edge IDs |
+| `vertexIdsByTypeId` | Tiled vertex `typeId` -> vertex IDs |
 
 ### Board-aware component locations
 
@@ -228,6 +208,36 @@ The table helpers in this package update those locations for you:
 `moveComponentToSpace(...)`, `moveComponentToContainer(...)`,
 `moveComponentToEdge(...)`, and `moveComponentToVertex(...)`.
 
+### Tiled state pattern
+
+For hex and square boards, keep immutable topology in the manifest-backed table
+and keep mutable gameplay facts in reducer state keyed by runtime IDs.
+
+```ts
+import type {
+  TiledEdgeMap,
+  TiledSpaceMap,
+  TiledVertexMap,
+} from "@dreamboard/app-sdk/reducer";
+
+type Table = GameState["table"];
+
+type OwnershipBySpaceId = TiledSpaceMap<Table, "mars-board", string>;
+type EffectsByEdgeId = TiledEdgeMap<Table, "arena-board", string>;
+type MarkersByVertexId = TiledVertexMap<
+  Table,
+  "arena-board",
+  { ownerId: string; kind: string }
+>;
+```
+
+That pattern works for:
+
+- Terraforming Mars tile ownership and adjacency bonuses
+- Gloomhaven movement, blockers, and range checks
+- Cascadia adjacency-driven scoring
+- Chess-, Checkers-, or Onitama-style square-cell overlays
+
 ## `defineGame(...)`
 
 `defineGame(...)` assembles the reducer definition that `createReducerBundle(...)`
@@ -236,6 +246,9 @@ executes.
 | Field | Required | Notes |
 | --- | --- | --- |
 | `contract` | Yes | Output from `defineGameContract(...)` |
+| `initial.public` | No | Lazy initializer for `publicState` |
+| `initial.private` | No | Lazy initializer for one player's private state |
+| `initial.hidden` | No | Lazy initializer for `hiddenState` |
 | `phases` | Yes | Phase registry; object keys are the phase names |
 | `initialPhase` | No | Default starting phase unless a setup profile overrides it |
 | `setupProfiles` | No | Typed setup-profile overrides and bootstrap steps |
@@ -244,6 +257,15 @@ executes.
 | `root.selectors` | No | Root-level derived selectors |
 
 If you omit `initialPhase`, the first registered phase is used.
+
+Initializers receive:
+
+- `manifest`
+- `table`
+- `playerIds`
+- `playerId` for `initial.private`
+- `rngSeed`
+- `setup`
 
 ```ts
 import { defineGame } from "@dreamboard/app-sdk/reducer";
@@ -254,6 +276,18 @@ import { setupProfiles } from "./setup-profiles";
 
 export default defineGame({
   contract: gameContract,
+  initial: {
+    public: ({ playerIds }) => ({
+      currentJudgeId: playerIds[0],
+      winnerPlayerId: null,
+    }),
+    private: () => ({
+      secretNotes: [],
+    }),
+    hidden: ({ rngSeed }) => ({
+      seededRoundId: `round-${rngSeed ?? 0}`,
+    }),
+  },
   initialPhase: "dealCards",
   setupProfiles,
   phases,
@@ -362,7 +396,7 @@ export const setupProfiles = defineSetupProfilesFor(
 | --- | --- | --- |
 | `kind` | No | `auto` or `player` |
 | `state` | Yes | Zod schema for phase-local state |
-| `initialState` | No | Initializes `state.phases[phaseName]` |
+| `initialState` | No | Initializes `state.phase` when the phase becomes current |
 | `enter` | No | Runs on initialization and on transitions into the phase |
 | `actions` | No | Player actions available in this phase |
 | `prompts` | No | Prompt registry for this phase |
@@ -375,6 +409,10 @@ export const setupProfiles = defineSetupProfilesFor(
 
 `enter(...)` receives the same reducer callback helpers as actions, plus
 `event`, which is either `initialize` or `transition`.
+
+Inside a phase callback, `state.phase` is strongly typed from that phase's
+`state` schema. Dreamboard no longer stores a `state.phases` map or exposes
+`getPhaseState(...)`.
 
 Use `kind: "auto"` for phases that should resolve immediately from reducer
 logic without waiting for a player action. Use `kind: "player"` for phases that
@@ -614,7 +652,6 @@ continuation reducers, and view projectors receive shared runtime helpers.
 | `currentPhase` | Current phase name |
 | `playerOrder` | Full turn order |
 | `activePlayers` | Current active player IDs |
-| `getPhaseState(phaseName?)` | Reads current or named phase state |
 | `promptByInstanceId(promptId)` | Reads one open prompt instance |
 | `windowByInstanceId(windowId)` | Reads one open window instance |
 
@@ -711,7 +748,7 @@ Reducer table helpers are immutable. Each mover returns a cloned table or state.
 | Helper | Returns | Notes |
 | --- | --- | --- |
 | `setActivePlayers(state, playerIds)` | State copy | Replaces `flow.activePlayers` |
-| `setPhaseState(state, phaseName, phaseState)` | State copy | Writes one phase-local state value |
+| `setPhaseState(state, phaseState)` | State copy | Replaces the current `state.phase` value |
 | `getSharedZoneCards(table, zoneId)` | `readonly string[]` | Reads a shared zone or shared deck |
 | `getPlayerZoneCards(table, playerId, zoneId)` | `readonly string[]` | Reads a per-player zone or hand |
 | `addCardToSharedZone(table, zoneId, cardId, playedBy?)` | Table copy | Appends a card to a shared zone |
@@ -749,6 +786,25 @@ const nextTable = moveCardFromPlayerZoneToSharedZone({
 | `moveComponentToContainer(table, componentId, boardId, containerId)` | Table copy | Moves any component into a board container |
 | `assertCardAllowedInContainer(table, boardId, containerId, componentId)` | `void` | Throws if a card-set restriction would be violated |
 
+### Shared tiled-board helpers
+
+| Helper | Returns | Notes |
+| --- | --- | --- |
+| `getTiledBoard(table, boardId)` | Tiled board state | Narrows a board to `layout: "hex"` or `layout: "square"` |
+| `getEdge(table, boardId, edgeId)` | Edge state | Reads one tiled edge |
+| `getVertex(table, boardId, vertexId)` | Vertex state | Reads one tiled vertex |
+| `getEdgesByTypeId(table, boardId, typeId)` | Edge ID array | Finds tiled edges by authored `typeId` |
+| `getVerticesByTypeId(table, boardId, typeId)` | Vertex ID array | Finds tiled vertices by authored `typeId` |
+| `getSpaceEdges(table, boardId, spaceId)` | Edge ID array | Lists edges that border one space |
+| `getSpaceVertices(table, boardId, spaceId)` | Vertex ID array | Lists vertices that touch one space |
+| `getIncidentEdges(table, boardId, vertexId)` | Edge ID array | Lists edges that touch a vertex |
+| `getIncidentVertices(table, boardId, edgeId)` | Vertex ID array | Lists vertices that touch an edge |
+| `getSpaceDistance(table, boardId, fromSpaceId, toSpaceId)` | Number | Uses the layout's default adjacency graph |
+| `getComponentsOnEdge(table, boardId, edgeId)` | Component ID array | Reads ordered occupants on an edge |
+| `getComponentsOnVertex(table, boardId, vertexId)` | Component ID array | Reads ordered occupants on a vertex |
+| `moveComponentToEdge(table, componentId, boardId, edgeId)` | Table copy | Moves a component onto a tiled edge |
+| `moveComponentToVertex(table, componentId, boardId, vertexId)` | Table copy | Moves a component onto a tiled vertex |
+
 ### Hex-board helpers
 
 | Helper | Returns | Notes |
@@ -756,12 +812,22 @@ const nextTable = moveCardFromPlayerZoneToSharedZone({
 | `getHexBoard(table, boardId)` | Hex board state | Narrows a board to `layout: "hex"` |
 | `getHexSpace(table, boardId, spaceId)` | Hex space state | Reads one hex space |
 | `getHexSpaceAt(table, boardId, q, r)` | Hex space or `undefined` | Looks up by axial coordinates |
-| `getEdge(table, boardId, edgeId)` | Edge state | Reads one hex edge |
-| `getVertex(table, boardId, vertexId)` | Vertex state | Reads one hex vertex |
-| `getEdgesByTypeId(table, boardId, typeId)` | Edge ID array | Finds edges by authored `typeId` |
-| `getVerticesByTypeId(table, boardId, typeId)` | Vertex ID array | Finds vertices by authored `typeId` |
-| `moveComponentToEdge(table, componentId, boardId, edgeId)` | Table copy | Moves a component onto a hex edge |
-| `moveComponentToVertex(table, componentId, boardId, vertexId)` | Table copy | Moves a component onto a hex vertex |
+
+### Square-board helpers
+
+| Helper | Returns | Notes |
+| --- | --- | --- |
+| `getSquareBoard(table, boardId)` | Square board state | Narrows a board to `layout: "square"` |
+| `getSquareSpace(table, boardId, spaceId)` | Square space state | Reads one square space |
+| `getSquareSpaceAt(table, boardId, row, col)` | Square space or `undefined` | Looks up by row and column |
+| `getSquareNeighbors(table, boardId, spaceId, { mode })` | Space ID array | `mode` can be `orthogonal`, `diagonal`, or `all` |
+| `getSquareDistance(table, boardId, fromSpaceId, toSpaceId, { metric })` | Number | `metric` can be `manhattan` or `chebyshev` |
+
+`getAdjacentSpaces(...)` now follows the board layout:
+
+- `generic` boards read authored `adjacent` relations
+- `hex` boards use derived hex adjacency
+- `square` boards use derived orthogonal adjacency
 
 ## `applySetupBootstrap(...)`
 
@@ -817,7 +883,7 @@ export default createReducerBundle(game);
 | Method | Notes |
 | --- | --- |
 | `initialize({ table, playerIds, rngSeed?, setup? })` | Creates the initial reducer state, applies setup overrides, and enters the initial phase |
-| `initializePhase({ state, to })` | Initializes one phase state block |
+| `initializePhase({ state, to })` | Transitions into one phase and initializes its `state.phase` value |
 | `validateInput({ state, input })` | Validates one runtime input |
 | `reduce({ state, input })` | Applies one input without draining follow-up effects |
 | `dispatch({ state, input })` | Applies one input and drains runtime effects |

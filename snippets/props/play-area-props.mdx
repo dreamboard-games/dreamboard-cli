@@ -1,0 +1,27 @@
+{/* Generated from packages/ui-sdk/src/components/PlayArea.tsx */}
+{/* Run `pnpm docs:gen-props` to regenerate. Do not edit directly. */}
+
+<ParamField path="cards" type="CardItem[]" required>
+  Array of cards to display
+</ParamField>
+<ParamField path="filter" type="(card: CardItem) => boolean">
+  Filter function to determine which cards to show
+</ParamField>
+<ParamField path="cardSize" type="CardProps['size']">
+  Card size
+</ParamField>
+<ParamField path="renderCard" type="CardProps['renderContent']">
+  Custom card renderer
+</ParamField>
+<ParamField path="layout" type="'grid' | 'row'">
+  Layout style
+</ParamField>
+<ParamField path="interactive" type="boolean">
+  Whether cards are interactive
+</ParamField>
+<ParamField path="onCardClick" type="(cardId: string) => void">
+  Card click handler
+</ParamField>
+<ParamField path="className" type="string">
+  `className` value
+</ParamField>

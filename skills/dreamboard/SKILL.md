@@ -1,6 +1,6 @@
 ---
 name: dreamboard
-description: Create multiplayer, rule-enforced, turn-based game on Dreamboard.games platform.
+description: Guides development of multiplayer, rule-enforced, turn-based games on the Dreamboard.games platform. Use this skill when building a new Dreamboard game, implementing game logic with the reducer pattern, writing game rules or manifest, using the Dreamboard CLI, or iterating on game UI and tests.
 metadata:
   short-description: Dreamboard Game Development Workflow
   tags: [dreamboard, cli, game-dev, board-game, turn-based, multiplayer]
@@ -19,8 +19,23 @@ compile, run, and test against the current reducer-native scaffold.
   Install with `npm install -g dreamboard`
 - Authenticated via `dreamboard login`
 
-## Buliding Your First Game
-See [tutorials/building-your-first-game.md](references/building-your-first-game.md)
+## New game workflow
+
+Copy this checklist and track your progress:
+
+```
+New Game Development Progress:
+- [ ] Step 1: Author rule.md
+- [ ] Step 2: Author manifest.json to define game components
+- [ ] Step 3: Run `dreamboard sync` to update generate type-safe contract
+- [ ] Step 4: Implement reducer contract, phases, actions, and views in `app/`
+- [ ] Step 5: Run `dreamboard compile` and fix any type errors
+- [ ] Step 6: Write bases and scenarios in `test/`, then run `dreamboard test generate` and `dreamboard test run`
+- [ ] Step 7: Implement the playable UI in `ui/App.tsx` — prefer components from `ui/components/dreamboard/` before writing custom elements (see [references/ui-library.md](references/ui-library.md))
+- [ ] Step 8: Verify end-to-end with `dreamboard dev`
+```
+
+For a full walkthrough of each step, see [references/building-your-first-game.md](references/building-your-first-game.md)
 
 ## References
 
@@ -36,25 +51,29 @@ See [tutorials/building-your-first-game.md](references/building-your-first-game.
   [references/manifest-authoring.md](references/manifest-authoring.md)
 - Reducer:
   [references/reducer.md](references/reducer.md)
-- Game interface:
-  [references/game-interface.md](references/game-interface.md)
+- UI Library:
+  [references/ui-library.md](references/ui-library.md)
 - Testing:
   [references/testing.md](references/testing.md)
 
 ## Current Scaffold
 
-The current scaffold centers on these files:
+A fresh `dreamboard new` workspace contains:
 
 - authored source:
   `rule.md`, `manifest.json`
 - reducer:
-  `app/game-contract.ts`, `app/game.ts`, `app/phases/*.ts`,
-  `app/setup-profiles.ts`
+  `app/game-contract.ts`, `app/game.ts`, `app/phases/setup.ts`,
+  `app/setup-profiles.ts`, `app/reducer-support.ts`
 - UI:
-  `ui/App.tsx`
+  `ui/App.tsx`, `ui/components/dreamboard/` (pre-built component library —
+  presentational: `Card`, `Hand`, `PlayArea`, `PlayerInfo`, `ActionButton`, `ActionPanel`, `DiceRoller`, `PhaseIndicator`, `GameEndDisplay`, `Drawer`;
+  board: `SquareGrid`, `HexGrid`, `TrackBoard`, `NetworkGraph`, `ZoneMap`, `SlotSystem`)
 - tests:
-  `test/bases/*.base.ts`, `test/scenarios/*.scenario.ts`,
-  `test/testing-types.ts`
+  `test/bases/initial-turn.base.ts`, `test/testing-types.ts`
+  _(scenarios are not scaffolded — create them in `test/scenarios/`)_
+- generated (do not edit):
+  `shared/manifest-contract.ts`, `shared/generated/ui-contract.ts`
 
 ## Command Flow
 
@@ -72,20 +91,6 @@ Quick rule:
 - edited files locally: `dreamboard sync` then `dreamboard compile`
 - compile failed but you have not edited files since: `dreamboard compile` again
 - remote authored head moved: `dreamboard pull` first
-
-## Workflow
-
-Use this order by default:
-
-1. Write or revise `rule.md`.
-2. Align `manifest.json` to the rules.
-3. Run `dreamboard sync`.
-4. Implement reducer state, phases, actions, and views in `app/`.
-5. Implement the playable UI in `ui/App.tsx`.
-6. Run `dreamboard compile`.
-7. Generate test artifacts with `dreamboard test generate`.
-8. Run scenarios with `dreamboard test run`.
-9. Validate the local runtime with `dreamboard run`.
 
 ## Guardrails
 
@@ -107,6 +112,8 @@ Edit:
 - `app/game.ts`
 - `app/phases/*.ts`
 - `app/setup-profiles.ts`
+- `app/reducer-support.ts`
+- `app/*-view.ts` (view files you create, e.g. `app/player-view.ts`)
 - `ui/App.tsx`
 - `test/bases/*.base.ts`
 - `test/scenarios/*.scenario.ts`
@@ -119,7 +126,7 @@ Do not edit generated or framework-owned files such as:
 - `ui/index.tsx`
 - `test/generated/*`
 
-## Offical Documentation
+## Official Documentation
 Visit https://dreamboard.games/docs
 
 ## Framework Feedback

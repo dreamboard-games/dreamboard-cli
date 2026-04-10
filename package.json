@@ -7,6 +7,7 @@
   },
   "scripts": {
     "build": "pnpm --dir apps/dreamboard-cli run build",
+    "docs:gen-props": "pnpm --dir apps/dreamboard-cli run gen:props-docs",
     "docs:broken-links": "pnpm mint broken-links",
     "docs:dev": "pnpm mint dev",
     "skills:sync-docs": "pnpm --dir apps/dreamboard-cli run sync:skill-docs",

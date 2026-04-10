@@ -28,6 +28,7 @@
     "check:embedded-harness": "bun run scripts/check-embedded-harness.ts",
     "dev": "$HOME/.bun/bin/bun run scripts/dev.ts",
     "test": "bun run scripts/test.ts",
+    "gen:props-docs": "tsx scripts/generate-props-docs.ts",
     "sync:skill-docs": "tsx scripts/sync-skill-docs.ts",
     "sync:skill-content": "tsx scripts/sync-skill-content.ts",
     "sync:scaffold-ownership": "tsx scripts/sync-scaffold-ownership.ts",
@@ -55,6 +56,7 @@
     "prettier": "^3.5.1",
     "prettier-plugin-sql": "^0.18.1",
     "tsup": "^8.5.0",
-    "tsx": "^4.20.5"
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.3"
   }
 }

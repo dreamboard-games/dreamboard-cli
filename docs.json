@@ -31,8 +31,9 @@
               "docs/reference/cli",
               "docs/reference/rule-authoring",
               "docs/reference/manifest-authoring",
+              "docs/reference/tiled-board-topology",
               "docs/reference/reducer",
-              "docs/reference/game-interface",
+              "docs/reference/ui-library",
               "docs/reference/testing"
             ]
           }
@@ -66,12 +67,16 @@
       "destination": "/docs/reference/reducer"
     },
     {
+      "source": "/reference/tiled-board-topology",
+      "destination": "/docs/reference/tiled-board-topology"
+    },
+    {
       "source": "/reference/game-interface",
-      "destination": "/docs/reference/game-interface"
+      "destination": "/docs/reference/ui-library"
     },
     {
       "source": "/reference/ui-sdk",
-      "destination": "/docs/reference/game-interface"
+      "destination": "/docs/reference/ui-library"
     },
     {
       "source": "/reference/testing",

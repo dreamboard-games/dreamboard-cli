@@ -1,0 +1,27 @@
+{/* Generated from packages/ui-sdk/src/components/board/SlotSystem.tsx */}
+{/* Run `pnpm docs:gen-props` to regenerate. Do not edit directly. */}
+
+<ParamField path="slots" type="SlotDefinition[]" required>
+  Slot definitions
+</ParamField>
+<ParamField path="occupants" type="SlotOccupant[]" required>
+  Current slot occupants - defaults to empty
+</ParamField>
+<ParamField path="renderSlot" type="(slot: SlotDefinition, occupants: SlotOccupant[]) => ReactNode" required>
+  Custom slot renderer - required, receives slot and its occupants
+</ParamField>
+<ParamField path="layout" type="'grid' | 'list' | 'grouped'">
+  Layout style
+</ParamField>
+<ParamField path="width" type="number | string">
+  Container width
+</ParamField>
+<ParamField path="height" type="number | string">
+  Container height
+</ParamField>
+<ParamField path="minSlotWidth" type="number">
+  Minimum slot width for responsive grid (default: 280px)
+</ParamField>
+<ParamField path="className" type="string">
+  Additional class names
+</ParamField>

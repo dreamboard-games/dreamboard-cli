@@ -42,12 +42,6 @@ Compile the current authored head:
 dreamboard compile
 ```
 
-Run the game locally:
-
-```bash
-dreamboard run
-```
-
 Start a local server to play the compiled game
 
 ```bash

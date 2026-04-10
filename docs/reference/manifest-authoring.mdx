@@ -10,7 +10,9 @@ Boards describe positions, connections, and structural sites. Randomized setup
 contents still belong in reducer setup code. In a Catan-style game, the
 manifest should define stable hex spaces such as `cell-01`, `cell-02`, and
 `cell-03`, while the reducer shuffles terrain pieces and number tokens onto
-those spaces at runtime.
+those spaces at runtime. In a square-grid game, the manifest should define
+stable authored cells such as `a1`, `a2`, and `b1`, while reducer state tracks
+movement, ownership, hazards, or score markers.
 
 ## Top-level shape
 
@@ -96,8 +98,8 @@ Use `home` on cards, piece seeds, and die seeds to place authored inventory.
 | `zone` | `zoneId` | Place into a zone |
 | `space` | `boardId`, `spaceId` | Place onto a board space or hex space |
 | `container` | `boardId`, `containerId` | Place into a board container |
-| `edge` | `boardId`, `ref` | Place onto a hex edge identified by two spaces |
-| `vertex` | `boardId`, `ref` | Place onto a hex vertex identified by three spaces |
+| `edge` | `boardId`, `ref` | Place onto a tiled-board edge identified by one or two spaces |
+| `vertex` | `boardId`, `ref` | Place onto a tiled-board vertex identified by one to four spaces |
 | `slot` | `hostComponentId`, `slotId` | Place into a component-owned slot |
 
 ### `ComponentVisibilitySpec`
@@ -230,6 +232,7 @@ with `typeId: "track"`.
 | --- | --- | --- |
 | Generic | `id`, `name`, `layout: "generic"` | Optional `typeId` for authored board category |
 | Hex | `id`, `name`, `layout: "hex"` | Optional `typeId`; `orientation` defaults to `pointy-top` |
+| Square | `id`, `name`, `layout: "square"` | Optional `typeId`; uses authored `row` and `col` coordinates |
 
 Generic templates can include `boardFieldsSchema`, `spaceFieldsSchema`,
 `relationFieldsSchema`, `containerFieldsSchema`, and `spaces`, `relations`,
@@ -238,6 +241,11 @@ Generic templates can include `boardFieldsSchema`, `spaceFieldsSchema`,
 Hex templates can include `boardFieldsSchema`, `spaceFieldsSchema`,
 `edgeFieldsSchema`, `vertexFieldsSchema`, and `spaces`, `edges`, `vertices`.
 Those arrays default to `[]`.
+
+Square templates can include `boardFieldsSchema`, `spaceFieldsSchema`,
+`relationFieldsSchema`, `containerFieldsSchema`, `edgeFieldsSchema`,
+`vertexFieldsSchema`, plus `spaces`, `relations`, `containers`, `edges`, and
+`vertices`. Those arrays default to `[]`.
 
 ```json
 {
@@ -284,7 +292,7 @@ Those arrays default to `[]`.
 | --- | --- | --- |
 | `id` | Yes | Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` |
 | `name` | Yes | Display name |
-| `layout` | Yes | `generic` or `hex` |
+| `layout` | Yes | `generic`, `hex`, or `square` |
 | `typeId` | No | Authored board category used by reducer/UI code |
 | `scope` | Yes | `shared` or `perPlayer` |
 | `templateId` | No | Clone a template before applying inline additions |
@@ -296,6 +304,11 @@ and `containers`. Those arrays default to `[]`.
 
 Hex boards can add `orientation`, `boardFieldsSchema`, `spaceFieldsSchema`,
 `edgeFieldsSchema`, `vertexFieldsSchema`, plus `spaces`, `edges`, and
+`vertices`. Those arrays default to `[]`.
+
+Square boards can add `boardFieldsSchema`, `spaceFieldsSchema`,
+`relationFieldsSchema`, `containerFieldsSchema`, `edgeFieldsSchema`,
+`vertexFieldsSchema`, plus `spaces`, `relations`, `containers`, `edges`, and
 `vertices`. Those arrays default to `[]`.
 
 ### `BoardSpaceSpec`
@@ -343,6 +356,22 @@ graph such as squares, hexes, map locations, or action spots.
 Use hex spaces for stable board positions. Use edges and vertices for
 structural sites such as roads, borders, settlements, checkpoints, or other
 game-specific metadata.
+
+### `SquareSpaceSpec`, `SquareEdgeSpec`, and `SquareVertexSpec`
+
+| Type | Required fields | Notes |
+| --- | --- | --- |
+| `SquareSpaceSpec` | `id`, `row`, `col` | Optional `typeId`, `label`, `fields` |
+| `SquareEdgeSpec` | `ref` | `ref.spaces` must resolve to exactly one shared border; optional `typeId`, `label`, `tags`, `fields` |
+| `SquareVertexSpec` | `ref` | `ref.spaces` must resolve to exactly one shared corner; optional `typeId`, `label`, `tags`, `fields` |
+
+Use square spaces for stable board positions such as chess cells, tactical-map
+tiles, or fixed tile-placement slots. Use square edges and vertices for shared
+borders, gates, walls, crossings, scoring seams, or any other authored site
+that sits between or around spaces.
+
+Hex and square boards are fixed-topology in this release. Carcassonne-style
+board growth is a future extension, not part of the current board layouts.
 
 For a single real-game example that also lines up with `PieceSeedSpec` and `DieSeedSpec`, a Monopoly-style `track` board is the best fit.
 
@@ -575,10 +604,10 @@ interactive setup composition. The runtime still selects setup by
   `{boardId}:player-1`.
 - Home references use authored board base IDs. Per-player boards resolve to the
   matching runtime board for the owning player.
-- For hex boards, authored `spaces` are the stable topology positions. Runtime
-  `edgeId` and `vertexId` values are derived from those spaces. Authors attach
-  metadata by referencing `ref.spaces`, not by writing edge or vertex IDs
-  directly.
+- For hex and square boards, authored `spaces` are the stable topology
+  positions. Runtime `edgeId` and `vertexId` values are derived from those
+  spaces. Authors attach metadata by referencing `ref.spaces`, not by writing
+  edge or vertex IDs directly.
 - Preset card sets are materialized into authored cards before code generation.
   The current supported preset is `standard_52_deck`.
 - `setupProfiles.optionValues` must reference declared setup options and

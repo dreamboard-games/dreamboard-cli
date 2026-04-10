@@ -4,7 +4,7 @@ description: "Reference for Dreamboard CLI workflows and commands."
 ---
 
 Dreamboard CLI manages the authored workspace loop: authenticate, create or
-clone a game, sync authored changes, compile, run, and test.
+clone a game, sync authored changes, compile, develop, and test.
 
 ## Responsibility
 
@@ -16,7 +16,7 @@ Use the CLI for:
 - compiling the current authored head
 - inspecting local versus remote state
 - pulling remote authored changes into the workspace
-- starting or observing playable sessions
+- starting a local dev server to play the game in the browser
 - generating and running reducer-native tests
 
 ## Install targets
@@ -37,8 +37,8 @@ Use this sequence for the normal authored loop:
 3. edit `rule.md`, `manifest.json`, and authored source files
 4. `dreamboard sync`
 5. `dreamboard compile`
-6. `dreamboard run` or `dreamboard start`
-7. `dreamboard test generate`
+6. `dreamboard dev` (play in browser) or `dreamboard test run` (automated tests)
+7. `dreamboard test generate` (after reducer/manifest shape changes)
 8. `dreamboard test run`
 
 When the remote authored head moves first, run `dreamboard pull` before the
@@ -64,25 +64,13 @@ dreamboard compile
 dreamboard status --json
 ```
 
-## Session commands
+## Dev server
 
-Use session commands after you have a successful compile for the current
-authored head.
-
-| Command | Use it for |
-| --- | --- |
-| `dreamboard run` | Start or resume a playable session and observe it from the CLI |
-| `dreamboard start` | Start a fresh session and open it in the browser |
+Start a local server to play the compiled game in the browser:
 
 ```bash
-dreamboard run
-dreamboard run --players 4 --seed 1337
-dreamboard run --scenario path/to/scenario.json
-dreamboard start --players 2
+dreamboard dev
 ```
-
-`dreamboard run` reuses the previous active session by default. Use
-`--new-session` when you want a fresh session instead.
 
 ## Test commands
 
@@ -92,11 +80,6 @@ Use the scaffolded reducer-native test workspace for repeatable game assertions.
 dreamboard test generate
 dreamboard test run
 dreamboard test run --scenario test/scenarios/player-two-wins.scenario.ts
-```
-
-## Start local server
-```bash
-dreamboard dev
 ```
 
 See [Testing](/docs/reference/testing) for the scenario and base-file format.
