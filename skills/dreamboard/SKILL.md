@@ -40,11 +40,9 @@ For a full walkthrough of each step, see [references/building-your-first-game.md
 ## References
 
 - Quickstart:
-  https://dreamboard.games/docs/quickstart
-- Tutorial:
-  https://dreamboard.games/docs/tutorials/building-your-first-game
+  [references/quickstart.md](references/quickstart.md)
 - CLI:
-  https://dreamboard.games/docs/reference/cli
+  [references/cli.md](references/cli.md)
 - Rules:
   [references/rule-authoring.md](references/rule-authoring.md)
 - Manifest:
