@@ -1,108 +1,85 @@
-export type ActionName = "play" | "pass";
+import { z } from "zod";
 
-export type StateName = "setup" | "play" | "gameOver";
+export const PlayerId = z.string();
+export type PlayerId = z.infer<typeof PlayerId>;
 
-export type ActivePlayerStateName = "play";
+export const CardId = z.string();
+export type CardId = z.infer<typeof CardId>;
 
-export const AllActivePlayerStateNames: ActivePlayerStateName[] = ["play"];
+export const HandId = z.string();
+export type HandId = z.infer<typeof HandId>;
 
-export type GameEvent = string;
+export const ResourceId = z.string();
+export type ResourceId = z.infer<typeof ResourceId>;
 
-export type PlayerEvent = string;
+export const BoardId = z.string();
+export type BoardId = z.infer<typeof BoardId>;
 
-export type PlayerId = string;
+export const SpaceId = z.string();
+export type SpaceId = z.infer<typeof SpaceId>;
 
-export type ResourceId = string;
+export const SpaceTypeId = z.string();
+export type SpaceTypeId = z.infer<typeof SpaceTypeId>;
 
-export type CardId = string;
+export const PieceId = z.string();
+export type PieceId = z.infer<typeof PieceId>;
 
-export type DeckId = string;
+export const PieceTypeId = z.string();
+export type PieceTypeId = z.infer<typeof PieceTypeId>;
 
-export type HandId = string;
+export const DieId = z.string();
+export type DieId = z.infer<typeof DieId>;
 
-export type DieId = string;
+export const TileId = z.string();
+export type TileId = z.infer<typeof TileId>;
 
-export type BoardId = string;
+export const TileTypeId = z.string();
+export type TileTypeId = z.infer<typeof TileTypeId>;
 
-export type TileId = string;
+export const EdgeId = z.string();
+export type EdgeId = z.infer<typeof EdgeId>;
 
-export type EdgeId = string | [TileId, TileId];
+export const EdgeTypeId = z.string();
+export type EdgeTypeId = z.infer<typeof EdgeTypeId>;
 
-export type VertexId = string | [TileId, TileId, TileId];
+export const VertexId = z.string();
+export type VertexId = z.infer<typeof VertexId>;
 
-export type SpaceId = string;
+export const VertexTypeId = z.string();
+export type VertexTypeId = z.infer<typeof VertexTypeId>;
 
-export type PieceId = string;
+export const ActionName = z.string();
+export type ActionName = z.infer<typeof ActionName>;
 
-export type TileTypeId = string;
+export const StateName = z.string();
+export type StateName = z.infer<typeof StateName>;
 
-export type EdgeTypeId = string;
+export const ActivePlayerStateName = z.string();
+export type ActivePlayerStateName = z.infer<typeof ActivePlayerStateName>;
 
-export type VertexTypeId = string;
+export const AllActivePlayerStateNames: ActivePlayerStateName[] = [
+  "setup",
+  "play",
+];
 
-export type SpaceTypeId = string;
+export type ActionsForPhase = Record<ActivePlayerStateName, ActionName[]>;
+export const ActionsByPhase: {
+  [K in ActivePlayerStateName]: ActionsForPhase[K];
+} = {
+  setup: [],
+  play: [],
+} as { [K in ActivePlayerStateName]: ActionsForPhase[K] };
 
-export type PieceTypeId = string;
-
-export type CardProperties = Record<string, unknown>;
-
-export type CardPropertiesByType = Record<string, CardProperties>;
-
-export type CardPropertiesById = Record<CardId, CardProperties>;
-
-export type CardIdsByDeckId = Record<DeckId, CardId[]>;
-
-export type CardIdsByHandId = Record<HandId, CardId[]>;
-
-export type GlobalState = Record<string, unknown>;
-
-export type PlayerState = Record<string, unknown>;
-
-export type ActionErrorCodes = string;
-
-export type NextStateFor<_S extends StateName> = StateName;
-
-export type ActionParametersFor<_A extends ActionName> = Record<
+export type ActionParametersFor<_Action extends ActionName> = Record<
   string,
   unknown
 >;
 
-export type ActionsForPhase = {
-  play: ActionName[];
-};
-
-export const ActionsByPhase: {
-  [K in ActivePlayerStateName]: ActionsForPhase[K];
-} = {
-  play: ["play", "pass"],
-};
-
-export type CardTypeByDeckId = Record<string, string[]>;
-
-export type CardTypeByHandId = Record<string, string[]>;
-
-export type TileProperties = Record<string, unknown>;
-
-export type EdgeProperties = Record<string, unknown>;
-
-export type VertexProperties = Record<string, unknown>;
-
-export type SpaceProperties = Record<string, unknown>;
-
-export type PieceProperties = Record<string, unknown>;
-
-export type TilePropertiesByBoardId = Record<BoardId, TileProperties>;
-
-export type EdgePropertiesByBoardId = Record<BoardId, EdgeProperties>;
-
-export type VertexPropertiesByBoardId = Record<BoardId, VertexProperties>;
-
-export type SpacePropertiesByBoardId = Record<BoardId, SpaceProperties>;
-
-export type PiecePropertiesByBoardId = Record<BoardId, PieceProperties>;
-
-export interface Player {
-  id: PlayerId;
-  name: string;
-  score?: number;
-}
+export type CardIdsByDeckId = Record<string, CardId[]>;
+export type CardIdsByHandId = Record<string, CardId[]>;
+export type CardProperties = Record<string, unknown>;
+export type GlobalState = Record<string, unknown>;
+export type PlayerState = Record<string, unknown>;
+export type EdgePropertiesByBoardId = Record<string, Record<string, unknown>>;
+export type TilePropertiesByBoardId = Record<string, Record<string, unknown>>;
+export type VertexPropertiesByBoardId = Record<string, Record<string, unknown>>;

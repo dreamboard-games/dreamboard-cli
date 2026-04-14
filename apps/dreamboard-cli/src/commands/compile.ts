@@ -10,12 +10,14 @@ import { getLocalDiff } from "../services/project/local-files.js";
 import { assertCliStaticScaffoldComplete } from "../services/project/static-scaffold.js";
 import { runLocalTypecheck } from "../services/project/local-typecheck.js";
 import {
+  findCompiledResultsForAuthoringState,
   getAuthoringHeadSdk,
   queueCompiledResultJobSdk,
   waitForCompiledResultJobSdk,
 } from "../services/api/index.js";
 import {
   getProjectAuthoringState,
+  getProjectPendingAuthoringSync,
   setLatestCompileAttempt,
 } from "../services/project/project-state.js";
 import { formatCliError } from "../utils/errors.js";
@@ -117,6 +119,17 @@ export default defineCommand({
     }
 
     const localAuthoring = getProjectAuthoringState(projectConfig);
+    const pendingSync = getProjectPendingAuthoringSync(projectConfig);
+    if (pendingSync) {
+      if (pendingSync.phase === "authoring_state_created") {
+        throw new Error(
+          "Previous sync reached the remote authored head, but local scaffold finalization did not complete. Run 'dreamboard sync' again before compiling.",
+        );
+      }
+      throw new Error(
+        "Previous sync uploaded source changes but did not finish creating the authored head. Run 'dreamboard sync' again before compiling.",
+      );
+    }
     if (!localAuthoring.authoringStateId) {
       throw new Error(
         "This workspace does not know its authored base yet. Run 'dreamboard sync' first.",
@@ -150,6 +163,27 @@ export default defineCommand({
       } else {
         consola.success("Local typecheck passed.");
       }
+    }
+
+    const existingCompiledResult = (
+      await findCompiledResultsForAuthoringState({
+        gameId: projectConfig.gameId,
+        authoringStateId: localAuthoring.authoringStateId,
+      })
+    ).find((result) => result.success);
+    if (existingCompiledResult) {
+      const nextProjectConfig = setLatestCompileAttempt(projectConfig, {
+        resultId: existingCompiledResult.id,
+        jobId: undefined,
+        authoringStateId: existingCompiledResult.authoringStateId,
+        status: "successful",
+        diagnosticsSummary: undefined,
+      });
+      await updateProjectState(projectRoot, nextProjectConfig);
+      consola.success(
+        `Reusing compiled ${existingCompiledResult.id} for authored state ${existingCompiledResult.authoringStateId}.`,
+      );
+      return;
     }
 
     let compileJobId: string | undefined;

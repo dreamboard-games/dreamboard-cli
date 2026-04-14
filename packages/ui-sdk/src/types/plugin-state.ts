@@ -6,6 +6,10 @@
  * game state without needing to parse raw SSE messages.
  */
 
+import type { PlayerId } from "../manifest-contract.js";
+
+type ActionName = string;
+
 export interface SeatAssignment {
   playerId: PlayerId;
   controllerUserId?: string;
@@ -23,10 +27,6 @@ export interface HistoryEntrySummary {
   actionType?: ActionName;
   isCurrent: boolean;
 }
-
-// Re-export the type-safe GameState from player-state.ts
-// This uses manifest-derived types (PlayerId, CardId, StateName, etc.)
-export type { GameState } from "./player-state.js";
 
 // ============================================================================
 // Lobby State (from LOBBY_UPDATE messages)
@@ -65,6 +65,7 @@ export type NotificationType =
  */
 export interface YourTurnPayload {
   type: "YOUR_TURN";
+  activePlayers: string[];
 }
 
 /**
@@ -195,20 +196,95 @@ export interface HistoryState {
 // Plugin State Snapshot
 // ============================================================================
 
-// Import GameState for use in PluginStateSnapshot
-import type { GameState } from "./player-state.js";
-import { ActionName, PlayerId } from "@dreamboard/manifest";
+export interface GameplayPromptOption {
+  id: string;
+  label: string;
+}
+
+export interface GameplayPromptInstance<
+  PromptType extends string = string,
+  PromptInstance extends string = string,
+> {
+  id: PromptInstance;
+  promptId: PromptType;
+  to: string;
+  title?: string;
+  payload?: string;
+  options: GameplayPromptOption[];
+}
+
+export type GameplayWindowClosePolicy =
+  | "allPassInSequence"
+  | "allResponded"
+  | "firstValidAction"
+  | "manual";
+
+export interface GameplayWindowInstance<
+  WindowType extends string = string,
+  WindowInstance extends string = string,
+> {
+  id: WindowInstance;
+  windowId: WindowType;
+  closePolicy: GameplayWindowClosePolicy;
+  addressedTo: string[];
+  payload?: string;
+}
+
+export interface ActionParameterDefinition {
+  name: string;
+  type: string;
+  required?: boolean;
+  array?: boolean;
+  description?: string;
+  [key: string]: unknown;
+}
+
+export interface ActionDefinition<ActionType extends string = string> {
+  actionType: ActionType;
+  displayName: string;
+  description?: string;
+  parameters: ActionParameterDefinition[];
+  errorCodes?: string[];
+}
+
+export interface GameplaySnapshot<
+  PhaseType extends string = string,
+  ActionType extends string = string,
+  PromptType extends string = string,
+  WindowType extends string = string,
+  PromptInstance extends string = string,
+  WindowInstance extends string = string,
+> {
+  currentPhase: PhaseType | null;
+  availableActions: ReadonlyArray<ActionDefinition<ActionType>>;
+  prompts: ReadonlyArray<GameplayPromptInstance<PromptType, PromptInstance>>;
+  windows: ReadonlyArray<GameplayWindowInstance<WindowType, WindowInstance>>;
+}
 
 /**
  * The complete state snapshot sent to the plugin via state-sync.
- * This is the single source of truth for all plugin state.
- *
- * Note: GameState uses type-safe manifest types (PlayerId, CardId, StateName, etc.)
- * which are generated per-game and provide compile-time type safety.
+ * This is the single source of truth for all reducer-native plugin state.
  */
-export interface PluginStateSnapshot {
-  /** Game state (from STATE_UPDATE/GAME_STARTED) - null if in lobby phase */
-  game: GameState | null;
+export interface PluginStateSnapshot<
+  View = unknown,
+  PhaseType extends string = string,
+  ActionType extends string = string,
+  PromptType extends string = string,
+  WindowType extends string = string,
+  PromptInstance extends string = string,
+  WindowInstance extends string = string,
+> {
+  /** Projected seat-specific reducer-native view for the controlling player */
+  view: View | null;
+  /** Gameplay transport state that sits alongside the projected reducer view */
+  gameplay: GameplaySnapshot<
+    PhaseType,
+    ActionType,
+    PromptType,
+    WindowType,
+    PromptInstance,
+    WindowInstance
+  >;
   /** Lobby state (from LOBBY_UPDATE) - null if game has started */
   lobby: LobbyState | null;
   /** Notification queue (from YOUR_TURN, ACTION_REJECTED, etc.) */

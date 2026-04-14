@@ -1,7 +1,5 @@
 /**
- * Toast notification component
- *
- * Displays temporary notifications for game events
+ * Toast notification component for game events.
  */
 
 import { motion, AnimatePresence } from "framer-motion";
@@ -12,8 +10,41 @@ import {
   useContext,
   useState,
   useCallback,
+  useEffect,
+  useRef,
   type ReactNode,
 } from "react";
+import { RuntimeContext } from "../context/RuntimeContext.js";
+import type { PluginRuntimeAPI } from "../runtime/createPluginRuntimeAPI.js";
+import type { Notification, SeatAssignment } from "../types/plugin-state.js";
+
+function lookupSeatName(
+  playerId: string,
+  seats: SeatAssignment[] | null | undefined,
+): string {
+  return (
+    seats?.find((seat) => seat.playerId === playerId)?.displayName || playerId
+  );
+}
+
+function formatPlayerList(
+  playerIds: string[],
+  seats: SeatAssignment[] | null | undefined,
+): string {
+  const names = playerIds.map((playerId) => lookupSeatName(playerId, seats));
+  if (names.length <= 1) {
+    return names[0] ?? "";
+  }
+  if (names.length === 2) {
+    return `${names[0]} and ${names[1]}`;
+  }
+  return `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
+}
+
+function postToParent(data: Record<string, unknown>) {
+  if (window.parent === window) return;
+  window.parent.postMessage(data, document.referrer || "*");
+}
 
 export type ToastType = "success" | "error" | "info" | "warning";
 
@@ -35,12 +66,11 @@ interface ToastContextValue {
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
-
-/**
- * Toast provider component
- */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const runtime = useContext(RuntimeContext) as PluginRuntimeAPI | null;
+  const processedNotificationsRef = useRef<Set<string>>(new Set());
+  const processedValidationResultsRef = useRef<Set<string>>(new Set());
 
   const show = useCallback(
     (message: string, type: ToastType = "info", duration = 3000) => {
@@ -79,6 +109,123 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     [show],
   );
 
+  useEffect(() => {
+    if (!runtime?.subscribeToState) {
+      return;
+    }
+
+    const handleNotification = (
+      notification: Notification,
+      seats: SeatAssignment[] | null | undefined,
+    ) => {
+      switch (notification.type) {
+        case "YOUR_TURN": {
+          if (notification.payload.type !== "YOUR_TURN") {
+            return;
+          }
+          const activePlayers = notification.payload.activePlayers;
+          const playersLabel = formatPlayerList(activePlayers, seats);
+          info(
+            playersLabel ? `Your turn: ${playersLabel} can act.` : "Your turn.",
+            3500,
+          );
+          return;
+        }
+
+        case "ACTION_REJECTED": {
+          if (notification.payload.type !== "ACTION_REJECTED") {
+            return;
+          }
+          const targetPlayer = notification.payload.targetPlayer;
+          const targetLabel = targetPlayer
+            ? lookupSeatName(targetPlayer, seats)
+            : null;
+          error(
+            targetLabel
+              ? `Action rejected for ${targetLabel}: ${notification.payload.reason}`
+              : `Action rejected: ${notification.payload.reason}`,
+            5000,
+          );
+          return;
+        }
+
+        default:
+          return;
+      }
+    };
+
+    const processSnapshot = (
+      notifications: Notification[],
+      seats: SeatAssignment[] | null | undefined,
+    ) => {
+      for (const notification of notifications) {
+        if (
+          notification.read ||
+          processedNotificationsRef.current.has(notification.id)
+        ) {
+          continue;
+        }
+
+        processedNotificationsRef.current.add(notification.id);
+        handleNotification(notification, seats);
+        postToParent({
+          type: "mark-notification-read",
+          notificationId: notification.id,
+        });
+      }
+    };
+
+    const initialSnapshot = runtime.getSnapshot?.();
+    if (initialSnapshot) {
+      processSnapshot(
+        initialSnapshot.notifications ?? [],
+        initialSnapshot.lobby?.seats,
+      );
+    }
+
+    return runtime.subscribeToState((snapshot) => {
+      processSnapshot(snapshot.notifications ?? [], snapshot.lobby?.seats);
+    });
+  }, [error, info, runtime]);
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      const data = event.data;
+      if (data?.type !== "validate-action-result") {
+        return;
+      }
+
+      const messageId =
+        typeof data.messageId === "string" ? data.messageId : undefined;
+      if (messageId && processedValidationResultsRef.current.has(messageId)) {
+        return;
+      }
+
+      const result =
+        typeof data.result === "object" && data.result !== null
+          ? data.result
+          : null;
+      if (!result || result.valid !== false) {
+        return;
+      }
+
+      if (messageId) {
+        processedValidationResultsRef.current.add(messageId);
+      }
+
+      const reason =
+        (typeof result.message === "string" && result.message) ||
+        (typeof result.errorCode === "string" && result.errorCode) ||
+        "Validation failed";
+      error(`Action invalid: ${reason}`, 4000);
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => {
+      window.removeEventListener("message", handleMessage);
+    };
+  }, [error]);
+
   return (
     <ToastContext.Provider
       value={{ toasts, show, dismiss, success, error, info, warning }}
@@ -89,9 +236,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/**
- * Hook to access toast functionality
- */
 export function useToast() {
   const context = useContext(ToastContext);
   if (!context) {
@@ -100,9 +244,6 @@ export function useToast() {
   return context;
 }
 
-/**
- * Toast container component
- */
 function ToastContainer({
   toasts,
   onDismiss,
@@ -126,9 +267,6 @@ function ToastContainer({
   );
 }
 
-/**
- * Individual toast item
- */
 function ToastItem({
   toast,
   onDismiss,

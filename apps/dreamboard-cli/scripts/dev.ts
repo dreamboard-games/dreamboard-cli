@@ -9,7 +9,14 @@ const args = rawArgs.filter((arg) => arg !== "--prod");
 
 const invokedCwd = process.env.INIT_CWD || process.env.PWD || process.cwd();
 
-const projectCommands = new Set(["run", "pull", "push", "status", "scaffold"]);
+const projectCommands = new Set([
+  "sync",
+  "compile",
+  "pull",
+  "status",
+  "dev",
+  "test",
+]);
 let spawnCwd = invokedCwd;
 
 if (projectCommands.has(args[0] ?? "")) {

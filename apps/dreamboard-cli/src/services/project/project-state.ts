@@ -3,12 +3,19 @@ import type {
   ProjectCompileAttempt,
   ProjectCompileState,
   ProjectConfig,
+  ProjectPendingAuthoringSync,
 } from "../../types.js";
 
 export function getProjectAuthoringState(
   projectConfig: ProjectConfig,
 ): ProjectAuthoringState {
   return projectConfig.authoring ?? {};
+}
+
+export function getProjectPendingAuthoringSync(
+  projectConfig: ProjectConfig,
+): ProjectPendingAuthoringSync | undefined {
+  return getProjectAuthoringState(projectConfig).pendingSync;
 }
 
 export function getProjectCompileState(
@@ -28,6 +35,55 @@ export function updateProjectAuthoringState(
       ...authoring,
     },
   };
+}
+
+export function setProjectPendingAuthoringSync(
+  projectConfig: ProjectConfig,
+  pendingSync: ProjectPendingAuthoringSync,
+): ProjectConfig {
+  return updateProjectAuthoringState(projectConfig, {
+    pendingSync,
+  });
+}
+
+export function clearProjectPendingAuthoringSync(
+  projectConfig: ProjectConfig,
+): ProjectConfig {
+  const authoring = getProjectAuthoringState(projectConfig);
+  if (!authoring.pendingSync) {
+    return projectConfig;
+  }
+
+  const { pendingSync: _pendingSync, ...rest } = authoring;
+  return {
+    ...projectConfig,
+    authoring: rest,
+  };
+}
+
+export function finalizeProjectPendingAuthoringSync(
+  projectConfig: ProjectConfig,
+): ProjectConfig {
+  const authoring = getProjectAuthoringState(projectConfig);
+  const pendingSync = authoring.pendingSync;
+  if (!pendingSync) {
+    return projectConfig;
+  }
+
+  return updateProjectAuthoringState(
+    clearProjectPendingAuthoringSync(projectConfig),
+    {
+      authoringStateId:
+        pendingSync.phase === "authoring_state_created"
+          ? pendingSync.authoringStateId
+          : authoring.authoringStateId,
+      sourceRevisionId: pendingSync.sourceRevisionId,
+      sourceTreeHash: pendingSync.sourceTreeHash,
+      manifestId: pendingSync.manifestId,
+      manifestContentHash: pendingSync.manifestContentHash,
+      ruleId: pendingSync.ruleId,
+    },
+  );
 }
 
 export function updateProjectCompileState(

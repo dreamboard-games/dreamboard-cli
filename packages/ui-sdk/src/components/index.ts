@@ -1,22 +1,9 @@
-/**
- * Game UI Components
- *
- * Accessible, mobile-first components for building game interfaces
- *
- * Component Architecture:
- * - Base components (Card, Hand, PlayArea) are presentational and receive data as props
- * - Connected components (ConnectedCard) use hooks to fetch data from context
- * - Use base components for fixtures/testing or manual data management
- * - Use connected components when RuntimeContext is set up
- */
+/** Reducer-native UI primitives for building game interfaces. */
 
 // Presentational components (no hooks, receive data as props)
 export { Card, type CardProps, type CardItem } from "./Card.js";
 export { Hand, type HandProps } from "./Hand.js";
 export { PlayArea, type PlayAreaProps } from "./PlayArea.js";
-
-// Connected components (use hooks, require RuntimeContext)
-export { ConnectedCard, type ConnectedCardProps } from "./ConnectedCard.js";
 
 // Other UI components
 export { PlayerInfo, type PlayerInfoProps } from "./PlayerInfo.js";
@@ -29,11 +16,6 @@ export {
 } from "./Toast.js";
 export { ErrorBoundary, type ErrorBoundaryProps } from "./ErrorBoundary.js";
 export { PluginRuntime, type PluginRuntimeProps } from "./PluginRuntime.js";
-export { PlayerSwitcher, type PlayerSwitcherProps } from "./PlayerSwitcher.js";
-export {
-  HistoryNavigator,
-  type HistoryNavigatorProps,
-} from "./HistoryNavigator.js";
 export {
   Drawer,
   DrawerPortal,
@@ -115,6 +97,12 @@ export {
   type SquareGridProps,
   type GridCell,
   type GridPiece,
+  type InteractiveSquareEdge,
+  type InteractiveSquareVertex,
+  type SquareEdgePosition,
+  type SquareGridEdge,
+  type SquareGridVertex,
+  type SquareVertexPosition,
   type DefaultGridCellProps,
   type DefaultGridPieceProps,
   type DefaultChessPieceProps,
@@ -133,3 +121,8 @@ export {
   type DefaultHexEdgeProps,
   type DefaultHexVertexProps,
 } from "./board/HexGrid.js";
+export type {
+  HexTileState,
+  HexEdgeState,
+  HexVertexState,
+} from "../types/player-state.js";

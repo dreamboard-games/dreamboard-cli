@@ -1,75 +1,60 @@
-/**
- * ActionButton component - Action buttons with cost display and disabled states
- *
- * Design Philosophy: "Clear Action Communication"
- * - Visual cost display with affordability check
- * - Loading states for async actions
- * - Disabled state with reason tooltip
- * - Multiple style variants
- *
- * @example Basic usage
- * ```tsx
- * <ActionButton
- *   label="Build House"
- *   cost={{ wood: 3, stone: 2 }}
- *   currentResources={{ wood: 5, stone: 1 }}
- *   resourceDefs={resourceDefinitions}
- *   onClick={() => buildHouse()}
- * />
- * ```
- */
+/** Action button with integrated cost display and affordability checking. */
 
 import { motion } from "framer-motion";
 import { clsx } from "clsx";
 import { Loader2 } from "lucide-react";
 import { CostDisplay, type ResourceDefinition } from "./CostDisplay.js";
-import type { ComponentType } from "react";
+import {
+  Children,
+  isValidElement,
+  type ComponentType,
+  type ReactNode,
+} from "react";
 
 export interface ActionButtonProps {
-  /** Action label */
-  label: string;
-  /** Action description */
+  label?: string;
+  children?: ReactNode;
   description?: string;
-  /** Resource cost (optional) */
   cost?: Record<string, number>;
-  /** Current resources for affordability check */
   currentResources?: Record<string, number>;
-  /** Resource definitions for cost display */
   resourceDefs?: ResourceDefinition[];
-  /** Whether action is available */
   available?: boolean;
-  /** Reason why disabled (shown as tooltip) */
+  /** Shown as tooltip when disabled */
   disabledReason?: string;
-  /** Whether action is loading */
   loading?: boolean;
-  /** Icon component */
   icon?: ComponentType<{
     className?: string;
     strokeWidth?: number;
     "aria-hidden"?: string;
   }>;
-  /** Color variant */
   variant?: "primary" | "secondary" | "danger" | "success";
-  /** Size variant */
   size?: "sm" | "md" | "lg";
-  /** Click handler */
   onClick: () => void;
-  /** Additional class names */
   className?: string;
 }
 
-/**
- * ActionButton component for game actions
- *
- * Features:
- * - Integrated cost display
- * - Automatic affordability checking
- * - Loading spinner
- * - Multiple variants and sizes
- * - Accessible with proper ARIA attributes
- */
+function readTextContent(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") {
+    return String(node);
+  }
+
+  return Children.toArray(node)
+    .map((child) => {
+      if (typeof child === "string" || typeof child === "number") {
+        return String(child);
+      }
+      if (isValidElement<{ children?: ReactNode }>(child)) {
+        return readTextContent(child.props.children);
+      }
+      return "";
+    })
+    .join("")
+    .trim();
+}
+
 export function ActionButton({
   label,
+  children,
   description,
   cost,
   currentResources,
@@ -83,6 +68,9 @@ export function ActionButton({
   onClick,
   className,
 }: ActionButtonProps) {
+  const visibleLabel = children ?? label;
+  const accessibleLabel = label ?? readTextContent(children);
+
   // Check if player can afford the cost
   const canAfford =
     !cost ||
@@ -149,7 +137,11 @@ export function ActionButton({
           : variantClasses[variant],
         className,
       )}
-      aria-label={`${label}${description ? `: ${description}` : ""}${isDisabled ? ` (${computedDisabledReason})` : ""}`}
+      aria-label={
+        accessibleLabel
+          ? `${accessibleLabel}${description ? `: ${description}` : ""}${isDisabled ? ` (${computedDisabledReason})` : ""}`
+          : undefined
+      }
       aria-disabled={isDisabled}
     >
       {/* Left side: Icon and labels */}
@@ -169,7 +161,7 @@ export function ActionButton({
           />
         )}
         <div className="text-left min-w-0">
-          <div className="truncate">{label}</div>
+          <div className="truncate">{visibleLabel}</div>
           {description && (
             <div
               className={clsx(

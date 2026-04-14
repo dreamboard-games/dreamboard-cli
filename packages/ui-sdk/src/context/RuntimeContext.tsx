@@ -18,12 +18,11 @@ export const RuntimeContext = createContext<RuntimeAPI | null>(null);
  * ```typescript
  * function MyPluginComponent() {
  *   const runtime = useRuntimeContext();
- *
- *   useEffect(() => {
- *     return runtime.onMessage('STATE_UPDATE', (message) => {
- *       // Handle state update
- *     });
- *   }, [runtime]);
+ *   return (
+ *     <button onClick={() => runtime.submitAction("player-1", "pass", {})}>
+ *       Pass
+ *     </button>
+ *   );
  * }
  * ```
  */

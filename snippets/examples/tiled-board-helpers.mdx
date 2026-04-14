@@ -1,0 +1,17 @@
+{/* Generated from examples/board-contract-lab/app/authoring-benchmark-typing-smoke.ts (tiled-board-helpers) */}
+
+```ts
+const playerMatId = boardHelpers.boardIdForPlayer("player-mat", "player-1");
+const hexBoardIds = boardHelpers.boardIdsForLayout("hex");
+const frontierRouteId = boardHelpers.edgeIds("frontier-map", "ferry-route")[0]!;
+const frontierCheckpointId = boardHelpers.vertexIds(
+  "frontier-map",
+  "checkpoint",
+)[0]!;
+const marketTemplateBoards =
+  boardHelpers.boardBaseIdsForTemplate("market-template");
+const playerMatTemplateLayout = boardHelpers.boardTemplateLayout(
+  "player-mat-template",
+);
+//
+```

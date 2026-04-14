@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen.js';
-import { abortSandboxSession, addSeat, assignSeat, cancelConversationJob, createAuthoringState, createGame, createGameRule, createSession, createSourceRevision, createSourceRevisionBundle, deleteConversation, deleteGame, downloadGameSources, fetchUiBundle, findManifests, getActiveJob, getAgentChatContext, getAuthoringHead, getCompiledResult, getGame, getGameBySlug, getGameRule, getGameScripts, getGameSources, getJob, getLatestCompiledResult, getLatestGameRule, getManifest, getSessionByShortCode, getSessionStatus, healthCheck, listCompiledResults, listConversations, listGameRules, listGames, type Options, queryWorkshopRulebook, queueCompiledResultJob, receiveSandboxWebhookComplete, receiveSandboxWebhookEvent, removeSeat, restoreHistory, sandboxAbort, sandboxChat, saveManifest, scaffoldGameSourcesV3, sendSandboxMessage, startGame, submitAction, unassignSeat, updateGame, updateSeat, validateAction } from '../sdk.gen.js';
-import type { AbortSandboxSessionData, AbortSandboxSessionError, AbortSandboxSessionResponse, AddSeatData, AddSeatError, AddSeatResponse, AssignSeatData, AssignSeatError, AssignSeatResponse, CancelConversationJobData, CancelConversationJobError, CancelConversationJobResponse, CreateAuthoringStateData, CreateAuthoringStateError, CreateAuthoringStateResponse, CreateGameData, CreateGameError, CreateGameResponse, CreateGameRuleData, CreateGameRuleError, CreateGameRuleResponse2, CreateSessionData, CreateSessionError, CreateSessionResponse2, CreateSourceRevisionBundleData, CreateSourceRevisionBundleError, CreateSourceRevisionBundleResponse, CreateSourceRevisionData, CreateSourceRevisionError, CreateSourceRevisionResponse, DeleteConversationData, DeleteConversationError, DeleteConversationResponse, DeleteGameData, DeleteGameError, DeleteGameResponse2, DownloadGameSourcesData, DownloadGameSourcesError, DownloadGameSourcesResponse, FetchUiBundleData, FetchUiBundleError, FetchUiBundleResponse, FindManifestsData, FindManifestsError, FindManifestsResponse2, GetActiveJobData, GetActiveJobError, GetActiveJobResponse, GetAgentChatContextData, GetAgentChatContextError, GetAgentChatContextResponse, GetAuthoringHeadData, GetAuthoringHeadError, GetAuthoringHeadResponse, GetCompiledResultData, GetCompiledResultError, GetCompiledResultResponse, GetGameBySlugData, GetGameBySlugError, GetGameBySlugResponse, GetGameData, GetGameError, GetGameResponse, GetGameRuleData, GetGameRuleError, GetGameRuleResponse, GetGameScriptsData, GetGameScriptsError, GetGameScriptsResponse, GetGameSourcesData, GetGameSourcesError, GetGameSourcesResponse, GetJobData, GetJobError, GetJobResponse, GetLatestCompiledResultData, GetLatestCompiledResultError, GetLatestCompiledResultResponse, GetLatestGameRuleData, GetLatestGameRuleError, GetLatestGameRuleResponse, GetManifestData, GetManifestError, GetManifestResponse, GetSessionByShortCodeData, GetSessionByShortCodeError, GetSessionByShortCodeResponse, GetSessionStatusData, GetSessionStatusError, GetSessionStatusResponse, HealthCheckData, HealthCheckResponse, ListCompiledResultsData, ListCompiledResultsError, ListCompiledResultsResponse2, ListConversationsData, ListConversationsError, ListConversationsResponse, ListGameRulesData, ListGameRulesError, ListGameRulesResponse2, ListGamesData, ListGamesError, ListGamesResponse, QueryWorkshopRulebookData, QueryWorkshopRulebookError, QueryWorkshopRulebookResponse, QueueCompiledResultJobData, QueueCompiledResultJobError, QueueCompiledResultJobResponse2, ReceiveSandboxWebhookCompleteData, ReceiveSandboxWebhookCompleteError, ReceiveSandboxWebhookCompleteResponse, ReceiveSandboxWebhookEventData, ReceiveSandboxWebhookEventError, ReceiveSandboxWebhookEventResponse, RemoveSeatData, RemoveSeatError, RemoveSeatResponse, RestoreHistoryData, RestoreHistoryError, RestoreHistoryResponse2, SandboxAbortData, SandboxAbortError, SandboxAbortResponse, SandboxChatData, SandboxChatError, SandboxChatResponse2, SaveManifestData, SaveManifestError, SaveManifestResponse2, ScaffoldGameSourcesV3Data, ScaffoldGameSourcesV3Error, ScaffoldGameSourcesV3Response, SendSandboxMessageData, SendSandboxMessageError, SendSandboxMessageResponse2, StartGameData, StartGameError, StartGameResponse2, SubmitActionData, SubmitActionError, SubmitActionResponse2, UnassignSeatData, UnassignSeatError, UnassignSeatResponse, UpdateGameData, UpdateGameError, UpdateGameResponse, UpdateSeatData, UpdateSeatError, UpdateSeatResponse, ValidateActionData, ValidateActionError, ValidateActionResponse2 } from '../types.gen.js';
+import { abortSandboxSession, addSeat, assignSeat, cancelConversationJob, createAuthoringState, createGame, createGameRule, createSession, createSourceBlobUploadSession, createSourceRevision, deleteConversation, deleteGame, disconnectSessionEvents, downloadGameSources, fetchUiBundle, findManifests, getActiveJob, getAgentChatContext, getApiVersion, getAuthoringHead, getCompiledResult, getGame, getGameBySlug, getGameRule, getGameScripts, getGameSources, getJob, getLatestCompiledResult, getLatestGameRule, getManifest, getSessionByShortCode, getSessionStatus, healthCheck, listCompiledResults, listConversations, listGameRules, listGames, type Options, queryWorkshopRulebook, queueCompiledResultJob, receiveSandboxWebhookComplete, receiveSandboxWebhookEvent, removeSeat, restoreHistory, sandboxAbort, sandboxChat, saveManifest, sendSandboxMessage, startGame, submitInput, unassignSeat, updateGame, updateSeat, validateInput } from '../sdk.gen.js';
+import type { AbortSandboxSessionData, AbortSandboxSessionError, AbortSandboxSessionResponse, AddSeatData, AddSeatError, AddSeatResponse, AssignSeatData, AssignSeatError, AssignSeatResponse, CancelConversationJobData, CancelConversationJobError, CancelConversationJobResponse, CreateAuthoringStateData, CreateAuthoringStateError, CreateAuthoringStateResponse, CreateGameData, CreateGameError, CreateGameResponse, CreateGameRuleData, CreateGameRuleError, CreateGameRuleResponse2, CreateSessionData, CreateSessionError, CreateSessionResponse2, CreateSourceBlobUploadSessionData, CreateSourceBlobUploadSessionError, CreateSourceBlobUploadSessionResponse, CreateSourceRevisionData, CreateSourceRevisionError, CreateSourceRevisionResponse, DeleteConversationData, DeleteConversationError, DeleteConversationResponse, DeleteGameData, DeleteGameError, DeleteGameResponse2, DisconnectSessionEventsData, DisconnectSessionEventsError, DownloadGameSourcesData, DownloadGameSourcesError, DownloadGameSourcesResponse, FetchUiBundleData, FetchUiBundleError, FetchUiBundleResponse, FindManifestsData, FindManifestsError, FindManifestsResponse2, GetActiveJobData, GetActiveJobError, GetActiveJobResponse, GetAgentChatContextData, GetAgentChatContextError, GetAgentChatContextResponse, GetApiVersionData, GetApiVersionResponse, GetAuthoringHeadData, GetAuthoringHeadError, GetAuthoringHeadResponse, GetCompiledResultData, GetCompiledResultError, GetCompiledResultResponse, GetGameBySlugData, GetGameBySlugError, GetGameBySlugResponse, GetGameData, GetGameError, GetGameResponse, GetGameRuleData, GetGameRuleError, GetGameRuleResponse, GetGameScriptsData, GetGameScriptsError, GetGameScriptsResponse, GetGameSourcesData, GetGameSourcesError, GetGameSourcesResponse, GetJobData, GetJobError, GetJobResponse, GetLatestCompiledResultData, GetLatestCompiledResultError, GetLatestCompiledResultResponse, GetLatestGameRuleData, GetLatestGameRuleError, GetLatestGameRuleResponse, GetManifestData, GetManifestError, GetManifestResponse, GetSessionByShortCodeData, GetSessionByShortCodeError, GetSessionByShortCodeResponse, GetSessionStatusData, GetSessionStatusError, GetSessionStatusResponse, HealthCheckData, HealthCheckResponse, ListCompiledResultsData, ListCompiledResultsError, ListCompiledResultsResponse2, ListConversationsData, ListConversationsError, ListConversationsResponse, ListGameRulesData, ListGameRulesError, ListGameRulesResponse2, ListGamesData, ListGamesError, ListGamesResponse, QueryWorkshopRulebookData, QueryWorkshopRulebookError, QueryWorkshopRulebookResponse, QueueCompiledResultJobData, QueueCompiledResultJobError, QueueCompiledResultJobResponse2, ReceiveSandboxWebhookCompleteData, ReceiveSandboxWebhookCompleteError, ReceiveSandboxWebhookCompleteResponse, ReceiveSandboxWebhookEventData, ReceiveSandboxWebhookEventError, ReceiveSandboxWebhookEventResponse, RemoveSeatData, RemoveSeatError, RemoveSeatResponse, RestoreHistoryData, RestoreHistoryError, RestoreHistoryResponse2, SandboxAbortData, SandboxAbortError, SandboxAbortResponse, SandboxChatData, SandboxChatError, SandboxChatResponse2, SaveManifestData, SaveManifestError, SaveManifestResponse2, SendSandboxMessageData, SendSandboxMessageError, SendSandboxMessageResponse2, StartGameData, StartGameError, StartGameResponse2, SubmitInputData, SubmitInputError, SubmitInputResponse2, UnassignSeatData, UnassignSeatError, UnassignSeatResponse, UpdateGameData, UpdateGameError, UpdateGameResponse, UpdateSeatData, UpdateSeatError, UpdateSeatResponse, ValidateInputData, ValidateInputError, ValidateInputResponse2 } from '../types.gen.js';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -57,6 +57,26 @@ export const healthCheckOptions = (options?: Options<HealthCheckData>) => queryO
         return data;
     },
     queryKey: healthCheckQueryKey(options)
+});
+
+export const getApiVersionQueryKey = (options?: Options<GetApiVersionData>) => createQueryKey('getApiVersion', options);
+
+/**
+ * Get backend version metadata
+ *
+ * Returns backend revision metadata and the UI SDK version expected by the backend runtime.
+ */
+export const getApiVersionOptions = (options?: Options<GetApiVersionData>) => queryOptions<GetApiVersionResponse, DefaultError, GetApiVersionResponse, ReturnType<typeof getApiVersionQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getApiVersion({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getApiVersionQueryKey(options)
 });
 
 export const listGamesQueryKey = (options?: Options<ListGamesData>) => createQueryKey('listGames', options);
@@ -375,14 +395,14 @@ export const getGameSourcesOptions = (options: Options<GetGameSourcesData>) => q
 });
 
 /**
- * Generate dynamic scaffold files from manifest
+ * Create a source revision for a game
  *
- * Returns manifest-derived scaffold files split by ownership semantics: generated files (always replaceable) and seed files (generated then user-owned).
+ * Create a new authored source revision from a hash-addressed change set. The request must be based on the current head revision for the game.
  */
-export const scaffoldGameSourcesV3Mutation = (options?: Partial<Options<ScaffoldGameSourcesV3Data>>): UseMutationOptions<ScaffoldGameSourcesV3Response, ScaffoldGameSourcesV3Error, Options<ScaffoldGameSourcesV3Data>> => {
-    const mutationOptions: UseMutationOptions<ScaffoldGameSourcesV3Response, ScaffoldGameSourcesV3Error, Options<ScaffoldGameSourcesV3Data>> = {
+export const createSourceRevisionMutation = (options?: Partial<Options<CreateSourceRevisionData>>): UseMutationOptions<CreateSourceRevisionResponse, CreateSourceRevisionError, Options<CreateSourceRevisionData>> => {
+    const mutationOptions: UseMutationOptions<CreateSourceRevisionResponse, CreateSourceRevisionError, Options<CreateSourceRevisionData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await scaffoldGameSourcesV3({
+            const { data } = await createSourceRevision({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -394,14 +414,14 @@ export const scaffoldGameSourcesV3Mutation = (options?: Partial<Options<Scaffold
 };
 
 /**
- * Create a source revision for a game
+ * Create direct-upload targets for source blobs
  *
- * Create a new authored source revision from an inline change set. The request must be based on the current head revision for the game.
+ * Create a direct-upload session for one or more source blobs referenced by a forthcoming source revision.
  */
-export const createSourceRevisionMutation = (options?: Partial<Options<CreateSourceRevisionData>>): UseMutationOptions<CreateSourceRevisionResponse, CreateSourceRevisionError, Options<CreateSourceRevisionData>> => {
-    const mutationOptions: UseMutationOptions<CreateSourceRevisionResponse, CreateSourceRevisionError, Options<CreateSourceRevisionData>> = {
+export const createSourceBlobUploadSessionMutation = (options?: Partial<Options<CreateSourceBlobUploadSessionData>>): UseMutationOptions<CreateSourceBlobUploadSessionResponse, CreateSourceBlobUploadSessionError, Options<CreateSourceBlobUploadSessionData>> => {
+    const mutationOptions: UseMutationOptions<CreateSourceBlobUploadSessionResponse, CreateSourceBlobUploadSessionError, Options<CreateSourceBlobUploadSessionData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await createSourceRevision({
+            const { data } = await createSourceBlobUploadSession({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -441,25 +461,6 @@ export const createAuthoringStateMutation = (options?: Partial<Options<CreateAut
     const mutationOptions: UseMutationOptions<CreateAuthoringStateResponse, CreateAuthoringStateError, Options<CreateAuthoringStateData>> = {
         mutationFn: async (fnOptions) => {
             const { data } = await createAuthoringState({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-/**
- * Create a source revision for a game from a gzip bundle
- *
- * Create a new authored source revision from a gzip-compressed JSON payload matching CreateSourceRevisionRequest.
- */
-export const createSourceRevisionBundleMutation = (options?: Partial<Options<CreateSourceRevisionBundleData>>): UseMutationOptions<CreateSourceRevisionBundleResponse, CreateSourceRevisionBundleError, Options<CreateSourceRevisionBundleData>> => {
-    const mutationOptions: UseMutationOptions<CreateSourceRevisionBundleResponse, CreateSourceRevisionBundleError, Options<CreateSourceRevisionBundleData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await createSourceRevisionBundle({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -672,6 +673,25 @@ export const getSessionStatusOptions = (options: Options<GetSessionStatusData>) 
 });
 
 /**
+ * Release a session events stream slot
+ *
+ * Best-effort disconnect signal used by browser tabs during unload and reconnect transitions so stale event stream slots are released promptly.
+ */
+export const disconnectSessionEventsMutation = (options?: Partial<Options<DisconnectSessionEventsData>>): UseMutationOptions<unknown, DisconnectSessionEventsError, Options<DisconnectSessionEventsData>> => {
+    const mutationOptions: UseMutationOptions<unknown, DisconnectSessionEventsError, Options<DisconnectSessionEventsData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await disconnectSessionEvents({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
  * Start the game
  *
  * Transition session from lobby to gameplay phase (host only)
@@ -691,14 +711,14 @@ export const startGameMutation = (options?: Partial<Options<StartGameData>>): Us
 };
 
 /**
- * Submit a player action
+ * Submit generic gameplay input
  *
- * Submit an action during gameplay phase
+ * Submit a gameplay input during gameplay phase. Supports action, promptResponse, and windowAction for clients.
  */
-export const submitActionMutation = (options?: Partial<Options<SubmitActionData>>): UseMutationOptions<SubmitActionResponse2, SubmitActionError, Options<SubmitActionData>> => {
-    const mutationOptions: UseMutationOptions<SubmitActionResponse2, SubmitActionError, Options<SubmitActionData>> = {
+export const submitInputMutation = (options?: Partial<Options<SubmitInputData>>): UseMutationOptions<SubmitInputResponse2, SubmitInputError, Options<SubmitInputData>> => {
+    const mutationOptions: UseMutationOptions<SubmitInputResponse2, SubmitInputError, Options<SubmitInputData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await submitAction({
+            const { data } = await submitInput({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -710,14 +730,14 @@ export const submitActionMutation = (options?: Partial<Options<SubmitActionData>
 };
 
 /**
- * Validate a player action
+ * Validate gameplay input
  *
- * Validate an action before submitting it. Returns validation result with error code if invalid.
+ * Validate a gameplay input before submitting it. Returns validation result plus the current gameplay version.
  */
-export const validateActionMutation = (options?: Partial<Options<ValidateActionData>>): UseMutationOptions<ValidateActionResponse2, ValidateActionError, Options<ValidateActionData>> => {
-    const mutationOptions: UseMutationOptions<ValidateActionResponse2, ValidateActionError, Options<ValidateActionData>> = {
+export const validateInputMutation = (options?: Partial<Options<ValidateInputData>>): UseMutationOptions<ValidateInputResponse2, ValidateInputError, Options<ValidateInputData>> => {
+    const mutationOptions: UseMutationOptions<ValidateInputResponse2, ValidateInputError, Options<ValidateInputData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await validateAction({
+            const { data } = await validateInput({
                 ...options,
                 ...fnOptions,
                 throwOnError: true

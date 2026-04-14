@@ -1,82 +1,7 @@
 /**
- * HexGrid component - Hexagonal grid visualization for hex-based games
- *
- * Design Philosophy: "Tessellated Worlds"
- * - SVG-based hex grid with axial coordinate system
- * - Support for tiles, edges (roads), and vertices (settlements)
- * - Mobile-friendly with touch gestures and responsive sizing
- * - Pan and zoom support using @use-gesture (mobile only)
- * - All rendering is controlled by parent via required render functions
- * - Pre-built helper components provided for easy customization
- * - Interactive vertex/edge overlays for Catan-style placement
- *
- * Use cases: Catan, wargames, Hive, Twilight Imperium
- *
- * @example Basic usage with pre-built components
- * ```tsx
- * const { tiles, edges, vertices } = useHexBoard('board-id');
- *
- * <HexGrid
- *   tiles={tiles}
- *   edges={edges}
- *   vertices={vertices}
- *   hexSize={50}
- *   renderTile={(tile) => (
- *     <DefaultHexTile
- *       size={50}
- *       fill={tileColors[tile.typeId]}
- *       label={tile.label}
- *       isSelected={selectedId === tile.id}
- *       onClick={() => setSelectedId(tile.id)}
- *     />
- *   )}
- *   renderEdge={(edge, pos) => (
- *     <DefaultHexEdge position={pos} color={playerColors[edge.owner]} />
- *   )}
- *   renderVertex={(vertex, pos) => (
- *     <DefaultHexVertex position={pos} color={playerColors[vertex.owner]} />
- *   )}
- * />
- * ```
- *
- * @example Catan-style placement with interactive vertices and edges
- * ```tsx
- * const { tiles, edges, vertices } = useHexBoard('catan-board');
- * const [placementMode, setPlacementMode] = useState<'settlement' | 'road' | null>(null);
- *
- * <HexGrid
- *   tiles={tiles}
- *   edges={edges}
- *   vertices={vertices}
- *   hexSize={50}
- *   renderTile={(tile) => <DefaultHexTile size={50} fill={colors[tile.typeId]} />}
- *   renderEdge={(edge, pos) => <DefaultHexEdge position={pos} color="#888" />}
- *   renderVertex={(vertex, pos) => <DefaultHexVertex position={pos} color="#888" />}
- *
- *   // Enable interactive overlays based on placement mode
- *   interactiveVertices={placementMode === 'settlement'}
- *   interactiveEdges={placementMode === 'road'}
- *
- *   // Handle placement clicks
- *   onInteractiveVertexClick={(vertex) => {
- *     console.log('Place settlement at:', vertex.id);
- *     console.log('Adjacent tiles:', vertex.adjacentTileIds);
- *   }}
- *   onInteractiveEdgeClick={(edge) => {
- *     console.log('Place road at:', edge.id);
- *     console.log('Adjacent tiles:', edge.adjacentTileIds);
- *   }}
- *
- *   // Optional: customize appearance
- *   renderInteractiveVertex={(vertex, isHovered) => (
- *     <DefaultInteractiveVertex
- *       vertex={vertex}
- *       isHovered={isHovered}
- *       hoverColor="rgba(59, 130, 246, 0.8)"
- *     />
- *   )}
- * />
- * ```
+ * SVG-based hex grid for hex-based games (Catan, wargames, Hive, Twilight Imperium).
+ * Supports tiles, edges (roads), vertices (settlements), and interactive placement overlays.
+ * Pan/zoom enabled on mobile via @use-gesture.
  */
 
 import { useMemo, useCallback, useState, type ReactNode } from "react";
@@ -102,127 +27,65 @@ export interface EdgePosition {
   angle: number;
 }
 
-/**
- * Interactive vertex - auto-generated from tiles, represents a corner point
- * where 1-3 hexes meet. Useful for Catan-style settlement placement.
- */
+/** Auto-generated corner point where 1-3 hexes meet (for settlement placement). */
 export interface InteractiveVertex {
-  /** Unique vertex identifier based on position */
   id: string;
-  /** Pixel position of the vertex */
   position: { x: number; y: number };
-  /** IDs of adjacent tiles (1-3 tiles share each vertex) */
   adjacentTileIds: string[];
-  /** Corner index (0-5) on the first adjacent tile */
   cornerIndex: number;
 }
 
-/**
- * Interactive edge - auto-generated from tiles, represents an edge
- * where 1-2 hexes meet. Useful for Catan-style road placement.
- */
+/** Auto-generated edge where 1-2 hexes meet (for road placement). */
 export interface InteractiveEdge {
-  /** Unique edge identifier based on position */
   id: string;
-  /** Edge position with line coordinates */
   position: EdgePosition;
-  /** IDs of adjacent tiles (1-2 tiles share each edge) */
   adjacentTileIds: string[];
-  /** Edge index (0-5) on the first adjacent tile */
   edgeIndex: number;
 }
 
 export interface HexGridProps {
-  /** Tile definitions */
   tiles: HexTileState[];
-  /** Edge definitions (for Catan-style roads) - defaults to empty */
   edges: HexEdgeState[];
-  /** Vertex definitions (for Catan-style settlements) - defaults to empty */
   vertices: HexVertexState[];
-  /** Hex orientation */
   orientation?: HexOrientation;
-  /** Hex size (radius in pixels) */
+  /** Hex radius in pixels */
   hexSize?: number;
-  /** Custom tile renderer - required, receives tile data centered at (0,0) */
+  /** Receives tile data centered at (0,0) */
   renderTile: (tile: HexTileState) => ReactNode;
-  /** Custom edge renderer - required */
   renderEdge: (edge: HexEdgeState, position: EdgePosition) => ReactNode;
-  /** Custom vertex renderer - required */
   renderVertex: (
     vertex: HexVertexState,
     position: { x: number; y: number },
   ) => ReactNode;
-  /** Container width (use "100%" for responsive) */
   width?: number | string;
-  /** Container height (use "100%" for responsive) */
   height?: number | string;
-  /** Enable pan and zoom */
   enablePanZoom?: boolean;
-  /** Initial zoom level */
   initialZoom?: number;
-  /** Min zoom level */
   minZoom?: number;
-  /** Max zoom level */
   maxZoom?: number;
-  /** Additional class names */
   className?: string;
 
-  // =========================================================================
   // Interactive Vertices & Edges (for Catan-style placement)
-  // =========================================================================
 
-  /**
-   * Enable interactive vertex overlay - auto-generates clickable points
-   * at all 6 corners of each tile (deduplicated where tiles meet)
-   */
+  /** Auto-generates clickable vertex points (deduplicated where tiles meet) */
   interactiveVertices?: boolean;
-
-  /**
-   * Enable interactive edge overlay - auto-generates clickable edges
-   * at all 6 sides of each tile (deduplicated where tiles meet)
-   */
+  /** Auto-generates clickable edges (deduplicated where tiles meet) */
   interactiveEdges?: boolean;
-
-  /** Called when an interactive vertex is clicked */
   onInteractiveVertexClick?: (vertex: InteractiveVertex) => void;
-
-  /** Called when mouse enters an interactive vertex */
   onInteractiveVertexEnter?: (vertex: InteractiveVertex) => void;
-
-  /** Called when mouse leaves an interactive vertex */
   onInteractiveVertexLeave?: (vertex: InteractiveVertex) => void;
-
-  /** Called when an interactive edge is clicked */
   onInteractiveEdgeClick?: (edge: InteractiveEdge) => void;
-
-  /** Called when mouse enters an interactive edge */
   onInteractiveEdgeEnter?: (edge: InteractiveEdge) => void;
-
-  /** Called when mouse leaves an interactive edge */
   onInteractiveEdgeLeave?: (edge: InteractiveEdge) => void;
-
-  /**
-   * Custom renderer for interactive vertices.
-   * If not provided, uses DefaultInteractiveVertex.
-   */
   renderInteractiveVertex?: (
     vertex: InteractiveVertex,
     isHovered: boolean,
   ) => ReactNode;
-
-  /**
-   * Custom renderer for interactive edges.
-   * If not provided, uses DefaultInteractiveEdge.
-   */
   renderInteractiveEdge?: (
     edge: InteractiveEdge,
     isHovered: boolean,
   ) => ReactNode;
-
-  /** Size of interactive vertex touch targets (default: 12) */
   interactiveVertexSize?: number;
-
-  /** Size of interactive edge touch targets (default: 10) */
   interactiveEdgeSize?: number;
 }
 
@@ -231,52 +94,24 @@ export interface HexGridProps {
 // ============================================================================
 
 export interface DefaultHexTileProps {
-  /** Hex size (radius) - should match hexSize from HexGrid */
+  /** Should match hexSize from HexGrid */
   size: number;
-  /** Fill color */
   fill: string;
-  /** Stroke color */
   stroke?: string;
-  /** Stroke width */
   strokeWidth?: number;
-  /** Whether tile is selected */
   isSelected?: boolean;
-  /** Whether tile is highlighted */
   isHighlighted?: boolean;
-  /** Label text to display */
   label?: string;
-  /** Show coordinates */
   showCoordinates?: boolean;
-  /** Coordinates to display */
   coordinates?: { q: number; r: number };
-  /** Hex orientation */
   orientation?: HexOrientation;
-  /** Click handler */
   onClick?: () => void;
-  /** Pointer enter handler */
   onPointerEnter?: () => void;
-  /** Pointer leave handler */
   onPointerLeave?: () => void;
-  /** Additional className */
   className?: string;
 }
 
-/**
- * Pre-built hexagon tile component for use in renderTile
- *
- * @example
- * ```tsx
- * renderTile={(tile) => (
- *   <DefaultHexTile
- *     size={50}
- *     fill={colors[tile.typeId]}
- *     label={tile.label}
- *     isSelected={selectedId === tile.id}
- *     onClick={() => setSelectedId(tile.id)}
- *   />
- * )}
- * ```
- */
+/** Pre-built hexagon tile for use in `renderTile`. */
 export function DefaultHexTile({
   size,
   fill,
@@ -362,37 +197,16 @@ export function DefaultHexTile({
 }
 
 export interface DefaultHexEdgeProps {
-  /** Edge position from renderEdge callback */
   position: EdgePosition;
-  /** Edge color */
   color: string;
-  /** Whether this edge has an owner (affects visibility) */
   hasOwner?: boolean;
-  /** Stroke width */
   strokeWidth?: number;
-  /** Touch target size */
   touchTargetSize?: number;
-  /** Click handler */
   onClick?: () => void;
-  /** Additional className */
   className?: string;
 }
 
-/**
- * Pre-built edge/road component for use in renderEdge
- *
- * @example
- * ```tsx
- * renderEdge={(edge, position) => (
- *   <DefaultHexEdge
- *     position={position}
- *     color={playerColors[edge.owner] ?? '#888'}
- *     hasOwner={!!edge.owner}
- *     onClick={() => handleEdgeClick(edge.id)}
- *   />
- * )}
- * ```
- */
+/** Pre-built edge/road component for use in `renderEdge`. */
 export function DefaultHexEdge({
   position,
   color,
@@ -437,53 +251,23 @@ export function DefaultHexEdge({
 }
 
 export interface DefaultHexVertexProps {
-  /** Vertex position from renderVertex callback */
   position: { x: number; y: number };
-  /** Vertex color */
   color: string;
-  /** Stroke color */
   stroke?: string;
-  /** Stroke width */
   strokeWidth?: number;
-  /** Whether this vertex has an owner (affects visibility) */
   hasOwner?: boolean;
-  /** Whether vertex is selected */
   isSelected?: boolean;
-  /** Whether vertex is highlighted */
   isHighlighted?: boolean;
-  /** Vertex size (radius) */
   size?: number;
-  /** Touch target size */
   touchTargetSize?: number;
-  /** Vertex shape */
   shape?: "circle" | "square";
-  /** Click handler */
   onClick?: () => void;
-  /** Pointer enter handler */
   onPointerEnter?: () => void;
-  /** Pointer leave handler */
   onPointerLeave?: () => void;
-  /** Additional className */
   className?: string;
 }
 
-/**
- * Pre-built vertex/settlement component for use in renderVertex
- *
- * @example
- * ```tsx
- * renderVertex={(vertex, position) => (
- *   <DefaultHexVertex
- *     position={position}
- *     color={playerColors[vertex.owner] ?? '#888'}
- *     hasOwner={!!vertex.owner}
- *     isSelected={selectedVertexId === vertex.id}
- *     shape={vertex.type === 'city' ? 'square' : 'circle'}
- *     onClick={() => handleVertexClick(vertex.id)}
- *   />
- * )}
- * ```
- */
+/** Pre-built vertex/settlement component for use in `renderVertex`. */
 export function DefaultHexVertex({
   position,
   color,
@@ -565,36 +349,13 @@ export function DefaultHexVertex({
 // ============================================================================
 
 export interface DefaultInteractiveVertexProps {
-  /** Vertex data from the interactive layer */
   vertex: InteractiveVertex;
-  /** Whether the vertex is currently hovered */
   isHovered: boolean;
-  /** Size of the vertex indicator */
   size?: number;
-  /** Color when not hovered */
   color?: string;
-  /** Color when hovered */
   hoverColor?: string;
-  /** Additional className */
   className?: string;
 }
-
-/**
- * Default renderer for interactive vertices (placement points).
- * Shows a subtle indicator that highlights on hover.
- *
- * @example Custom interactive vertex renderer
- * ```tsx
- * renderInteractiveVertex={(vertex, isHovered) => (
- *   <DefaultInteractiveVertex
- *     vertex={vertex}
- *     isHovered={isHovered}
- *     color="rgba(255,255,255,0.3)"
- *     hoverColor="rgba(34, 197, 94, 0.8)"
- *   />
- * )}
- * ```
- */
 export function DefaultInteractiveVertex({
   vertex,
   isHovered,
@@ -617,36 +378,13 @@ export function DefaultInteractiveVertex({
 }
 
 export interface DefaultInteractiveEdgeProps {
-  /** Edge data from the interactive layer */
   edge: InteractiveEdge;
-  /** Whether the edge is currently hovered */
   isHovered: boolean;
-  /** Stroke width of the edge indicator */
   strokeWidth?: number;
-  /** Color when not hovered */
   color?: string;
-  /** Color when hovered */
   hoverColor?: string;
-  /** Additional className */
   className?: string;
 }
-
-/**
- * Default renderer for interactive edges (road placement).
- * Shows a subtle line that highlights on hover.
- *
- * @example Custom interactive edge renderer
- * ```tsx
- * renderInteractiveEdge={(edge, isHovered) => (
- *   <DefaultInteractiveEdge
- *     edge={edge}
- *     isHovered={isHovered}
- *     color="rgba(255,255,255,0.2)"
- *     hoverColor="rgba(251, 146, 60, 0.8)"
- *   />
- * )}
- * ```
- */
 export function DefaultInteractiveEdge({
   edge,
   isHovered,
@@ -674,9 +412,7 @@ export function DefaultInteractiveEdge({
 // ============================================================================
 
 export const hexUtils = {
-  /**
-   * Convert axial coordinates to pixel position
-   */
+  /** Convert axial coordinates to pixel position. */
   axialToPixel(
     q: number,
     r: number,
@@ -694,9 +430,6 @@ export const hexUtils = {
     }
   },
 
-  /**
-   * Get the 6 neighboring hex coordinates
-   */
   getNeighbors(q: number, r: number): Array<{ q: number; r: number }> {
     return [
       { q: q + 1, r: r },
@@ -708,18 +441,12 @@ export const hexUtils = {
     ];
   },
 
-  /**
-   * Calculate distance between two hex coordinates
-   */
   getDistance(q1: number, r1: number, q2: number, r2: number): number {
     return (
       (Math.abs(q1 - q2) + Math.abs(q1 + r1 - q2 - r2) + Math.abs(r1 - r2)) / 2
     );
   },
 
-  /**
-   * Get hex corners for rendering
-   */
   getHexCorners(
     centerX: number,
     centerY: number,
@@ -740,9 +467,6 @@ export const hexUtils = {
     return corners;
   },
 
-  /**
-   * Get points string for SVG polygon
-   */
   getHexPoints(
     centerX: number,
     centerY: number,
@@ -753,9 +477,6 @@ export const hexUtils = {
     return corners.map((c) => `${c.x},${c.y}`).join(" ");
   },
 
-  /**
-   * Get edge positions between two hexes
-   */
   getEdgePosition(
     hex1Pos: { x: number; y: number },
     hex2Pos: { x: number; y: number },
@@ -780,9 +501,6 @@ export const hexUtils = {
     };
   },
 
-  /**
-   * Get vertex position at the intersection of three hexes
-   */
   getVertexPosition(
     hex1Pos: { x: number; y: number },
     hex2Pos: { x: number; y: number },
@@ -794,22 +512,18 @@ export const hexUtils = {
     };
   },
 
-  /**
-   * Generate all unique interactive vertices from a set of tiles.
-   * Each tile has 6 corners, but corners are shared where tiles meet.
-   * Returns deduplicated vertices with position and adjacent tile info.
-   */
+  /** Generate deduplicated interactive vertices from tiles (shared corners merged). */
   generateInteractiveVertices(
     tiles: HexTileState[],
     hexSize: number,
     orientation: HexOrientation,
   ): InteractiveVertex[] {
     const vertexMap = new Map<string, InteractiveVertex>();
-    const tolerance = 0.1; // For floating point comparison
+    const tolerance = 0.1;
 
-    // Helper to create a position key for deduplication
+    // Round to integer grid indices for stable deduplication
     const posKey = (x: number, y: number) =>
-      `${Math.round(x / tolerance) * tolerance},${Math.round(y / tolerance) * tolerance}`;
+      `${Math.round(x / tolerance)},${Math.round(y / tolerance)}`;
 
     tiles.forEach((tile) => {
       const tilePos = this.axialToPixel(tile.q, tile.r, hexSize, orientation);
@@ -844,11 +558,7 @@ export const hexUtils = {
     return Array.from(vertexMap.values());
   },
 
-  /**
-   * Generate all unique interactive edges from a set of tiles.
-   * Each tile has 6 edges, but edges are shared where tiles meet.
-   * Returns deduplicated edges with position and adjacent tile info.
-   */
+  /** Generate deduplicated interactive edges from tiles (shared edges merged). */
   generateInteractiveEdges(
     tiles: HexTileState[],
     hexSize: number,
@@ -858,7 +568,7 @@ export const hexUtils = {
     const tolerance = 0.1;
 
     const posKey = (x: number, y: number) =>
-      `${Math.round(x / tolerance) * tolerance},${Math.round(y / tolerance) * tolerance}`;
+      `${Math.round(x / tolerance)},${Math.round(y / tolerance)}`;
 
     tiles.forEach((tile) => {
       const tilePos = this.axialToPixel(tile.q, tile.r, hexSize, orientation);

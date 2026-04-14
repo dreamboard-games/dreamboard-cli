@@ -1,6 +1,25 @@
 import { expect, test } from "bun:test";
 import { buildPulledProjectConfig } from "./sync.ts";
 
+const MINIMAL_MANIFEST = {
+  players: {
+    minPlayers: 2,
+    maxPlayers: 2,
+    optimalPlayers: 2,
+  },
+  cardSets: [],
+  zones: [],
+  boardTemplates: [],
+  boards: [],
+  pieceTypes: [],
+  pieceSeeds: [],
+  dieTypes: [],
+  dieSeeds: [],
+  resources: [],
+  setupOptions: [],
+  setupProfiles: [],
+} as const;
+
 test("buildPulledProjectConfig preserves configured URLs while hydrating the latest authoring head", () => {
   expect(
     buildPulledProjectConfig(
@@ -13,6 +32,17 @@ test("buildPulledProjectConfig preserves configured URLs while hydrating the lat
         slug: "test-game",
         manifestId: "manifest-1",
         ruleId: "rule-1",
+        authoring: {
+          pendingSync: {
+            phase: "authoring_state_created",
+            authoringStateId: "authoring-state-stale",
+            sourceRevisionId: "source-revision-stale",
+            sourceTreeHash: "tree-hash-stale",
+            manifestId: "manifest-stale",
+            manifestContentHash: "manifest-hash-stale",
+            ruleId: "rule-stale",
+          },
+        },
       },
       {
         authoringStateId: "authoring-state-2",
@@ -20,11 +50,7 @@ test("buildPulledProjectConfig preserves configured URLs while hydrating the lat
         sourceRevisionId: "source-revision-2",
         treeHash: "tree-hash-2",
         manifestId: "manifest-2",
-        manifest: {
-          stateMachine: {
-            states: [{ name: "setup" }],
-          },
-        },
+        manifest: MINIMAL_MANIFEST,
         ruleId: "rule-2",
         ruleText: "# Remote rule\n",
       },

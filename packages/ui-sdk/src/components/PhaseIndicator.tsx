@@ -1,50 +1,17 @@
-/**
- * PhaseIndicator component - Shows current game phase and turn status
- *
- * Design Philosophy: "Contextual Game State"
- * - Clear phase/turn indication
- * - "Your Turn" highlighting
- * - Active player display
- * - Multiple display variants
- *
- * @example Basic usage
- * ```tsx
- * <PhaseIndicator
- *   currentPhase="playerActions"
- *   phaseLabels={{ playerActions: "Your Actions", rollDice: "Roll Dice" }}
- *   isMyTurn={true}
- * />
- * ```
- */
+/** Shows current game phase and turn status with "Your Turn" highlighting. */
 
 import { motion } from "framer-motion";
 import { clsx } from "clsx";
 import { Clock, User } from "lucide-react";
 
 export interface PhaseIndicatorProps {
-  /** Current phase/state name */
   currentPhase: string;
-  /** Human-readable phase display names */
   phaseLabels?: Record<string, string>;
-  /** Whether it's the current user's turn */
   isMyTurn?: boolean;
-  /** Active player name(s) */
   activePlayerNames?: string[];
-  /** Variant style */
   variant?: "badge" | "bar" | "minimal";
-  /** Additional class names */
   className?: string;
 }
-
-/**
- * PhaseIndicator component for game state display
- *
- * Features:
- * - Phase name with optional labels
- * - Turn indicator with animation
- * - Active player display
- * - Multiple visual variants
- */
 export function PhaseIndicator({
   currentPhase,
   phaseLabels,

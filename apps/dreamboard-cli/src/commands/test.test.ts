@@ -1,52 +1,38 @@
 import { expect, test } from "bun:test";
 
 import {
-  describeFingerprintMismatch,
-  parseScenarioDefinition,
+  NO_REDUCER_NATIVE_BASES_FOUND_ERROR,
+  NO_REDUCER_NATIVE_SCENARIOS_FOUND_ERROR,
+  REDUCER_NATIVE_TEST_WORKSPACE_ERROR,
+  resolveRequestedRunner,
 } from "./test.js";
 
-test("zero-step scenarios are valid for initial-state invariant checks", () => {
-  const scenario = parseScenarioDefinition({
-    meta: {
-      id: "initial-state",
-      description: "Asserts structural invariants before any actions",
-    },
-    given: {
-      base: "initial-turn",
-    },
-    when: {
-      steps: [],
-    },
-    then: {
-      assert: () => undefined,
-    },
-  });
-
-  expect(scenario.when.steps).toEqual([]);
+test("reducer-native workspace guidance is explicit about the hard cut", () => {
+  expect(REDUCER_NATIVE_TEST_WORKSPACE_ERROR).toContain(
+    "reducer-native workspace",
+  );
+  expect(REDUCER_NATIVE_TEST_WORKSPACE_ERROR).toContain("test/bases/*.base.ts");
+  expect(REDUCER_NATIVE_TEST_WORKSPACE_ERROR).toContain(
+    "Legacy test/base-scenarios.json workspaces are no longer supported.",
+  );
 });
 
-test("fingerprint mismatch message distinguishes base setup and compiled result drift", () => {
-  const message = describeFingerprintMismatch({
-    generatedFingerprint: {
-      base: "initial-turn",
-      seed: 1337,
-      players: 4,
-      baseSetupHash: "base-a",
-      compiledResultId: "compiled-a",
-      manifestHash: "manifest-a",
-      gameId: "game-a",
-    },
-    runtimeFingerprint: {
-      base: "initial-turn",
-      seed: 1338,
-      players: 4,
-      baseSetupHash: "base-b",
-      compiledResultId: "compiled-b",
-      manifestHash: "manifest-b",
-      gameId: "game-a",
-    },
-  });
+test("missing reducer-native generated inputs have targeted error messages", () => {
+  expect(NO_REDUCER_NATIVE_BASES_FOUND_ERROR).toBe(
+    "No bases found under test/bases/*.base.ts",
+  );
+  expect(NO_REDUCER_NATIVE_SCENARIOS_FOUND_ERROR).toBe(
+    "No scenarios found under test/scenarios/*.scenario.ts",
+  );
+});
 
-  expect(message).toContain("base setup changed");
-  expect(message).toContain("compiled result changed");
+test("resolveRequestedRunner accepts supported values and rejects invalid ones", () => {
+  expect(resolveRequestedRunner(undefined)).toBeUndefined();
+  expect(resolveRequestedRunner("")).toBeUndefined();
+  expect(resolveRequestedRunner("reducer")).toBe("reducer");
+  expect(resolveRequestedRunner("embedded")).toBe("embedded");
+  expect(resolveRequestedRunner("browser")).toBe("browser");
+  expect(() => resolveRequestedRunner("remote")).toThrow(
+    "Unsupported test runner",
+  );
 });

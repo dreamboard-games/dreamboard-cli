@@ -11,11 +11,18 @@ type MockApiResponse<T> = {
 const mockState: {
   compiledResultResponse: MockApiResponse<{
     id: string;
+    createdAt?: string;
+    authoringStateId?: string;
     success: boolean;
   }>;
   latestCompiledResultResponse: MockApiResponse<{ id: string }>;
   listCompiledResultsResponse: MockApiResponse<{
-    results: Array<{ id: string; authoringStateId: string; success: boolean }>;
+    results: Array<{
+      id: string;
+      authoringStateId: string;
+      createdAt?: string;
+      success: boolean;
+    }>;
   }>;
   listCompiledResultsCalls: Array<{
     path: { gameId: string };
@@ -37,6 +44,7 @@ const mockState: {
       phase?: string;
       message?: string;
       errorMessage?: string;
+      authoringStateId?: string;
       createdCompiledResultId?: string;
       createdAppScriptId?: string;
     }>
@@ -203,4 +211,60 @@ test("waitForCompiledResultJobSdk falls back to a descriptive terminal error whe
   ).rejects.toThrow(
     "Compile completed [completed]: job job-2 ended before a compiled result was created.",
   );
+});
+
+test("waitForCompiledResultJobSdk falls back to the latest compiled result for the authoring state", async () => {
+  mockState.jobResponses.push({
+    data: {
+      jobId: "job-3",
+      gameId: "game-1",
+      jobType: "COMPILED_RESULT_BUILD",
+      status: "COMPLETED",
+      createdAt: "2026-03-17T05:45:58Z",
+      authoringStateId: "authoring-state-3",
+      phase: "completed",
+    },
+    error: null,
+    response: { status: 200 },
+  });
+  mockState.listCompiledResultsResponse = {
+    data: {
+      results: [
+        {
+          id: "compiled-result-old",
+          authoringStateId: "authoring-state-3",
+          createdAt: "2026-03-17T05:45:57Z",
+          success: true,
+        },
+        {
+          id: "compiled-result-new",
+          authoringStateId: "authoring-state-3",
+          createdAt: "2026-03-17T05:46:01Z",
+          success: true,
+        },
+      ],
+    },
+    error: null,
+    response: { status: 200 },
+  };
+
+  const result = await waitForCompiledResultJobSdk({
+    gameId: "game-1",
+    jobId: "job-3",
+  });
+
+  expect(result.compiledResult).toEqual({
+    id: "compiled-result-new",
+    authoringStateId: "authoring-state-3",
+    createdAt: "2026-03-17T05:46:01Z",
+    success: true,
+  });
+  expect(mockState.listCompiledResultsCalls).toEqual([
+    {
+      path: { gameId: "game-1" },
+      query: {
+        limit: 100,
+      },
+    },
+  ]);
 });

@@ -1,29 +1,29 @@
 import { expect, mock, test } from "bun:test";
 
-const writeScaffoldFiles = mock(async () => undefined);
+const applyWorkspaceCodegen = mock(async () => ({
+  written: [],
+  skipped: [],
+  merged: [],
+}));
+const installWorkspaceDependencies = mock(async () => undefined);
+const createGame = mock(async () => ({
+  data: { id: "game-1" },
+  error: null,
+  response: { status: 200 },
+}));
 const actualFlags = await import("../flags.js");
 const actualFs = await import("../utils/fs.js");
 const actualLocalFiles = await import("../services/project/local-files.js");
+const actualApiServices = await import("../services/api/index.js");
+const actualStrings = await import("../utils/strings.js");
+const actualErrors = await import("../utils/errors.js");
+const configureClient = mock(async () => undefined);
 
 mock.module("@dreamboard/api-client", () => ({
-  createGame: mock(async () => ({
-    data: { id: "game-1" },
-    error: null,
-    response: { status: 200 },
-  })),
+  createGame,
   deleteGame: mock(async () => ({
     error: null,
     response: { status: 204 },
-  })),
-  scaffoldGameSourcesV3: mock(async () => ({
-    data: {
-      generatedFiles: {
-        "../outside.ts": "bad",
-      },
-      seedFiles: {},
-    },
-    error: null,
-    response: { status: 200 },
   })),
   getGameBySlug: mock(async () => ({
     data: { id: "game-1" },
@@ -70,7 +70,7 @@ mock.module("../config/resolve.js", () => ({
     },
   }),
   requireAuth: () => undefined,
-  configureClient: async () => undefined,
+  configureClient,
 }));
 
 mock.module("../flags.js", () => ({
@@ -84,6 +84,7 @@ mock.module("../config/global-config.js", () => ({
 }));
 
 mock.module("../utils/strings.js", () => ({
+  ...actualStrings,
   normalizeSlug: (value: string) => value,
   titleFromSlug: () => "Test Game",
 }));
@@ -96,6 +97,7 @@ mock.module("../utils/fs.js", () => ({
 }));
 
 mock.module("../services/api/index.js", () => ({
+  ...actualApiServices,
   tryGetGameBySlug: async () => null,
   createAuthoringStateSdk: async () => ({
     authoringStateId: "authoring-1",
@@ -143,15 +145,35 @@ mock.module("../services/project/local-files.js", () => ({
     deleted: [],
   }),
   loadManifest: async () => ({
-    stateMachine: {
-      states: [{ name: "setup" }],
+    players: {
+      minPlayers: 2,
+      maxPlayers: 2,
+      optimalPlayers: 2,
     },
+    cardSets: [],
+    zones: [],
+    boardTemplates: [],
+    boards: [],
+    pieceTypes: [],
+    pieceSeeds: [],
+    dieTypes: [],
+    dieSeeds: [],
+    resources: [],
+    setupOptions: [],
+    setupProfiles: [],
   }),
   loadRule: async () => "",
   writeManifest: async () => undefined,
   writeRule: async () => undefined,
   writeSnapshotFromFiles: async () => undefined,
-  writeScaffoldFiles,
+}));
+
+mock.module("../services/project/workspace-codegen.js", () => ({
+  applyWorkspaceCodegen,
+}));
+
+mock.module("../services/project/workspace-dependencies.js", () => ({
+  installWorkspaceDependencies,
 }));
 
 mock.module("../config/project-config.js", () => ({
@@ -159,12 +181,52 @@ mock.module("../config/project-config.js", () => ({
 }));
 
 mock.module("../utils/errors.js", () => ({
-  formatApiError: () => "api error",
+  ...actualErrors,
 }));
 
 const newCommand = (await import("./new.ts")).default;
 
-test("new command rejects invalid scaffold payloads before writing files", async () => {
+test("new command scaffolds locally with workspace codegen", async () => {
+  applyWorkspaceCodegen.mockClear();
+  installWorkspaceDependencies.mockClear();
+  createGame.mockClear();
+  configureClient.mockClear();
+
+  await newCommand.run({
+    args: {
+      slug: "test-game",
+      description: "A test game",
+      force: false,
+    },
+  });
+
+  expect(applyWorkspaceCodegen).toHaveBeenCalledWith({
+    projectRoot: expect.stringContaining("test-game"),
+    manifest: expect.objectContaining({
+      players: expect.objectContaining({
+        minPlayers: 2,
+      }),
+    }),
+  });
+  expect(installWorkspaceDependencies).toHaveBeenCalledWith(
+    expect.stringContaining("test-game"),
+    {
+      localSdkPackageFallback: false,
+    },
+  );
+});
+
+test("new command surfaces a re-login hint for invalid stored sessions", async () => {
+  applyWorkspaceCodegen.mockClear();
+  installWorkspaceDependencies.mockClear();
+  createGame.mockClear();
+  configureClient.mockClear();
+  configureClient.mockImplementationOnce(async () => {
+    throw new Error(
+      "Stored Dreamboard session is expired or invalid (Invalid Refresh Token: Refresh Token Not Found). Run `dreamboard login` to authenticate again.",
+    );
+  });
+
   await expect(
     newCommand.run({
       args: {
@@ -173,7 +235,9 @@ test("new command rejects invalid scaffold payloads before writing files", async
         force: false,
       },
     }),
-  ).rejects.toThrow("Invalid scaffold payload");
+  ).rejects.toThrow("Run `dreamboard login` to authenticate again.");
 
-  expect(writeScaffoldFiles).not.toHaveBeenCalled();
+  expect(createGame).not.toHaveBeenCalled();
+  expect(applyWorkspaceCodegen).not.toHaveBeenCalled();
+  expect(installWorkspaceDependencies).not.toHaveBeenCalled();
 });

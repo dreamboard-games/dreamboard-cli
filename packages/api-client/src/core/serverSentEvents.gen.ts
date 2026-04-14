@@ -169,8 +169,9 @@ export const createSseClient = <TData = unknown>({
             const { done, value } = await reader.read();
             if (done) break;
             buffer += value;
+            buffer = buffer.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
-            const chunks = buffer.split("\r\n");
+            const chunks = buffer.split("\n\n");
             buffer = chunks.pop() ?? "";
 
             for (const chunk of chunks) {
@@ -226,7 +227,7 @@ export const createSseClient = <TData = unknown>({
                 retry: retryDelay,
               });
 
-              if (dataLines.length) {
+              if (dataLines.length && data !== "") {
                 yield data as any;
               }
             }

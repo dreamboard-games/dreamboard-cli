@@ -8,8 +8,10 @@ import {
   DEFAULT_WEB_BASE_URL,
   ENVIRONMENT_CONFIGS,
 } from "../constants.js";
-import { loadGlobalConfig } from "./global-config.js";
+import { loadGlobalConfig, saveGlobalConfig } from "./global-config.js";
 import { findProjectRoot, loadProjectConfig } from "./project-config.js";
+
+const LOGIN_HINT = "Run `dreamboard login` to authenticate again.";
 
 export function resolveConfig(
   globalConfig: GlobalConfig,
@@ -24,27 +26,59 @@ export function resolveConfig(
     ? PUBLISHED_ENVIRONMENT
     : flags.env || globalConfig.environment || "dev";
   const envConfig = ENVIRONMENT_CONFIGS[environment];
+  const publishedEnvConfig = ENVIRONMENT_CONFIGS[PUBLISHED_ENVIRONMENT];
+  const hasExplicitEnvironmentOverride =
+    !IS_PUBLISHED_BUILD && Boolean(flags.env);
 
   const apiBaseUrl = IS_PUBLISHED_BUILD
-    ? ENVIRONMENT_CONFIGS[PUBLISHED_ENVIRONMENT].apiBaseUrl
-    : project?.apiBaseUrl || envConfig?.apiBaseUrl || DEFAULT_API_BASE_URL;
+    ? (publishedEnvConfig?.apiBaseUrl ?? DEFAULT_API_BASE_URL)
+    : hasExplicitEnvironmentOverride
+      ? envConfig?.apiBaseUrl || DEFAULT_API_BASE_URL
+      : project?.apiBaseUrl || envConfig?.apiBaseUrl || DEFAULT_API_BASE_URL;
 
   const webBaseUrl = IS_PUBLISHED_BUILD
-    ? ENVIRONMENT_CONFIGS[PUBLISHED_ENVIRONMENT].webBaseUrl
-    : project?.webBaseUrl || envConfig?.webBaseUrl || DEFAULT_WEB_BASE_URL;
+    ? (publishedEnvConfig?.webBaseUrl ?? DEFAULT_WEB_BASE_URL)
+    : hasExplicitEnvironmentOverride
+      ? envConfig?.webBaseUrl || DEFAULT_WEB_BASE_URL
+      : project?.webBaseUrl || envConfig?.webBaseUrl || DEFAULT_WEB_BASE_URL;
 
   const supabaseUrl = envConfig?.supabaseUrl;
   const supabaseAnonKey = envConfig?.supabaseAnonKey;
+  const flagToken = valueOrUndefined(flags.token);
+  const envToken = valueOrUndefined(process.env.DREAMBOARD_TOKEN);
+  const envRefreshToken = valueOrUndefined(
+    process.env.DREAMBOARD_REFRESH_TOKEN,
+  );
 
   const authToken = IS_PUBLISHED_BUILD
     ? globalConfig.authToken
-    : valueOrUndefined(flags.token) ||
-      process.env.DREAMBOARD_TOKEN ||
-      globalConfig.authToken;
+    : flagToken || envToken || globalConfig.authToken;
 
   const refreshToken = IS_PUBLISHED_BUILD
     ? globalConfig.refreshToken
-    : process.env.DREAMBOARD_REFRESH_TOKEN || globalConfig.refreshToken;
+    : envRefreshToken || globalConfig.refreshToken;
+
+  const authTokenSource = IS_PUBLISHED_BUILD
+    ? globalConfig.authToken
+      ? "global"
+      : "none"
+    : flagToken
+      ? "flag"
+      : envToken
+        ? "env"
+        : globalConfig.authToken
+          ? "global"
+          : "none";
+
+  const refreshTokenSource = IS_PUBLISHED_BUILD
+    ? globalConfig.refreshToken
+      ? "global"
+      : "none"
+    : envRefreshToken
+      ? "env"
+      : globalConfig.refreshToken
+        ? "global"
+        : "none";
 
   return {
     apiBaseUrl,
@@ -53,6 +87,8 @@ export function resolveConfig(
     supabaseAnonKey,
     authToken,
     refreshToken,
+    authTokenSource,
+    refreshTokenSource,
   };
 }
 
@@ -86,7 +122,11 @@ function assertPublicRuntimeFlags(flags: ConfigFlags): void {
  * so the CLI always has a valid access token, even if the original JWT has expired.
  */
 export async function configureClient(config: ResolvedConfig): Promise<void> {
-  await refreshAuthTokenIfNeeded(config);
+  const refreshedSession = await refreshAuthTokenIfNeeded(config);
+
+  if (refreshedSession && usesStoredSession(config)) {
+    await persistStoredSession(refreshedSession);
+  }
 
   client.setConfig({
     baseUrl: config.apiBaseUrl,
@@ -103,33 +143,137 @@ export async function configureClient(config: ResolvedConfig): Promise<void> {
  *
  * Mutates `config.authToken` in-place with the fresh token.
  */
-async function refreshAuthTokenIfNeeded(config: ResolvedConfig): Promise<void> {
-  if (!config.authToken || !config.refreshToken) return;
-  if (!config.supabaseUrl || !config.supabaseAnonKey) return;
+async function refreshAuthTokenIfNeeded(
+  config: ResolvedConfig,
+): Promise<{ authToken: string; refreshToken?: string } | null> {
+  if (!config.authToken || !config.refreshToken) return null;
+  if (!config.supabaseUrl || !config.supabaseAnonKey) return null;
 
   try {
-    const supabase = createSupabaseClient(
-      config.supabaseUrl,
-      config.supabaseAnonKey,
+    const initialSession = {
+      authToken: config.authToken,
+      refreshToken: config.refreshToken,
+    };
+    const { session, error } = await refreshSessionWithSupabase(
+      config,
+      initialSession,
     );
 
-    const { data, error } = await supabase.auth.setSession({
-      access_token: config.authToken,
-      refresh_token: config.refreshToken,
-    });
-
     if (error) {
+      if (
+        usesStoredSession(config) &&
+        isInvalidRefreshTokenMessage(error.message)
+      ) {
+        const recoveredSession = await tryRecoverStoredSession(config, {
+          attemptedSession: initialSession,
+        });
+        if (recoveredSession) {
+          config.authToken = recoveredSession.authToken;
+          config.refreshToken =
+            recoveredSession.refreshToken ?? config.refreshToken;
+          return recoveredSession;
+        }
+
+        config.authToken = undefined;
+        config.refreshToken = undefined;
+        await clearStoredSession();
+        throw new Error(formatStoredSessionInvalidMessage(error.message));
+      }
+
       // If refresh fails, continue with the original token — it may still be valid
       console.warn(`Token refresh failed: ${error.message}`);
-      return;
+      return null;
     }
 
-    if (data.session?.access_token) {
-      config.authToken = data.session.access_token;
+    if (session?.authToken) {
+      config.authToken = session.authToken;
+      config.refreshToken = session.refreshToken ?? config.refreshToken;
+      return {
+        authToken: config.authToken,
+        refreshToken: config.refreshToken,
+      };
     }
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message.includes(LOGIN_HINT)) {
+      throw error;
+    }
+
     // Swallow errors — the original token may still work
   }
+
+  return null;
+}
+
+async function refreshSessionWithSupabase(
+  config: Pick<ResolvedConfig, "supabaseUrl" | "supabaseAnonKey">,
+  session: { authToken: string; refreshToken: string },
+): Promise<{
+  session: { authToken: string; refreshToken?: string } | null;
+  error: { message: string } | null;
+}> {
+  const supabase = createSupabaseClient(
+    config.supabaseUrl!,
+    config.supabaseAnonKey!,
+  );
+
+  const { data, error } = await supabase.auth.setSession({
+    access_token: session.authToken,
+    refresh_token: session.refreshToken,
+  });
+
+  if (error) {
+    return { session: null, error };
+  }
+
+  if (!data.session?.access_token) {
+    return { session: null, error: null };
+  }
+
+  return {
+    session: {
+      authToken: data.session.access_token,
+      refreshToken: data.session.refresh_token ?? session.refreshToken,
+    },
+    error: null,
+  };
+}
+
+async function tryRecoverStoredSession(
+  config: Pick<ResolvedConfig, "supabaseUrl" | "supabaseAnonKey">,
+  options: {
+    attemptedSession: { authToken: string; refreshToken: string };
+  },
+): Promise<{ authToken: string; refreshToken?: string } | null> {
+  const globalConfig = await loadGlobalConfig();
+  const reloadedAuthToken = globalConfig.authToken;
+  const reloadedRefreshToken = globalConfig.refreshToken;
+
+  if (!reloadedAuthToken || !reloadedRefreshToken) {
+    return null;
+  }
+
+  if (
+    reloadedAuthToken === options.attemptedSession.authToken &&
+    reloadedRefreshToken === options.attemptedSession.refreshToken
+  ) {
+    return null;
+  }
+
+  const { session } = await refreshSessionWithSupabase(config, {
+    authToken: reloadedAuthToken,
+    refreshToken: reloadedRefreshToken,
+  });
+
+  return session;
+}
+
+async function clearStoredSession(): Promise<void> {
+  const globalConfig = await loadGlobalConfig();
+  await saveGlobalConfig({
+    ...globalConfig,
+    authToken: undefined,
+    refreshToken: undefined,
+  });
 }
 
 export function requireAuth(config: ResolvedConfig): void {
@@ -146,6 +290,50 @@ export function valueOrUndefined(
   return typeof value === "string" && value.trim().length > 0
     ? value.trim()
     : undefined;
+}
+
+export function isInvalidRefreshTokenMessage(
+  message: string | undefined,
+): boolean {
+  if (!message) return false;
+
+  const normalized = message.toLowerCase();
+  if (!normalized.includes("refresh token")) {
+    return false;
+  }
+
+  return [
+    "not found",
+    "invalid",
+    "expired",
+    "revoked",
+    "reuse",
+    "already used",
+  ].some((fragment) => normalized.includes(fragment));
+}
+
+export function formatStoredSessionInvalidMessage(reason?: string): string {
+  const detail = reason ? ` (${reason})` : "";
+  return `Stored Dreamboard session is expired or invalid${detail}. ${LOGIN_HINT}`;
+}
+
+function usesStoredSession(config: ResolvedConfig): boolean {
+  return (
+    config.authTokenSource === "global" &&
+    config.refreshTokenSource === "global"
+  );
+}
+
+async function persistStoredSession(session: {
+  authToken: string;
+  refreshToken?: string;
+}): Promise<void> {
+  const globalConfig = await loadGlobalConfig();
+  await saveGlobalConfig({
+    ...globalConfig,
+    authToken: session.authToken,
+    refreshToken: session.refreshToken,
+  });
 }
 
 /**

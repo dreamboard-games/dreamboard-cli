@@ -9,10 +9,18 @@
     ".": {
       "types": "./src/index.ts",
       "import": "./src/index.ts"
-    },
-    "./scaffolding/ownership.json": "./scaffolding/ownership.json"
+    }
+  },
+  "scripts": {
+    "lint": "eslint 'src/**/*.ts'"
   },
   "dependencies": {
     "@dreamboard/api-client": "workspace:*"
+  },
+  "devDependencies": {
+    "@dreamboard/eslint-config": "workspace:*",
+    "@dreamboard/typescript-config": "workspace:*",
+    "eslint": "^9.39.0",
+    "typescript": "^5.9.2"
   }
 }

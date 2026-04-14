@@ -1,0 +1,991 @@
+import { describe, expect, test } from "bun:test";
+import { z } from "zod";
+import {
+  applySetupBootstrap,
+  createReducerBundle,
+  defineAction,
+  defineGame,
+  defineGameContract,
+  definePhase,
+  defineSetupProfiles,
+  type RuntimeTableRecord,
+} from "../reducer";
+
+function createEmptyTable(
+  playerIds = ["player-1", "player-2"],
+): RuntimeTableRecord {
+  return {
+    playerOrder: [...playerIds],
+    zones: {
+      shared: {},
+      perPlayer: {},
+      visibility: {},
+    },
+    decks: {},
+    hands: {},
+    handVisibility: {},
+    cards: {},
+    pieces: {},
+    componentLocations: {},
+    ownerOfCard: {},
+    visibility: {},
+    resources: {},
+    boards: {
+      byId: {},
+      hex: {},
+      network: {},
+      square: {},
+      track: {},
+    },
+    dice: {},
+  };
+}
+
+function createManifestContract(setupProfileIds: readonly string[]) {
+  const phaseNames = ["defaultPhase", "draftPhase"] as const;
+  const playerIds = ["player-1", "player-2", "player-3", "player-4"] as const;
+  const resolvePlayerIds = (selectedPlayerIds?: readonly string[]) =>
+    selectedPlayerIds && selectedPlayerIds.length > 0
+      ? [...selectedPlayerIds]
+      : [...playerIds];
+
+  return {
+    literals: {
+      playerIds,
+      phaseNames,
+      setupOptionIds: ["mode"] as const,
+      setupProfileIds,
+      cardSetIds: [] as const,
+      cardTypes: [] as const,
+      deckIds: [] as const,
+      handIds: ["hand"] as const,
+      sharedZoneIds: [] as const,
+      playerZoneIds: ["hand"] as const,
+      zoneIds: ["hand"] as const,
+      cardIds: [] as const,
+      resourceIds: ["coins"] as const,
+      pieceTypeIds: [] as const,
+      pieceIds: [] as const,
+      dieTypeIds: [] as const,
+      dieIds: [] as const,
+      boardBaseIds: [] as const,
+      boardIds: [] as const,
+      boardContainerIds: [] as const,
+      tileIds: [] as const,
+      tileTypeIds: [] as const,
+      edgeIds: [] as const,
+      vertexIds: [] as const,
+      portIds: [] as const,
+      portTypeIds: [] as const,
+      spaceIds: [] as const,
+      spaceTypeIds: [] as const,
+      handVisibilityById: { hand: "ownerOnly" } as const,
+      zoneVisibilityById: { hand: "ownerOnly" } as const,
+      cardSetIdByCardId: {},
+      cardTypeByCardId: {},
+      cardSetIdsBySharedZoneId: {},
+      cardSetIdsByPlayerZoneId: {},
+    },
+    ids: {
+      playerId: z.enum(playerIds),
+      phaseName: z.enum(phaseNames),
+      setupOptionId: z.string(),
+      setupProfileId: z.string(),
+      cardSetId: z.string(),
+      cardType: z.string(),
+      cardId: z.string(),
+      deckId: z.string(),
+      handId: z.string(),
+      sharedZoneId: z.string(),
+      playerZoneId: z.string(),
+      zoneId: z.string(),
+      resourceId: z.string(),
+      dieId: z.string(),
+      boardId: z.string(),
+      boardBaseId: z.string(),
+      boardContainerId: z.string(),
+      tileId: z.string(),
+      tileTypeId: z.string(),
+      edgeId: z.string(),
+      edgeTypeId: z.string(),
+      vertexId: z.string(),
+      vertexTypeId: z.string(),
+      portId: z.string(),
+      portTypeId: z.string(),
+      spaceId: z.string(),
+      spaceTypeId: z.string(),
+      pieceId: z.string(),
+      pieceTypeId: z.string(),
+    },
+    defaults: {
+      zones: (selectedPlayerIds?: readonly string[]) => ({
+        shared: {},
+        perPlayer: {
+          hand: Object.fromEntries(
+            resolvePlayerIds(selectedPlayerIds).map((playerId) => [
+              playerId,
+              [],
+            ]),
+          ),
+        },
+        visibility: {},
+      }),
+      decks: () => ({}),
+      hands: (selectedPlayerIds?: readonly string[]) => ({
+        hand: Object.fromEntries(
+          resolvePlayerIds(selectedPlayerIds).map((playerId) => [playerId, []]),
+        ),
+      }),
+      handVisibility: () => ({ hand: "ownerOnly" }),
+      ownerOfCard: () => ({}),
+      visibility: () => ({}),
+      resources: (selectedPlayerIds?: readonly string[]) =>
+        Object.fromEntries(
+          resolvePlayerIds(selectedPlayerIds).map((playerId) => [
+            playerId,
+            { coins: 0 },
+          ]),
+        ),
+    },
+    setupOptionsById: {
+      mode: {
+        id: "mode",
+        name: "Mode",
+        choices: [{ id: "draft", label: "Draft" }],
+      },
+    },
+    setupProfilesById: Object.fromEntries(
+      setupProfileIds.map((profileId) => [
+        profileId,
+        {
+          id: profileId,
+          name: profileId,
+          optionValues: {
+            mode: "draft",
+          },
+        },
+      ]),
+    ),
+    tableSchema: z.custom<RuntimeTableRecord>(),
+    runtimeSchema: z.any(),
+    createGameStateSchema: () => z.any(),
+  };
+}
+
+describe("setup profile runtime", () => {
+  test("selected setup profile overrides the initial phase and is available in reducer initialization contexts", async () => {
+    const manifest = createManifestContract(["draft-profile"] as const);
+    const contract = defineGameContract({
+      manifest,
+      state: {
+        public: z.object({
+          publicSetupProfileId: z.string().nullable(),
+          enterSetupProfileId: z.string().nullable(),
+          actionSetupProfileId: z.string().nullable(),
+        }),
+        private: z.object({
+          privateSetupProfileId: z.string().nullable(),
+        }),
+        hidden: z.object({
+          hiddenSetupProfileId: z.string().nullable(),
+        }),
+      },
+    });
+
+    const phases = {
+      defaultPhase: definePhase<typeof contract>()({
+        kind: "auto",
+        state: z.object({}),
+        initialState: () => ({}),
+      }),
+      draftPhase: definePhase<typeof contract>()({
+        kind: "player",
+        state: z.object({}),
+        initialState: () => ({}),
+        enter({ state, accept, setup }) {
+          return accept({
+            ...state,
+            publicState: {
+              ...state.publicState,
+              enterSetupProfileId: setup?.profileId ?? null,
+            },
+          });
+        },
+        actions: {
+          recordSetup: defineAction<typeof contract>()({
+            params: z.object({}),
+            reduce({ state, accept, setup }) {
+              return accept({
+                ...state,
+                publicState: {
+                  ...state.publicState,
+                  actionSetupProfileId: setup?.profileId ?? null,
+                },
+              });
+            },
+          }),
+        },
+      }),
+    };
+
+    const game = defineGame({
+      contract,
+      initial: {
+        public: ({ setup }) => ({
+          publicSetupProfileId: setup?.profileId ?? null,
+          enterSetupProfileId: null,
+          actionSetupProfileId: null,
+        }),
+        private: ({ setup }) => ({
+          privateSetupProfileId: setup?.profileId ?? null,
+        }),
+        hidden: ({ setup }) => ({
+          hiddenSetupProfileId: setup?.profileId ?? null,
+        }),
+      },
+      initialPhase: "defaultPhase",
+      setupProfiles: defineSetupProfiles<"draft-profile">()({
+        "draft-profile": {
+          initialPhase: "draftPhase",
+        },
+      }),
+      phases,
+    });
+
+    const bundle = createReducerBundle(game);
+    const initialized = await bundle.initialize({
+      table: createEmptyTable(),
+      playerIds: ["player-1", "player-2"],
+      rngSeed: 42,
+      setup: {
+        profileId: "draft-profile",
+      },
+    });
+
+    expect(initialized.domain.flow.currentPhase).toBe("draftPhase");
+    expect(initialized.runtime.setup).toEqual({
+      profileId: "draft-profile",
+      optionValues: {
+        mode: "draft",
+      },
+    });
+    expect(initialized.domain.publicState).toEqual({
+      publicSetupProfileId: "draft-profile",
+      enterSetupProfileId: "draft-profile",
+      actionSetupProfileId: null,
+    });
+    expect(initialized.domain.privateState["player-1"]).toEqual({
+      privateSetupProfileId: "draft-profile",
+    });
+    expect(initialized.domain.hiddenState).toEqual({
+      hiddenSetupProfileId: "draft-profile",
+    });
+
+    const reduced = await bundle.reduce({
+      state: initialized,
+      input: {
+        kind: "action",
+        playerId: "player-1",
+        actionType: "recordSetup",
+        params: {},
+      },
+    });
+
+    expect(reduced.type).toBe("accept");
+    if (reduced.type !== "accept") {
+      throw new Error("Expected reducer action to be accepted.");
+    }
+    expect(reduced.state.domain.publicState).toEqual({
+      publicSetupProfileId: "draft-profile",
+      enterSetupProfileId: "draft-profile",
+      actionSetupProfileId: "draft-profile",
+    });
+  });
+
+  test("initialize only materializes the actual session players for per-player hands and resources", async () => {
+    const contract = defineGameContract({
+      manifest: createManifestContract(["draft-profile"] as const),
+      state: {
+        public: z.object({}),
+        private: z.object({}),
+        hidden: z.object({}),
+      },
+    });
+
+    const game = defineGame({
+      contract,
+      initialPhase: "defaultPhase",
+      setupProfiles: defineSetupProfiles<"draft-profile">()({
+        "draft-profile": {},
+      }),
+      phases: {
+        defaultPhase: definePhase<typeof contract>()({
+          kind: "auto",
+          state: z.object({}),
+          initialState: () => ({}),
+        }),
+        draftPhase: definePhase<typeof contract>()({
+          kind: "auto",
+          state: z.object({}),
+          initialState: () => ({}),
+        }),
+      },
+    });
+
+    const bundle = createReducerBundle(game);
+    const initialized = await bundle.initialize({
+      table: createEmptyTable(["player-1", "player-2"]),
+      playerIds: ["player-1", "player-2"],
+      rngSeed: 7,
+      setup: {
+        profileId: "draft-profile",
+      },
+    });
+
+    expect(Object.keys(initialized.domain.table.hands.hand)).toEqual([
+      "player-1",
+      "player-2",
+    ]);
+    expect(Object.keys(initialized.domain.table.resources)).toEqual([
+      "player-1",
+      "player-2",
+    ]);
+    expect(initialized.domain.table.resources["player-1"]).toEqual({
+      coins: 0,
+    });
+    expect(initialized.domain.table.resources["player-3"]).toBeUndefined();
+  });
+
+  test("initialize reconstructs player order and occupancy from raw deck and hand state", async () => {
+    const playerIds = ["player-1", "player-2"] as const;
+    const phaseNames = ["defaultPhase"] as const;
+    const deckIds = ["draw-deck"] as const;
+    const handIds = ["hand"] as const;
+    const cardIds = ["card-1", "card-2"] as const;
+
+    const contract = defineGameContract({
+      manifest: {
+        literals: {
+          playerIds,
+          phaseNames,
+          setupOptionIds: [] as const,
+          setupProfileIds: [] as const,
+          cardSetIds: ["main"] as const,
+          cardTypes: ["thing"] as const,
+          deckIds,
+          handIds,
+          sharedZoneIds: deckIds,
+          playerZoneIds: handIds,
+          zoneIds: ["draw-deck", "hand"] as const,
+          cardIds,
+          resourceIds: [] as const,
+          pieceTypeIds: [] as const,
+          pieceIds: [] as const,
+          dieTypeIds: [] as const,
+          dieIds: [] as const,
+          boardBaseIds: [] as const,
+          boardIds: [] as const,
+          boardContainerIds: [] as const,
+          tileIds: [] as const,
+          tileTypeIds: [] as const,
+          edgeIds: [] as const,
+          vertexIds: [] as const,
+          portIds: [] as const,
+          portTypeIds: [] as const,
+          spaceIds: [] as const,
+          spaceTypeIds: [] as const,
+          handVisibilityById: { hand: "ownerOnly" } as const,
+          zoneVisibilityById: {
+            "draw-deck": "public",
+            hand: "ownerOnly",
+          } as const,
+          cardSetIdByCardId: {
+            "card-1": "main",
+            "card-2": "main",
+          } as const,
+          cardTypeByCardId: {
+            "card-1": "thing",
+            "card-2": "thing",
+          } as const,
+          cardSetIdsBySharedZoneId: {
+            "draw-deck": ["main"],
+          } as const,
+          cardSetIdsByPlayerZoneId: {
+            hand: ["main"],
+          } as const,
+        },
+        ids: {
+          playerId: z.enum(playerIds),
+          phaseName: z.enum(phaseNames),
+          setupOptionId: z.string(),
+          setupProfileId: z.string(),
+          cardSetId: z.enum(["main"]),
+          cardType: z.enum(["thing"]),
+          cardId: z.enum(cardIds),
+          deckId: z.enum(deckIds),
+          handId: z.enum(handIds),
+          sharedZoneId: z.enum(deckIds),
+          playerZoneId: z.enum(handIds),
+          zoneId: z.enum(["draw-deck", "hand"]),
+          resourceId: z.string(),
+          dieId: z.string(),
+          boardId: z.string(),
+          boardBaseId: z.string(),
+          boardContainerId: z.string(),
+          tileId: z.string(),
+          tileTypeId: z.string(),
+          edgeId: z.string(),
+          edgeTypeId: z.string(),
+          vertexId: z.string(),
+          vertexTypeId: z.string(),
+          portId: z.string(),
+          portTypeId: z.string(),
+          spaceId: z.string(),
+          spaceTypeId: z.string(),
+          pieceId: z.string(),
+          pieceTypeId: z.string(),
+        },
+        defaults: {
+          zones: (selectedPlayerIds?: readonly string[]) => ({
+            shared: {
+              "draw-deck": [],
+            },
+            perPlayer: {
+              hand: Object.fromEntries(
+                (selectedPlayerIds ?? playerIds).map((playerId) => [
+                  playerId,
+                  [],
+                ]),
+              ),
+            },
+            visibility: {
+              "draw-deck": "public",
+              hand: "ownerOnly",
+            },
+            cardSetIdsByZoneId: {
+              "draw-deck": ["main"],
+              hand: ["main"],
+            },
+          }),
+          decks: () => ({
+            "draw-deck": [],
+          }),
+          hands: (selectedPlayerIds?: readonly string[]) => ({
+            hand: Object.fromEntries(
+              (selectedPlayerIds ?? playerIds).map((playerId) => [
+                playerId,
+                [],
+              ]),
+            ),
+          }),
+          handVisibility: () => ({
+            hand: "ownerOnly",
+          }),
+          ownerOfCard: () => ({
+            "card-1": null,
+            "card-2": null,
+          }),
+          visibility: () => ({
+            "card-1": { faceUp: true },
+            "card-2": { faceUp: false, visibleTo: ["player-2"] },
+          }),
+          resources: () => ({}),
+        },
+        setupOptionsById: {},
+        setupProfilesById: {},
+        tableSchema: z.custom<RuntimeTableRecord>(),
+        runtimeSchema: z.any(),
+        createGameStateSchema: () => z.any(),
+      },
+      state: {
+        public: z.object({}),
+        private: z.object({}),
+        hidden: z.object({}),
+      },
+    });
+
+    const game = defineGame({
+      contract,
+      initialPhase: "defaultPhase",
+      phases: {
+        defaultPhase: definePhase<typeof contract>()({
+          kind: "auto",
+          state: z.object({}),
+          initialState: () => ({}),
+        }),
+      },
+    });
+
+    const bundle = createReducerBundle(game);
+    const initialized = await bundle.initialize({
+      table: {
+        zones: {
+          shared: {
+            "draw-deck": ["card-1"],
+          },
+          perPlayer: {
+            hand: {
+              "player-2": ["card-2"],
+            },
+          },
+          visibility: {
+            "draw-deck": "public",
+            hand: "ownerOnly",
+          },
+          cardSetIdsByZoneId: {
+            "draw-deck": ["main"],
+            hand: ["main"],
+          },
+        },
+        decks: {
+          "draw-deck": ["card-1"],
+        },
+        hands: {
+          hand: {
+            "player-2": ["card-2"],
+          },
+        },
+        handVisibility: {
+          hand: "ownerOnly",
+        },
+        cards: {
+          "card-1": {
+            id: "card-1",
+            cardSetId: "main",
+            cardType: "thing",
+            properties: {},
+          },
+          "card-2": {
+            id: "card-2",
+            cardSetId: "main",
+            cardType: "thing",
+            properties: {},
+          },
+        },
+        pieces: {},
+        ownerOfCard: {},
+        visibility: {},
+        resources: {},
+        boards: {
+          byId: {},
+          hex: {},
+          network: {},
+          square: {},
+          track: {},
+        },
+        dice: {},
+      },
+      playerIds: ["player-1", "player-2"],
+    });
+
+    expect(initialized.domain.table.playerOrder).toEqual([
+      "player-1",
+      "player-2",
+    ]);
+    expect(initialized.domain.table.decks["draw-deck"]).toEqual(["card-1"]);
+    expect(initialized.domain.table.hands.hand["player-1"]).toEqual([]);
+    expect(initialized.domain.table.hands.hand["player-2"]).toEqual(["card-2"]);
+    expect(initialized.domain.table.componentLocations["card-1"]).toEqual({
+      type: "InDeck",
+      deckId: "draw-deck",
+      playedBy: null,
+      position: 0,
+    });
+    expect(initialized.domain.table.componentLocations["card-2"]).toEqual({
+      type: "InHand",
+      handId: "hand",
+      playerId: "player-2",
+      position: 0,
+    });
+  });
+
+  test("bundle creation fails fast when reducer setup profiles do not match the manifest", () => {
+    const contract = defineGameContract({
+      manifest: createManifestContract([
+        "base-profile",
+        "draft-profile",
+      ] as const),
+      state: {
+        public: z.object({}),
+        private: z.object({}),
+        hidden: z.object({}),
+      },
+    });
+
+    const game = defineGame({
+      contract,
+      initialPhase: "defaultPhase",
+      setupProfiles: defineSetupProfiles<"base-profile" | "draft-profile">()({
+        "base-profile": {
+          initialPhase: "defaultPhase",
+        },
+        "draft-profile": {
+          initialPhase: "draftPhase",
+        },
+      }),
+      phases: {
+        defaultPhase: definePhase<typeof contract>()({
+          kind: "auto",
+          state: z.object({}),
+          initialState: () => ({}),
+        }),
+        draftPhase: definePhase<typeof contract>()({
+          kind: "auto",
+          state: z.object({}),
+          initialState: () => ({}),
+        }),
+      },
+    });
+
+    const mismatchedGame = {
+      ...game,
+      setupProfiles: {
+        "draft-profile": {
+          initialPhase: "draftPhase",
+        },
+      },
+    };
+
+    expect(() => createReducerBundle(mismatchedGame)).toThrow(
+      "Reducer setupProfiles must exactly match manifest setupProfiles. Manifest=[base-profile, draft-profile], reducer=[draft-profile].",
+    );
+  });
+
+  test("applySetupBootstrap shuffles, deals cards, and places pieces and dice onto board spaces", () => {
+    const initialState = {
+      table: {
+        playerOrder: ["player-1", "player-2"],
+        zones: {
+          shared: {
+            "draw-deck": ["card-1", "card-2", "card-3"],
+            supply: ["piece-1", "die-1"],
+            "space-a-zone": [],
+          },
+          perPlayer: {
+            hand: {
+              "player-1": [],
+              "player-2": [],
+            },
+          },
+          visibility: {
+            "draw-deck": "public",
+            supply: "public",
+            hand: "ownerOnly",
+            "space-a-zone": "public",
+          },
+          cardSetIdsByZoneId: {
+            "draw-deck": ["main"],
+            hand: ["main"],
+          },
+        },
+        decks: {
+          "draw-deck": ["card-1", "card-2", "card-3"],
+          supply: ["piece-1", "die-1"],
+          "space-a-zone": [],
+        },
+        hands: {
+          hand: {
+            "player-1": [],
+            "player-2": [],
+          },
+        },
+        handVisibility: {
+          hand: "ownerOnly",
+        },
+        cards: {
+          "card-1": {
+            id: "card-1",
+            cardSetId: "main",
+            cardType: "CARD",
+            properties: {},
+          },
+          "card-2": {
+            id: "card-2",
+            cardSetId: "main",
+            cardType: "CARD",
+            properties: {},
+          },
+          "card-3": {
+            id: "card-3",
+            cardSetId: "main",
+            cardType: "CARD",
+            properties: {},
+          },
+        },
+        pieces: {
+          "piece-1": {
+            id: "piece-1",
+            pieceTypeId: "token",
+            properties: {},
+          },
+        },
+        componentLocations: {
+          "card-1": {
+            type: "InDeck",
+            deckId: "draw-deck",
+            playedBy: null,
+            position: 0,
+          },
+          "card-2": {
+            type: "InDeck",
+            deckId: "draw-deck",
+            playedBy: null,
+            position: 1,
+          },
+          "card-3": {
+            type: "InDeck",
+            deckId: "draw-deck",
+            playedBy: null,
+            position: 2,
+          },
+          "piece-1": {
+            type: "InZone",
+            zoneId: "supply",
+            playedBy: null,
+            position: 0,
+          },
+          "die-1": {
+            type: "InZone",
+            zoneId: "supply",
+            playedBy: null,
+            position: 1,
+          },
+        },
+        ownerOfCard: {},
+        visibility: {
+          "card-1": { faceUp: true },
+          "card-2": { faceUp: true },
+          "card-3": { faceUp: true },
+        },
+        resources: {},
+        boards: {
+          byId: {
+            "main-board": {
+              id: "main-board",
+              layout: "generic",
+              typeId: "track",
+              scope: "shared",
+              fields: {},
+              spaces: {
+                "space-a": {
+                  id: "space-a",
+                  typeId: "slot",
+                  fields: {},
+                  zoneId: "space-a-zone",
+                },
+              },
+              relations: [],
+              containers: {},
+            },
+          },
+          hex: {},
+          network: {},
+          square: {},
+          track: {},
+        },
+        dice: {
+          "die-1": {
+            id: "die-1",
+            dieTypeId: "d6",
+            sides: 6,
+            properties: {},
+          },
+        },
+      } satisfies RuntimeTableRecord,
+      runtime: {
+        rng: {
+          seed: 7,
+          cursor: 0,
+          trace: [],
+        },
+      },
+    };
+
+    const nextState = applySetupBootstrap(initialState, [
+      {
+        type: "shuffle",
+        container: {
+          type: "sharedZone",
+          zoneId: "draw-deck",
+        },
+      },
+      {
+        type: "deal",
+        from: {
+          type: "sharedZone",
+          zoneId: "draw-deck",
+        },
+        to: {
+          type: "playerZone",
+          zoneId: "hand",
+        },
+        count: 1,
+      },
+      {
+        type: "move",
+        from: {
+          type: "sharedZone",
+          zoneId: "supply",
+        },
+        to: {
+          type: "sharedBoardSpace",
+          boardId: "main-board",
+          spaceId: "space-a",
+        },
+        componentIds: ["piece-1", "die-1"],
+      },
+    ]);
+
+    expect(nextState.runtime.rng.cursor).toBe(2);
+    expect(nextState.runtime.rng.trace).toHaveLength(2);
+    expect(nextState.table.hands.hand["player-1"]).toHaveLength(1);
+    expect(nextState.table.hands.hand["player-2"]).toHaveLength(1);
+    expect(nextState.table.hands.hand["player-1"]).not.toEqual(
+      nextState.table.hands.hand["player-2"],
+    );
+    expect(nextState.table.decks["draw-deck"]).toHaveLength(1);
+    expect(nextState.table.zones.shared.supply).toEqual([]);
+    expect(nextState.table.componentLocations["piece-1"]).toEqual({
+      type: "OnSpace",
+      boardId: "main-board",
+      spaceId: "space-a",
+      position: 0,
+    });
+    expect(nextState.table.componentLocations["die-1"]).toEqual({
+      type: "OnSpace",
+      boardId: "main-board",
+      spaceId: "space-a",
+      position: 1,
+    });
+  });
+
+  test("applySetupBootstrap rejects cards entering incompatible zones and board containers", () => {
+    const initialState = {
+      table: {
+        playerOrder: ["player-1"],
+        zones: {
+          shared: {
+            "draw-deck": ["card-1"],
+          },
+          perPlayer: {
+            hand: {
+              "player-1": [],
+            },
+          },
+          visibility: {
+            "draw-deck": "public",
+            hand: "ownerOnly",
+          },
+          cardSetIdsByZoneId: {
+            "draw-deck": ["main"],
+            hand: ["special"],
+          },
+        },
+        decks: {
+          "draw-deck": ["card-1"],
+        },
+        hands: {
+          hand: {
+            "player-1": [],
+          },
+        },
+        handVisibility: {
+          hand: "ownerOnly",
+        },
+        cards: {
+          "card-1": {
+            id: "card-1",
+            cardSetId: "main",
+            cardType: "CARD",
+            properties: {},
+          },
+        },
+        pieces: {},
+        componentLocations: {
+          "card-1": {
+            type: "InDeck",
+            deckId: "draw-deck",
+            playedBy: null,
+            position: 0,
+          },
+        },
+        ownerOfCard: {},
+        visibility: {
+          "card-1": { faceUp: true },
+        },
+        resources: {},
+        boards: {
+          byId: {
+            "main-board": {
+              id: "main-board",
+              layout: "generic",
+              typeId: "track",
+              scope: "shared",
+              fields: {},
+              spaces: {},
+              relations: [],
+              containers: {
+                "restricted-row": {
+                  id: "restricted-row",
+                  name: "Restricted Row",
+                  host: { type: "board" },
+                  allowedCardSetIds: ["special"],
+                  zoneId: "main-board::container::restricted-row",
+                  fields: {},
+                },
+              },
+            },
+          },
+          hex: {},
+          network: {},
+          square: {},
+          track: {},
+        },
+        dice: {},
+      } satisfies RuntimeTableRecord,
+      runtime: {
+        rng: {
+          seed: 1,
+          cursor: 0,
+          trace: [],
+        },
+      },
+    };
+
+    expect(() =>
+      applySetupBootstrap(initialState, [
+        {
+          type: "deal",
+          from: {
+            type: "sharedZone",
+            zoneId: "draw-deck",
+          },
+          to: {
+            type: "playerZone",
+            zoneId: "hand",
+          },
+          count: 1,
+          playerIds: ["player-1"],
+        },
+      ]),
+    ).toThrow("cannot enter zone 'hand'");
+
+    expect(() =>
+      applySetupBootstrap(initialState, [
+        {
+          type: "move",
+          from: {
+            type: "sharedZone",
+            zoneId: "draw-deck",
+          },
+          to: {
+            type: "sharedBoardContainer",
+            boardId: "main-board",
+            containerId: "restricted-row",
+          },
+          count: 1,
+        },
+      ]),
+    ).toThrow("cannot enter container 'restricted-row'");
+  });
+});

@@ -1,39 +1,6 @@
 /**
- * NetworkGraph component - Graph/network visualization for route-building games
- *
- * Design Philosophy: "Connected Journeys"
- * - SVG-based network visualization
- * - Support for nodes, edges, and pieces
- * - All rendering controlled by parent via required render functions
- * - Pre-built helper components provided for easy customization
- *
- * Use cases: Ticket to Ride, Pandemic, Power Grid, Brass
- *
- * @example Basic usage with pre-built components
- * ```tsx
- * <NetworkGraph
- *   nodes={nodes}
- *   edges={edges}
- *   pieces={[]}
- *   renderNode={(node, pieces) => (
- *     <DefaultNetworkNode
- *       label={node.label}
- *       isSelected={selectedId === node.id}
- *       onClick={() => setSelectedId(node.id)}
- *     />
- *   )}
- *   renderEdge={(edge, fromNode, toNode) => (
- *     <DefaultNetworkEdge
- *       from={fromNode.position}
- *       to={toNode.position}
- *       color={playerColors[edge.owner]}
- *     />
- *   )}
- *   renderPiece={(piece) => (
- *     <DefaultNetworkPiece color={playerColors[piece.owner]} />
- *   )}
- * />
- * ```
+ * SVG-based network/graph visualization for route-building games
+ * (Ticket to Ride, Pandemic, Power Grid, Brass).
  */
 
 import { useMemo, type ReactNode } from "react";
@@ -45,85 +12,54 @@ import { usePanZoom, calculateViewBox } from "../../hooks/usePanZoom.js";
 // ============================================================================
 
 export interface NetworkNode {
-  /** Unique node identifier */
   id: string;
-  /** Display label */
   label?: string;
-  /** Position on the SVG canvas */
   position: { x: number; y: number };
-  /** Node type for custom rendering */
   type?: string;
-  /** Additional data */
   data?: Record<string, unknown>;
 }
 
 export interface NetworkEdge {
-  /** Unique edge identifier */
   id: string;
-  /** Source node ID */
   from: string;
-  /** Target node ID */
   to: string;
-  /** Edge label (e.g., weight, distance, cost, route name) */
   label?: string | number;
-  /** Owner player ID if claimed */
   owner?: string;
-  /** Edge type for custom rendering */
   type?: string;
-  /** Additional data */
   data?: Record<string, unknown>;
 }
 
 export interface NetworkPiece {
-  /** Unique piece identifier */
   id: string;
-  /** Node ID where piece is located */
   nodeId: string;
-  /** Owner player ID */
   owner?: string;
-  /** Piece type for rendering */
   type?: string;
-  /** Additional data */
   data?: Record<string, unknown>;
 }
 
 export interface NetworkGraphProps {
-  /** Network nodes */
   nodes: NetworkNode[];
-  /** Network edges - defaults to empty */
   edges: NetworkEdge[];
-  /** Pieces/tokens on nodes - defaults to empty */
   pieces: NetworkPiece[];
-  /** Custom node renderer - required, receives node centered at its position */
+  /** Receives node centered at its position */
   renderNode: (node: NetworkNode, pieces: NetworkPiece[]) => ReactNode;
-  /** Custom edge renderer - required */
   renderEdge: (
     edge: NetworkEdge,
     fromNode: NetworkNode,
     toNode: NetworkNode,
   ) => ReactNode;
-  /** Custom piece renderer - required */
   renderPiece: (
     piece: NetworkPiece,
     position: { x: number; y: number },
   ) => ReactNode;
-  /** Container width (use "100%" for responsive) */
   width?: number | string;
-  /** Container height (use "100%" for responsive) */
   height?: number | string;
-  /** Node radius for bounds calculation */
   nodeRadius?: number;
-  /** Enable pan and zoom */
   enablePanZoom?: boolean;
-  /** Initial zoom level */
   initialZoom?: number;
-  /** Min zoom level */
   minZoom?: number;
-  /** Max zoom level */
   maxZoom?: number;
-  /** Padding around content */
   padding?: number;
-  /** Additional class names */
   className?: string;
 }
 
@@ -132,47 +68,21 @@ export interface NetworkGraphProps {
 // ============================================================================
 
 export interface DefaultNetworkNodeProps {
-  /** Node radius */
   radius?: number;
-  /** Fill color */
   fill?: string;
-  /** Stroke color */
   stroke?: string;
-  /** Stroke width */
   strokeWidth?: number;
-  /** Whether node is selected */
   isSelected?: boolean;
-  /** Whether node is highlighted */
   isHighlighted?: boolean;
-  /** Label to display */
   label?: string;
-  /** Max label length before truncation */
   maxLabelLength?: number;
-  /** Click handler */
   onClick?: () => void;
-  /** Pointer enter handler */
   onPointerEnter?: () => void;
-  /** Pointer leave handler */
   onPointerLeave?: () => void;
-  /** Additional className */
   className?: string;
 }
 
-/**
- * Pre-built network node component for use in renderNode
- *
- * @example
- * ```tsx
- * renderNode={(node) => (
- *   <DefaultNetworkNode
- *     label={node.label}
- *     fill="#1e293b"
- *     isSelected={selectedId === node.id}
- *     onClick={() => setSelectedId(node.id)}
- *   />
- * )}
- * ```
- */
+/** Pre-built network node for use in `renderNode`. */
 export function DefaultNetworkNode({
   radius = 20,
   fill = "#1e293b",
@@ -240,46 +150,21 @@ export function DefaultNetworkNode({
 }
 
 export interface DefaultNetworkEdgeProps {
-  /** Start position */
   from: { x: number; y: number };
-  /** End position */
   to: { x: number; y: number };
-  /** Edge color */
   color?: string;
-  /** Stroke width */
   strokeWidth?: number;
-  /** Whether edge is selected */
   isSelected?: boolean;
-  /** Whether edge is highlighted */
   isHighlighted?: boolean;
-  /** Label to display at midpoint (e.g., weight, cost, distance) */
+  /** Displayed at midpoint */
   label?: string | number;
-  /** Click handler */
   onClick?: () => void;
-  /** Pointer enter handler */
   onPointerEnter?: () => void;
-  /** Pointer leave handler */
   onPointerLeave?: () => void;
-  /** Additional className */
   className?: string;
 }
 
-/**
- * Pre-built network edge component for use in renderEdge
- *
- * @example
- * ```tsx
- * renderEdge={(edge, fromNode, toNode) => (
- *   <DefaultNetworkEdge
- *     from={fromNode.position}
- *     to={toNode.position}
- *     color={playerColors[edge.owner] ?? '#64748b'}
- *     label={edge.label}
- *     onClick={() => handleClaimEdge(edge.id)}
- *   />
- * )}
- * ```
- */
+/** Pre-built network edge for use in `renderEdge`. */
 export function DefaultNetworkEdge({
   from,
   to,
@@ -353,31 +238,12 @@ export function DefaultNetworkEdge({
 }
 
 export interface DefaultNetworkPieceProps {
-  /** Piece color */
   color?: string;
-  /** Piece radius */
   radius?: number;
-  /** Piece shape */
   shape?: "circle" | "square";
-  /** Click handler */
   onClick?: () => void;
-  /** Additional className */
   className?: string;
 }
-
-/**
- * Pre-built network piece component for use in renderPiece
- *
- * @example
- * ```tsx
- * renderPiece={(piece, position) => (
- *   <DefaultNetworkPiece
- *     color={playerColors[piece.owner] ?? '#f59e0b'}
- *     shape={piece.type === 'cube' ? 'square' : 'circle'}
- *   />
- * )}
- * ```
- */
 export function DefaultNetworkPiece({
   color = "#f59e0b",
   radius = 6,
@@ -411,16 +277,6 @@ export function DefaultNetworkPiece({
 // Component
 // ============================================================================
 
-/**
- * NetworkGraph component for route-building and network games
- *
- * Features:
- * - SVG-based visualization
- * - All rendering controlled by parent
- * - Piece placement on nodes
- * - Pan and zoom with @use-gesture
- * - Accessibility support
- */
 export function NetworkGraph({
   nodes,
   edges = [],

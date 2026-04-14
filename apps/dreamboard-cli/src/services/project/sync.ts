@@ -1,22 +1,30 @@
 import { unlink } from "node:fs/promises";
 import path from "node:path";
-import { getGameSources, type BoardManifest } from "@dreamboard/api-client";
+import {
+  getGameSources,
+  type GameTopologyManifest,
+} from "@dreamboard/api-client";
 import { MANIFEST_FILE, RULE_FILE } from "../../constants.js";
 import type { ProjectConfig, ResolvedConfig } from "../../types.js";
 import { updateProjectState } from "../../config/project-config.js";
 import { getAuthoringHeadSdk } from "../api/authoring-state-api.js";
-import { updateProjectAuthoringState } from "./project-state.js";
+import {
+  clearProjectPendingAuthoringSync,
+  updateProjectAuthoringState,
+} from "./project-state.js";
 import { formatApiError } from "../../utils/errors.js";
 import { exists, writeTextFile } from "../../utils/fs.js";
 import {
   collectLocalFiles,
   removeExtraneousFiles,
+  loadManifest,
   writeManifest,
   writeRule,
   writeSnapshot,
   writeSourceFiles,
 } from "./local-files.js";
 import { isAllowedGamePath, isLibraryPath } from "./scaffold-ownership.js";
+import { applyWorkspaceCodegen } from "./workspace-codegen.js";
 
 const META_FILES = new Set([MANIFEST_FILE, RULE_FILE]);
 
@@ -27,7 +35,7 @@ export type RemoteProjectSources = {
   treeHash: string;
   manifestId?: string;
   manifestContentHash?: string;
-  manifest?: BoardManifest;
+  manifest?: GameTopologyManifest;
   ruleId?: string;
   ruleText?: string;
 };
@@ -51,7 +59,9 @@ function normalizeRemoteFiles(
   return response?.files ?? response?.sourceFiles ?? {};
 }
 
-function manifestToText(manifest: BoardManifest | undefined): string | null {
+function manifestToText(
+  manifest: GameTopologyManifest | undefined,
+): string | null {
   if (!manifest) return null;
   return `${JSON.stringify(manifest, null, 2)}\n`;
 }
@@ -229,6 +239,12 @@ export async function pullIntoDirectory(
     await writeRule(targetDir, latest.ruleText);
   }
 
+  const manifestForCodegen = latest.manifest ?? (await loadManifest(targetDir));
+  await applyWorkspaceCodegen({
+    projectRoot: targetDir,
+    manifest: manifestForCodegen,
+  });
+
   const pulledProjectConfig = buildPulledProjectConfig(
     config,
     projectConfig,
@@ -246,11 +262,11 @@ export function buildPulledProjectConfig(
   latest: RemoteProjectSources,
 ): ProjectConfig {
   return updateProjectAuthoringState(
-    {
+    clearProjectPendingAuthoringSync({
       ...projectConfig,
       apiBaseUrl: projectConfig.apiBaseUrl ?? config.apiBaseUrl,
       webBaseUrl: projectConfig.webBaseUrl ?? config.webBaseUrl,
-    },
+    }),
     {
       authoringStateId: latest.authoringStateId,
       sourceRevisionId: latest.sourceRevisionId,

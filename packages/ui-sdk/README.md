@@ -1,283 +1,117 @@
 # @dreamboard/ui-sdk
 
-UI SDK for building Dreamboard game plugins with React.
+Reducer-native UI SDK for Dreamboard game workspaces.
 
-## Overview
+## Authored API
 
-The `@dreamboard/ui-sdk` provides React hooks, types, and utilities for building game UI plugins that run in sandboxed iframes. Plugins communicate with the main application via postMessage and can access game state, submit actions, and respond to game events.
+Game UIs should import authored hooks from `@dreamboard/ui-sdk`. The default
+UI component files now scaffold into local game workspaces under
+`ui/components/dreamboard`.
 
-## Installation
+Supported authored hooks:
 
-This package is bundled automatically when compiling UI plugins via the compiler service. No manual installation is required.
+- `useGameView()`
+- `useGameSelector(selector)`
+- `useActions()`
+- `useGameplayPrompts()`
+- `useGameplayWindows()`
+- `usePluginSession()`
+- `useLobby()`
+- `useMe()`
+- `usePlayerInfo()`
 
-## Core Concepts
+Scaffolded local components include:
 
-### Runtime Context
+- `PluginRuntime`
+- `ErrorBoundary`
+- `ToastProvider`
+- `GameSkeleton`
+- `Card`
+- `Hand`
+- `PlayArea`
+- `PlayerInfo`
+- `HexGrid`
+- `TrackBoard`
+- `NetworkGraph`
+- `SquareGrid`
+- `ZoneMap`
+- `SlotSystem`
+- action/status primitives such as `ActionButton`, `ActionPanel`,
+  `PhaseIndicator`, `ResourceCounter`, and `CostDisplay`
 
-All hooks require the `RuntimeContext` provider, which is automatically set up when your plugin is loaded in the iframe.
+Raw gameplay state hooks, raw board hooks, and runtime bootstrap internals are
+not part of the authored surface anymore.
 
-### Communication Flow
+## Data Model
 
-1. Plugin receives initialization message from parent window
-2. Plugin connects to game session via RuntimeAPI
-3. Plugin receives game state updates via SSE (Server-Sent Events)
-4. Plugin submits actions to the backend
-5. Plugin receives action results and state updates
+Reducer-native plugins receive:
 
-## Available Hooks
+- player-facing reducer view data
+- current phase
+- available actions
+- prompts
+- windows
+- lobby/session metadata
 
-### `useGameState()`
+They do not receive raw table-state snapshots.
 
-Returns the current game state.
+## Example
 
 ```tsx
-import { useGameState } from "@dreamboard/ui-sdk";
+import { useActions, useGameView, usePluginSession } from "@dreamboard/ui-sdk";
+import { createRoot } from "react-dom/client";
+import {
+  ErrorBoundary,
+  GameSkeleton,
+  PluginRuntime,
+  ToastProvider,
+} from "./components/dreamboard";
 
-function MyComponent() {
-  const gameState = useGameState();
+function AppLoader() {
+  const { status } = usePluginSession();
 
-  if (!gameState) {
-    return <div>Loading...</div>;
+  if (status === "loading") {
+    return <GameSkeleton variant="default" message="Loading game..." />;
   }
 
-  return (
-    <div>
-      <h1>Turn: {gameState.currentTurn}</h1>
-      <p>Components: {gameState.components.length}</p>
-    </div>
-  );
+  return <App />;
 }
-```
 
-**Returns:** `SimpleGameState | null`
-
-### `useGameSelector(selector)`
-
-Select a specific part of the game state with a selector function. Optimized for performance.
-
-```tsx
-import { useGameSelector } from "@dreamboard/ui-sdk";
-
-function PlayerHand() {
-  const playerHand = useGameSelector(
-    (state) =>
-      state?.components.filter(
-        (c) =>
-          c.location.type === "InHand" &&
-          c.location.playerId === state.currentPlayerId,
-      ) || [],
-  );
+function App() {
+  const phase = useActions();
+  const view = useGameView();
 
   return (
-    <div>
-      {playerHand.map((card) => (
-        <Card key={card.id} data={card} />
-      ))}
-    </div>
+    <main>
+      <h1>Phase: {phase.phase}</h1>
+      <pre>{JSON.stringify(view, null, 2)}</pre>
+    </main>
   );
 }
+
+createRoot(document.getElementById("root")!).render(
+  <ErrorBoundary>
+    <PluginRuntime>
+      <ToastProvider>
+        <AppLoader />
+      </ToastProvider>
+    </PluginRuntime>
+  </ErrorBoundary>,
+);
 ```
 
-**Parameters:**
+## Authoring Rules
 
-- `selector`: `(state: SimpleGameState | null) => T` - Function to select data from state
+1. Put durable game logic in reducers under `app/`.
+2. Put player-facing derived data in reducer views.
+3. Read that data in React with `useGameView()` or `useGameSelector(...)`.
+4. Submit gameplay through `useActions()`.
+5. Feed board/card/resource components from reducer view data, not from raw
+   engine state.
 
-**Returns:** `T` - Selected data
+## References
 
-### `useAction()`
-
-Submit actions to the game engine.
-
-```tsx
-import { useAction } from "@dreamboard/ui-sdk";
-
-function ActionButton() {
-  const { submitAction, isSubmitting } = useAction();
-
-  const handlePlayCard = async () => {
-    try {
-      await submitAction("playCard", { cardId: "card-123" });
-      console.log("Action submitted successfully");
-    } catch (error) {
-      console.error("Action failed:", error);
-    }
-  };
-
-  return (
-    <button onClick={handlePlayCard} disabled={isSubmitting}>
-      {isSubmitting ? "Submitting..." : "Play Card"}
-    </button>
-  );
-}
-```
-
-**Returns:**
-
-- `submitAction`: `(actionType: string, params: Record<string, unknown>) => Promise<void>`
-- `isSubmitting`: `boolean` - Whether an action is currently being submitted
-
-### `useLobby()`
-
-Access lobby state and player information.
-
-```tsx
-import { useLobby } from "@dreamboard/ui-sdk";
-
-function LobbyInfo() {
-  const { players, isHost, status } = useLobby();
-
-  return (
-    <div>
-      <h2>Lobby Status: {status}</h2>
-      <ul>
-        {players.map((player) => (
-          <li key={player.id}>
-            {player.name} {player.isReady ? "✓" : "○"}
-          </li>
-        ))}
-      </ul>
-      {isHost && <button>Start Game</button>}
-    </div>
-  );
-}
-```
-
-**Returns:** `LobbyState`
-
-- `players`: Array of player information
-- `isHost`: Whether current player is the host
-- `status`: Current lobby/game status
-
-### `useMessages()`
-
-Access all received game messages.
-
-```tsx
-import { useMessages } from "@dreamboard/ui-sdk";
-
-function MessageLog() {
-  const messages = useMessages();
-
-  return (
-    <div>
-      <h3>Recent Messages</h3>
-      {messages.slice(-5).map((msg, idx) => (
-        <div key={idx}>
-          <strong>{msg.type}</strong>: {JSON.stringify(msg)}
-        </div>
-      ))}
-    </div>
-  );
-}
-```
-
-**Returns:** `GameMessage[]` - Array of all received game messages
-
-## TypeScript Types
-
-### Game State Types
-
-```typescript
-import type {
-  SimpleGameState,
-  SimpleLocation,
-  InHandLocation,
-  InZoneLocation,
-  InDeckLocation,
-} from "@dreamboard/ui-sdk";
-
-// Game state structure
-interface SimpleGameState {
-  currentPlayerId: string;
-  currentTurn: number;
-  components: GameComponent[];
-  zones: Record<string, Zone>;
-  variables: Record<string, unknown>;
-}
-
-// Component locations
-type SimpleLocation =
-  | InHandLocation
-  | InZoneLocation
-  | InDeckLocation
-  | DetachedLocation;
-```
-
-### Message Types
-
-```typescript
-import type {
-  GameMessage,
-  StateUpdateMessage,
-  YourTurnMessage,
-  ActionExecutedMessage,
-  ActionRejectedMessage,
-  GameEndedMessage,
-} from "@dreamboard/ui-sdk";
-
-// All game messages
-type GameMessage =
-  | StateUpdateMessage
-  | YourTurnMessage
-  | ActionExecutedMessage
-  | ActionRejectedMessage
-  | TurnChangedMessage
-  | GameEndedMessage
-  | LobbyUpdateMessage;
-```
-
-## Complete Example
-
-See `/apps/backend/src/main/resources/example-react-plugin/` for a complete multi-file example with:
-
-- Main app component (`index.tsx`)
-- Game board component (`components/GameBoard.tsx`)
-- Reusable button component (`components/ActionButton.tsx`)
-- Framer Motion animations
-- Full TypeScript types
-
-## Compilation
-
-To compile your React plugin:
-
-```bash
-POST /compile-ui-bundle
-Content-Type: application/json
-
-{
-  "files": [
-    {
-      "path": "index.tsx",
-      "content": "import React from 'react';\n..."
-    },
-    {
-      "path": "components/MyComponent.tsx",
-      "content": "export function MyComponent() { ... }"
-    }
-  ],
-  "entryPoint": "index.tsx"
-}
-```
-
-The compiler will bundle all files with React, framer-motion, and @dreamboard/ui-sdk into a single HTML file.
-
-## Best Practices
-
-1. **Error Handling**: Always wrap `submitAction` calls in try-catch
-2. **Loading States**: Check for `null` game state before rendering
-3. **Optimized Selectors**: Use `useGameSelector` for derived data
-4. **Component Splitting**: Split complex UIs into multiple files
-5. **TypeScript**: Use provided types for type safety
-6. **Animations**: Use framer-motion for smooth transitions
-
-## Limitations
-
-- No external network calls (CSP restricted)
-- Maximum bundle size: 5MB
-- Maximum 50 source files
-- No eval() or Function() constructor
-- Sandbox: `allow-scripts` only (no same-origin, no forms)
-
-## Support
-
-For issues or questions, refer to the main Dreamboard documentation or contact the development team.
+- Workspace reference:
+  `/Users/kevintang/code/exp/examples/things-in-rings`
+- Use `examples/things-in-rings` and scaffolded workspace UI files as the
+  canonical reducer-native reference implementation.

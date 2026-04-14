@@ -1,6 +1,9 @@
 import { readdir, unlink } from "node:fs/promises";
 import path from "node:path";
-import type { BoardManifest } from "@dreamboard/sdk-types";
+import { zGameTopologyManifest } from "@dreamboard/api-client";
+import type { GameTopologyManifest } from "@dreamboard/sdk-types";
+import { validateManifestAuthoring } from "@dreamboard/workspace-codegen";
+import type { ZodError } from "zod";
 import {
   PROJECT_DIR_NAME,
   MANIFEST_FILE,
@@ -19,6 +22,7 @@ import {
 import { hashContent } from "../../utils/crypto.js";
 import {
   isAllowedGamePath as isAllowedPathFromOwnership,
+  isDynamicGeneratedPath,
   isLibraryPath as isLibraryPathFromOwnership,
 } from "./scaffold-ownership.js";
 
@@ -153,7 +157,7 @@ export async function walkDir(
 
 export async function writeManifest(
   rootDir: string,
-  manifest: BoardManifest,
+  manifest: GameTopologyManifest,
 ): Promise<void> {
   const filePath = path.join(rootDir, MANIFEST_FILE);
   await writeTextFile(filePath, `${JSON.stringify(manifest, null, 2)}\n`);
@@ -167,9 +171,59 @@ export async function writeRule(
   await writeTextFile(filePath, ruleText);
 }
 
-export async function loadManifest(rootDir: string): Promise<BoardManifest> {
+function formatIssuePath(pathSegments: ReadonlyArray<string | number>): string {
+  if (pathSegments.length === 0) {
+    return "manifest";
+  }
+
+  return `manifest${pathSegments
+    .map((segment) =>
+      typeof segment === "number" ? `[${segment}]` : `.${segment}`,
+    )
+    .join("")}`;
+}
+
+function formatManifestValidationError(error: ZodError): string {
+  const lines = error.issues.map((issue) => {
+    const issuePath = formatIssuePath(
+      issue.path.filter(
+        (segment): segment is string | number =>
+          typeof segment === "string" || typeof segment === "number",
+      ),
+    );
+    return `${issuePath}: ${issue.message}`;
+  });
+
+  return `Invalid manifest:\n- ${lines.join("\n- ")}`;
+}
+
+export async function loadManifest(
+  rootDir: string,
+): Promise<GameTopologyManifest> {
   const filePath = path.join(rootDir, MANIFEST_FILE);
-  return readJsonFile<BoardManifest>(filePath);
+  let manifestJson: unknown;
+  try {
+    manifestJson = await readJsonFile<unknown>(filePath);
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new Error(`Invalid manifest.json: ${error.message}`);
+    }
+    throw error;
+  }
+
+  const parsedManifest = zGameTopologyManifest.strict().safeParse(manifestJson);
+  if (!parsedManifest.success) {
+    throw new Error(formatManifestValidationError(parsedManifest.error));
+  }
+
+  const setupIssues = validateManifestAuthoring(
+    parsedManifest.data as GameTopologyManifest,
+  );
+  if (setupIssues.length > 0) {
+    throw new Error(`Invalid manifest:\n- ${setupIssues.join("\n- ")}`);
+  }
+
+  return parsedManifest.data as GameTopologyManifest;
 }
 
 export async function loadRule(rootDir: string): Promise<string> {
@@ -192,11 +246,19 @@ export async function writeSnapshotFromFiles(
 
   for (const [filePath, content] of Object.entries(files)) {
     if (filePath.startsWith(`${PROJECT_DIR_NAME}/`)) continue;
+    if (isDynamicGeneratedPath(filePath)) continue;
     snapshot.files[filePath] = hashContent(content);
   }
 
   const snapshotPath = path.join(rootDir, PROJECT_DIR_NAME, SNAPSHOT_FILE);
   await writeJsonFile(snapshotPath, snapshot);
+}
+
+function isIgnorableLocalDiffPath(filePath: string): boolean {
+  return (
+    filePath.startsWith("test/generated/") ||
+    filePath.startsWith(".playwright-cli/")
+  );
 }
 
 export async function getLocalDiff(rootDir: string): Promise<{
@@ -215,6 +277,8 @@ export async function getLocalDiff(rootDir: string): Promise<{
 
   for (const [filePath, content] of Object.entries(files)) {
     if (filePath.startsWith(`${PROJECT_DIR_NAME}/`)) continue;
+    if (isIgnorableLocalDiffPath(filePath)) continue;
+    if (isDynamicGeneratedPath(filePath)) continue;
     currentHashes[filePath] = hashContent(content);
   }
 
@@ -232,6 +296,8 @@ export async function getLocalDiff(rootDir: string): Promise<{
   }
 
   for (const filePath of Object.keys(snapshot.files)) {
+    if (isIgnorableLocalDiffPath(filePath)) continue;
+    if (isDynamicGeneratedPath(filePath)) continue;
     if (!currentHashes[filePath]) {
       deleted.push(filePath);
     }

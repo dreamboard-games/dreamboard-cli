@@ -1,38 +1,5 @@
 /**
- * SlotSystem component - Worker placement visualization for Euro games
- *
- * Design Philosophy: "Strategic Placement"
- * - Grid/list layout for action slots
- * - All rendering controlled by parent via required render functions
- * - Pre-built helper components provided for easy customization
- *
- * Use cases: Agricola, Viticulture, Lords of Waterdeep, Caverna
- *
- * @example Basic usage with pre-built components
- * ```tsx
- * <SlotSystem
- *   slots={slots}
- *   occupants={occupants}
- *   renderSlot={(slot, slotOccupants) => (
- *     <DefaultSlotItem
- *       name={slot.name}
- *       description={slot.description}
- *       capacity={slot.capacity}
- *       occupantCount={slotOccupants.length}
- *       isExclusive={slot.exclusive}
- *       isAvailable={slotOccupants.length < slot.capacity}
- *       onClick={() => handlePlaceWorker(slot.id)}
- *       renderOccupants={() => (
- *         <div className="flex gap-1">
- *           {slotOccupants.map((o) => (
- *             <DefaultSlotOccupant key={o.pieceId} color={playerColors[o.playerId]} />
- *           ))}
- *         </div>
- *       )}
- *     />
- *   )}
- * />
- * ```
+ * Worker placement visualization for Euro games (Agricola, Viticulture, Lords of Waterdeep).
  */
 
 import { useMemo, type ReactNode } from "react";
@@ -44,59 +11,38 @@ import { Users, Lock, Gift, Coins } from "lucide-react";
 // ============================================================================
 
 export interface SlotDefinition {
-  /** Unique slot identifier */
   id: string;
-  /** Display name */
   name: string;
-  /** Slot description */
   description?: string;
-  /** How many pieces can occupy this slot */
   capacity: number;
-  /** Is this slot exclusive (one player per round)? */
+  /** One player per round */
   exclusive?: boolean;
-  /** Belongs to a specific player (personal action space) */
+  /** Personal action space owner */
   owner?: string;
-  /** Visual grouping */
   group?: string;
-  /** Cost to use this slot */
   cost?: Record<string, number>;
-  /** Reward for using this slot */
   reward?: Record<string, number>;
-  /** Slot type for styling */
   type?: string;
-  /** Position for custom layout */
   position?: { x: number; y: number };
-  /** Additional data */
   data?: Record<string, unknown>;
 }
 
 export interface SlotOccupant {
-  /** Piece ID placed in slot */
   pieceId: string;
-  /** Player who placed the piece */
   playerId: string;
-  /** Slot ID where piece is placed */
   slotId: string;
-  /** Additional data */
   data?: Record<string, unknown>;
 }
 
 export interface SlotSystemProps {
-  /** Slot definitions */
   slots: SlotDefinition[];
-  /** Current slot occupants - defaults to empty */
   occupants: SlotOccupant[];
-  /** Custom slot renderer - required, receives slot and its occupants */
   renderSlot: (slot: SlotDefinition, occupants: SlotOccupant[]) => ReactNode;
-  /** Layout style */
   layout?: "grid" | "list" | "grouped";
-  /** Container width */
   width?: number | string;
-  /** Container height */
   height?: number | string;
-  /** Minimum slot width for responsive grid (default: 280px) */
+  /** Minimum slot width for responsive grid */
   minSlotWidth?: number;
-  /** Additional class names */
   className?: string;
 }
 
@@ -105,56 +51,24 @@ export interface SlotSystemProps {
 // ============================================================================
 
 export interface DefaultSlotItemProps {
-  /** Slot name */
   name: string;
-  /** Slot description */
   description?: string;
-  /** Slot capacity */
   capacity: number;
-  /** Current occupant count */
   occupantCount: number;
-  /** Whether slot is exclusive */
   isExclusive?: boolean;
-  /** Whether slot is available for placement */
   isAvailable?: boolean;
-  /** Whether slot is highlighted */
   isHighlighted?: boolean;
-  /** Whether slot is selected */
   isSelected?: boolean;
-  /** Cost display (e.g., "-2 gold") */
   costLabel?: string;
-  /** Reward display (e.g., "+3 grain") */
   rewardLabel?: string;
-  /** Render function for occupants */
   renderOccupants?: () => ReactNode;
-  /** Click handler */
   onClick?: () => void;
-  /** Pointer enter handler */
   onPointerEnter?: () => void;
-  /** Pointer leave handler */
   onPointerLeave?: () => void;
-  /** Additional className */
   className?: string;
 }
 
-/**
- * Pre-built slot item component for use in renderSlot
- *
- * @example
- * ```tsx
- * renderSlot={(slot, occupants) => (
- *   <DefaultSlotItem
- *     name={slot.name}
- *     description={slot.description}
- *     capacity={slot.capacity}
- *     occupantCount={occupants.length}
- *     isExclusive={slot.exclusive}
- *     isAvailable={occupants.length < slot.capacity}
- *     onClick={() => handlePlaceWorker(slot.id)}
- *   />
- * )}
- * ```
- */
+/** Pre-built slot item for use in `renderSlot`. */
 export function DefaultSlotItem({
   name,
   description,
@@ -253,33 +167,13 @@ export function DefaultSlotItem({
 }
 
 export interface DefaultSlotOccupantProps {
-  /** Occupant color */
   color?: string;
-  /** Occupant size */
   size?: number;
-  /** Occupant shape */
   shape?: "circle" | "square";
-  /** Label or tooltip */
   label?: string;
-  /** Click handler */
   onClick?: () => void;
-  /** Additional className */
   className?: string;
 }
-
-/**
- * Pre-built slot occupant component for use in renderOccupant
- *
- * @example
- * ```tsx
- * renderOccupant={(occupant) => (
- *   <DefaultSlotOccupant
- *     color={playerColors[occupant.playerId]}
- *     label={`${occupant.playerId}'s worker`}
- *   />
- * )}
- * ```
- */
 export function DefaultSlotOccupant({
   color = "#3b82f6",
   size = 24,
@@ -310,23 +204,9 @@ export function DefaultSlotOccupant({
 }
 
 export interface DefaultEmptySlotProps {
-  /** Size of the empty slot marker */
   size?: number;
-  /** Additional className */
   className?: string;
 }
-
-/**
- * Pre-built empty slot marker for showing remaining capacity
- *
- * @example
- * ```tsx
- * // In renderSlot, show empty slots for remaining capacity
- * {Array(capacity - occupants.length).fill(null).map((_, i) => (
- *   <DefaultEmptySlot key={i} />
- * ))}
- * ```
- */
 export function DefaultEmptySlot({
   size = 24,
   className,
@@ -349,14 +229,6 @@ export function DefaultEmptySlot({
 // Component
 // ============================================================================
 
-/**
- * SlotSystem component for worker placement games
- *
- * Features:
- * - Multiple layout options (grid, list, grouped)
- * - Responsive grid that stacks items when container is narrow
- * - All rendering controlled by parent
- */
 export function SlotSystem({
   slots,
   occupants = [],

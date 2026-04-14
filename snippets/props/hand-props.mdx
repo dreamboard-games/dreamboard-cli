@@ -2,32 +2,32 @@
 {/* Run `pnpm docs:gen-props` to regenerate. Do not edit directly. */}
 
 <ParamField path="cards" type="CardItem[]" required>
-  Array of cards to display
+  `cards` value
 </ParamField>
 <ParamField path="selectedIds" type="string[]">
-  Selected card IDs
+  `selectedIds` value
 </ParamField>
 <ParamField path="disabled" type="boolean">
-  Whether cards can be interacted with
+  `disabled` value
 </ParamField>
 <ParamField path="cardSize" type="CardSize">
-  Card size
+  `cardSize` value
 </ParamField>
 <ParamField path="layout" type="HandLayout">
-  Layout style
+  `layout` value
 </ParamField>
 <ParamField path="renderCard" type="(props: HandCardRenderProps) => ReactNode" required>
-  Render function for each card
+  `renderCard` value
 </ParamField>
 <ParamField path="renderDrawer" type="(props: HandDrawerRenderProps) => ReactNode" required>
-  Render function for drawer mode (when cards don't fit)
+  Render function for drawer mode (when cards don't fit on small screens)
 </ParamField>
 <ParamField path="renderEmpty" type="(props: HandEmptyRenderProps) => ReactNode" required>
-  Render function for empty hand state
+  `renderEmpty` value
 </ParamField>
 <ParamField path="renderContainer" type="(props: HandContainerRenderProps) => ReactNode">
-  Optional render function for the cards container (for custom layout)
+  `renderContainer` value
 </ParamField>
 <ParamField path="className" type="string">
-  Additional class name for outer wrapper
+  `className` value
 </ParamField>

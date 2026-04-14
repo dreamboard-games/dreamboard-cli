@@ -1,57 +1,22 @@
-/**
- * ActionPanel and ActionGroup components - Composable action UI with grouping
- *
- * Design Philosophy: "Organized Action Space"
- * - Collapsible panel for action sections
- * - Grouped actions with visual hierarchy
- * - State-based visibility and highlighting
- * - Mobile-friendly with smooth animations
- *
- * @example Basic usage
- * ```tsx
- * <ActionPanel title="Your Turn" state="buildPhase">
- *   <ActionGroup title="Build" visible={phase === 'build'}>
- *     <ActionButton label="Build Road" onClick={() => {}} />
- *     <ActionButton label="Build Settlement" onClick={() => {}} />
- *   </ActionGroup>
- *   <ActionGroup title="End Turn">
- *     <ActionButton label="End Turn" variant="success" onClick={() => {}} />
- *   </ActionGroup>
- * </ActionPanel>
- * ```
- */
+/** Collapsible panel for grouping game actions with state-based visibility. */
 
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { clsx } from "clsx";
 import { ChevronUp } from "lucide-react";
 
 export interface ActionPanelProps {
-  /** Panel title */
   title?: string;
   /** Current game state/phase for context display */
   state?: string;
   /** Human-readable state labels */
   stateLabels?: Record<string, string>;
-  /** Whether panel is collapsible */
   collapsible?: boolean;
-  /** Default expanded state */
   defaultExpanded?: boolean;
-  /** Children (ActionGroups or ActionButtons) */
   children: ReactNode;
-  /** Additional class names */
   className?: string;
 }
 
-/**
- * ActionPanel component - Container for action groups
- *
- * Features:
- * - Collapsible header
- * - State/phase display
- * - Smooth expand/collapse animation
- * - Backdrop blur effect
- */
 export function ActionPanel({
   title = "Actions",
   state,
@@ -61,6 +26,7 @@ export function ActionPanel({
   children,
   className,
 }: ActionPanelProps) {
+  const contentId = useId();
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
   const stateLabel = state
@@ -90,7 +56,7 @@ export function ActionPanel({
         )}
         disabled={!collapsible}
         aria-expanded={isExpanded}
-        aria-controls="action-panel-content"
+        aria-controls={contentId}
         style={{ borderRadius: "inherit" }} // Match parent wobbly border roughly
       >
         <div className="text-left font-sans">
@@ -122,7 +88,7 @@ export function ActionPanel({
       <AnimatePresence initial={false}>
         {isExpanded && (
           <motion.div
-            id="action-panel-content"
+            id={contentId}
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -140,29 +106,14 @@ export function ActionPanel({
 }
 
 export interface ActionGroupProps {
-  /** Group title */
   title: string;
-  /** Group description */
   description?: string;
-  /** Whether this group is visible */
   visible?: boolean;
   /** Highlight style for special phases */
   variant?: "default" | "warning" | "danger" | "success";
-  /** Children (ActionButtons) */
   children: ReactNode;
-  /** Additional class names */
   className?: string;
 }
-
-/**
- * ActionGroup component - Groups related actions together
- *
- * Features:
- * - Conditional visibility
- * - Variant-based styling
- * - Title and description
- * - Semantic grouping
- */
 export function ActionGroup({
   title,
   description,

@@ -3,22 +3,22 @@ title: "UI Library"
 description: "Reference for using Dreamboard official UI Library for building board games."
 ---
 
-import CardPropsTable from '/snippets/props/card-props.mdx'
-import HandPropsTable from '/snippets/props/hand-props.mdx'
-import PlayAreaPropsTable from '/snippets/props/play-area-props.mdx'
-import ActionButtonPropsTable from '/snippets/props/action-button-props.mdx'
-import ActionPanelPropsTable from '/snippets/props/action-panel-props.mdx'
-import ActionGroupPropsTable from '/snippets/props/action-group-props.mdx'
-import PlayerInfoPropsTable from '/snippets/props/player-info-props.mdx'
-import DiceRollerPropsTable from '/snippets/props/dice-roller-props.mdx'
-import PhaseIndicatorPropsTable from '/snippets/props/phase-indicator-props.mdx'
-import GameEndDisplayPropsTable from '/snippets/props/game-end-display-props.mdx'
-import TrackBoardPropsTable from '/snippets/props/track-board-props.mdx'
-import SquareGridPropsTable from '/snippets/props/square-grid-props.mdx'
-import HexGridPropsTable from '/snippets/props/hex-grid-props.mdx'
-import NetworkGraphPropsTable from '/snippets/props/network-graph-props.mdx'
-import ZoneMapPropsTable from '/snippets/props/zone-map-props.mdx'
-import SlotSystemPropsTable from '/snippets/props/slot-system-props.mdx'
+import CardPropsTable from "/snippets/props/card-props.mdx";
+import HandPropsTable from "/snippets/props/hand-props.mdx";
+import PlayAreaPropsTable from "/snippets/props/play-area-props.mdx";
+import ActionButtonPropsTable from "/snippets/props/action-button-props.mdx";
+import ActionPanelPropsTable from "/snippets/props/action-panel-props.mdx";
+import ActionGroupPropsTable from "/snippets/props/action-group-props.mdx";
+import PlayerInfoPropsTable from "/snippets/props/player-info-props.mdx";
+import DiceRollerPropsTable from "/snippets/props/dice-roller-props.mdx";
+import PhaseIndicatorPropsTable from "/snippets/props/phase-indicator-props.mdx";
+import GameEndDisplayPropsTable from "/snippets/props/game-end-display-props.mdx";
+import TrackBoardPropsTable from "/snippets/props/track-board-props.mdx";
+import SquareGridPropsTable from "/snippets/props/square-grid-props.mdx";
+import HexGridPropsTable from "/snippets/props/hex-grid-props.mdx";
+import NetworkGraphPropsTable from "/snippets/props/network-graph-props.mdx";
+import ZoneMapPropsTable from "/snippets/props/zone-map-props.mdx";
+import SlotSystemPropsTable from "/snippets/props/slot-system-props.mdx";
 
 `@dreamboard/ui-sdk` is Dreamboard's UI package. Use
 it to create UI for the game using projected game view, handle player actions and render prompts
@@ -66,12 +66,12 @@ import {
 `PluginRuntime` waits for the first reducer-native state-sync snapshot and then
 provides runtime, session, and plugin-state context to authored hooks.
 
-| Prop | Required | Notes |
-| --- | --- | --- |
-| `children` | Yes | Rendered after runtime initialization succeeds |
-| `timeout` | No | Milliseconds to wait for first state-sync snapshot; defaults to `10000` |
-| `loadingComponent` | No | Replaces the default loading shell |
-| `errorComponent` | No | Receives the runtime boot error string |
+| Prop               | Required | Notes                                                                   |
+| ------------------ | -------- | ----------------------------------------------------------------------- |
+| `children`         | Yes      | Rendered after runtime initialization succeeds                          |
+| `timeout`          | No       | Milliseconds to wait for first state-sync snapshot; defaults to `10000` |
+| `loadingComponent` | No       | Replaces the default loading shell                                      |
+| `errorComponent`   | No       | Receives the runtime boot error string                                  |
 
 ```tsx
 import { PluginRuntime } from "@dreamboard/ui-sdk";
@@ -110,11 +110,7 @@ import { ToastProvider, useToast } from "@dreamboard/ui-sdk";
 function EndTurnButton() {
   const { success } = useToast();
 
-  return (
-    <button onClick={() => success("Turn submitted")}>
-      End turn
-    </button>
-  );
+  return <button onClick={() => success("Turn submitted")}>End turn</button>;
 }
 ```
 
@@ -133,11 +129,11 @@ function EndTurnButton() {
 Use `GameSkeleton` while the plugin session is still loading or when the UI
 needs a fallback shell.
 
-| Prop | Required | Notes |
-| --- | --- | --- |
-| `variant` | No | One of `default`, `cards`, `players`, or `minimal` |
-| `message` | No | Loading or placeholder text |
-| `className` | No | Additional container classes |
+| Prop        | Required | Notes                                              |
+| ----------- | -------- | -------------------------------------------------- |
+| `variant`   | No       | One of `default`, `cards`, `players`, or `minimal` |
+| `message`   | No       | Loading or placeholder text                        |
+| `className` | No       | Additional container classes                       |
 
 ```tsx
 import { GameSkeleton, usePluginSession } from "@dreamboard/ui-sdk";
@@ -190,13 +186,13 @@ Use selector hooks for:
 
 Returns runtime session metadata for the current plugin.
 
-| Field | Type | Notes |
-| --- | --- | --- |
-| `status` | `"loading" \| "ready"` | Session initialization status |
-| `sessionId` | `string \| null` | Current session ID |
-| `controllablePlayerIds` | `string[]` | Seats the user can control |
-| `controllingPlayerId` | `string \| null` | Currently selected seat |
-| `userId` | `string \| null` | Current user ID |
+| Field                   | Type                   | Notes                         |
+| ----------------------- | ---------------------- | ----------------------------- |
+| `status`                | `"loading" \| "ready"` | Session initialization status |
+| `sessionId`             | `string \| null`       | Current session ID            |
+| `controllablePlayerIds` | `string[]`             | Seats the user can control    |
+| `controllingPlayerId`   | `string \| null`       | Currently selected seat       |
+| `userId`                | `string \| null`       | Current user ID               |
 
 ```ts
 const { controllingPlayerId, controllablePlayerIds, status } =
@@ -246,16 +242,16 @@ colours, or host markers.
 
 `useActions()` is the typed reducer action surface for the current phase.
 
-| Field | Notes |
-| --- | --- |
-| `phase` | Current runtime phase |
-| `commands` | Typed reducer action factories for the current phase |
-| `availableActions` | `ReadonlySet` of currently available action names |
-| `can(name)` | Whether an action is currently available |
-| `dispatch(command)` | Submit one action |
-| `validate(command)` | Validate one action without submitting it |
-| `respondToPrompt(prompt, response)` | Submit a prompt response |
-| `submitWindowAction(window, command)` | Submit a gameplay-window action |
+| Field                                 | Notes                                                |
+| ------------------------------------- | ---------------------------------------------------- |
+| `phase`                               | Current runtime phase                                |
+| `commands`                            | Typed reducer action factories for the current phase |
+| `availableActions`                    | `ReadonlySet` of currently available action names    |
+| `can(name)`                           | Whether an action is currently available             |
+| `dispatch(command)`                   | Submit one action                                    |
+| `validate(command)`                   | Validate one action without submitting it            |
+| `respondToPrompt(prompt, response)`   | Submit a prompt response                             |
+| `submitWindowAction(window, command)` | Submit a gameplay-window action                      |
 
 ```ts
 const phase = useActions();
@@ -386,20 +382,20 @@ Import `windowCommands` from your workspace's generated
 These components are presentational. Feed them from reducer view data and
 explicit props.
 
-| Export | Use it for |
-| --- | --- |
-| `Card` | One authored card face |
-| `Hand` | Responsive hand layout with render props |
-| `PlayArea` | Shared played-card or centre-table region |
-| `PlayerInfo` | Player badges, scores, and active-seat markers |
-| `ActionButton` | One action with availability, loading, and cost state |
-| `ActionPanel` / `ActionGroup` | Grouped action regions |
-| `ResourceCounter` | Resource totals |
-| `CostDisplay` | Cost breakdowns |
-| `PhaseIndicator` | Current phase or step status |
-| `GameEndDisplay` | Final rankings and scores |
-| `DiceRoller` | Reducer-driven dice results |
-| `Drawer` and related exports | Mobile overflow or detail panels |
+| Export                        | Use it for                                            |
+| ----------------------------- | ----------------------------------------------------- |
+| `Card`                        | One authored card face                                |
+| `Hand`                        | Responsive hand layout with render props              |
+| `PlayArea`                    | Shared played-card or centre-table region             |
+| `PlayerInfo`                  | Player badges, scores, and active-seat markers        |
+| `ActionButton`                | One action with availability, loading, and cost state |
+| `ActionPanel` / `ActionGroup` | Grouped action regions                                |
+| `ResourceCounter`             | Resource totals                                       |
+| `CostDisplay`                 | Cost breakdowns                                       |
+| `PhaseIndicator`              | Current phase or step status                          |
+| `GameEndDisplay`              | Final rankings and scores                             |
+| `DiceRoller`                  | Reducer-driven dice results                           |
+| `Drawer` and related exports  | Mobile overflow or detail panels                      |
 
 `DiceRoller` is display-only. In reducer-native games, dice values are
 typically driven by authored die state updated through reducer runtime effects
@@ -473,17 +469,20 @@ Use `Hand` when you want SDK layout behaviour but game-specific card faces.
 ### `ActionButton`
 
 Use `ActionButton` for one reducer action. It can reflect availability,
-resource affordability, and loading state.
+resource affordability, and loading state. Prefer `children` for the visible
+label. Keep `label` when you need an explicit accessible name for non-text
+children.
 
 ```tsx
 <ActionButton
-  label="Build road"
   cost={{ brick: 1, lumber: 1 }}
   currentResources={view.resources}
   resourceDefs={resourceDefs}
   available={phase.can("buildRoad")}
   onClick={() => phase.dispatch(phase.commands.buildRoad())}
-/>
+>
+  Build road
+</ActionButton>
 ```
 
 <ActionButtonPropsTable />
@@ -496,10 +495,11 @@ Use these to keep the action surface grouped by phase or intent.
 <ActionPanel title="Your turn" state={phase.phase}>
   <ActionGroup title="Build">
     <ActionButton
-      label="Build road"
       available={phase.can("buildRoad")}
       onClick={() => phase.dispatch(phase.commands.buildRoad())}
-    />
+    >
+      Build road
+    </ActionButton>
   </ActionGroup>
 </ActionPanel>
 ```
@@ -537,14 +537,12 @@ view, then pass them in. The roll action itself is dispatched through the normal
 action surface.
 
 ```tsx
-const { values, sum } = useDice(['die-1']);
+const { values, sum } = useDice(["die-1"]);
 
 <DiceRoller
   values={values}
-  render={({ sum }) => (
-    <div className="text-4xl font-bold">{sum ?? '?'}</div>
-  )}
-/>
+  render={({ sum }) => <div className="text-4xl font-bold">{sum ?? "?"}</div>}
+/>;
 ```
 
 <DiceRollerPropsTable />
@@ -590,14 +588,14 @@ Pass `phaseLabels` to display human-readable names instead of raw phase keys.
 Use board primitives when the reducer view already contains render-ready board
 data.
 
-| Export | Use it for |
-| --- | --- |
-| `TrackBoard` | Linear, circular, or branching tracks |
-| `SquareGrid` | Chess-like or tile-grid boards |
-| `HexGrid` | Hex maps with tiles, edges, and vertices |
-| `NetworkGraph` | Nodes, connections, and route graphs |
-| `ZoneMap` | Region or area control boards |
-| `SlotSystem` | Worker-placement and slot occupancy layouts |
+| Export         | Use it for                                  |
+| -------------- | ------------------------------------------- |
+| `TrackBoard`   | Linear, circular, or branching tracks       |
+| `SquareGrid`   | Chess-like or tile-grid boards              |
+| `HexGrid`      | Hex maps with tiles, edges, and vertices    |
+| `NetworkGraph` | Nodes, connections, and route graphs        |
+| `ZoneMap`      | Region or area control boards               |
+| `SlotSystem`   | Worker-placement and slot occupancy layouts |
 
 ```tsx
 <TrackBoard
@@ -628,11 +626,11 @@ Board renderers are still UI code. The reducer should provide:
 Use the headless topology hooks when a component needs adjacency, distance, or
 edge and vertex lookups in UI code.
 
-| Hook | Use it for |
-| --- | --- |
-| `useBoardTopology(board)` | Shared hex and square queries such as adjacency, incidence, and occupancy lookups |
-| `useHexBoard(board)` | Hex coordinate helpers such as `getTileAt(...)`, neighbors, and range checks |
-| `useSquareBoard(board)` | Square coordinate helpers such as `getCellAt(...)`, orthogonal or diagonal neighbors, and distance variants |
+| Hook                      | Use it for                                                                                                  |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `useBoardTopology(board)` | Shared hex and square queries such as adjacency, incidence, and occupancy lookups                           |
+| `useHexBoard(board)`      | Hex coordinate helpers such as `getTileAt(...)`, neighbors, and range checks                                |
+| `useSquareBoard(board)`   | Square coordinate helpers such as `getCellAt(...)`, orthogonal or diagonal neighbors, and distance variants |
 
 Reducer views should project board data plus legal or highlighted target IDs.
 The UI should then:
@@ -708,13 +706,13 @@ The same interaction pattern works with `HexGrid` and `useHexBoard(...)`.
 
 Use these root exports when the UI needs to type reducer-owned runtime data.
 
-| Type | Meaning |
-| --- | --- |
-| `PhaseActions<Phase>` | Current phase action API returned by `useActions()` |
-| `ActionDefinition` | One available action from gameplay state |
-| `GameplayPromptInstance` | One typed active prompt instance |
-| `GameplayWindowInstance` | One typed active window instance |
-| `GameplaySnapshot` | Transport state that sits alongside the projected view |
-| `PluginStateSnapshot` | Complete state-sync payload delivered to the plugin |
-| `LobbyState` | Current lobby seats and host metadata |
-| `Player` | Simplified player metadata from the lobby |
+| Type                     | Meaning                                                |
+| ------------------------ | ------------------------------------------------------ |
+| `PhaseActions<Phase>`    | Current phase action API returned by `useActions()`    |
+| `ActionDefinition`       | One available action from gameplay state               |
+| `GameplayPromptInstance` | One typed active prompt instance                       |
+| `GameplayWindowInstance` | One typed active window instance                       |
+| `GameplaySnapshot`       | Transport state that sits alongside the projected view |
+| `PluginStateSnapshot`    | Complete state-sync payload delivered to the plugin    |
+| `LobbyState`             | Current lobby seats and host metadata                  |
+| `Player`                 | Simplified player metadata from the lobby              |

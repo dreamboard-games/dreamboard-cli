@@ -19,7 +19,9 @@ export default defineConfig({
   },
   noExternal: [
     "@dreamboard/api-client",
+    "@dreamboard/app-sdk",
     "@dreamboard/sdk-types",
+    "@dreamboard/workspace-codegen",
     "@supabase/supabase-js",
     "citty",
     "consola",

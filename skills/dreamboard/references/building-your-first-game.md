@@ -26,7 +26,7 @@ runtime-owned effects handle live randomness.
 By the end of the tutorial you will have:
 
 - a `rule.md` that explains the game
-- a `manifest.json` with a shared die
+- a `manifest.ts` with a shared die
 - reducer code in `app/`
 - a playable `ui/App.tsx`
 - a base and scenario under `test/`
@@ -46,7 +46,7 @@ cd race-to-ten
 The scaffold gives you the files you will edit next:
 
 - `rule.md`
-- `manifest.json`
+- `manifest.ts`
 - `app/game-contract.ts`
 - `app/game.ts`
 - `app/phases/*`
@@ -110,32 +110,34 @@ The scaffold gives you the files you will edit next:
 
 For a fuller reference, see [Rule authoring](./rule-authoring.md).
 
-## 3. Write `manifest.json`
+## 3. Write `manifest.ts`
 
 This game needs player-count metadata and one shared die.
 
-```json
-{
-  "players": {
-    "minPlayers": 2,
-    "maxPlayers": 2,
-    "optimalPlayers": 2
+```ts
+import { defineTopologyManifest } from "@dreamboard/sdk-types";
+
+export default defineTopologyManifest({
+  players: {
+    minPlayers: 2,
+    maxPlayers: 2,
+    optimalPlayers: 2,
   },
-  "dieTypes": [
+  dieTypes: [
     {
-      "id": "standard-d6",
-      "name": "Standard d6",
-      "sides": 6
-    }
+      id: "standard-d6",
+      name: "Standard d6",
+      sides: 6,
+    },
   ],
-  "dieSeeds": [
+  dieSeeds: [
     {
-      "id": "turn-die",
-      "name": "Turn die",
-      "typeId": "standard-d6"
-    }
-  ]
-}
+      id: "turn-die",
+      name: "Turn die",
+      typeId: "standard-d6",
+    },
+  ],
+});
 ```
 
 Run:
@@ -146,6 +148,9 @@ dreamboard compile
 ```
 
 `dreamboard sync` refreshes generated contracts from authored files.
+It also prepares workspace dependencies after `package.json` changes.
+If sync reports missing dependency tooling, see
+[Dependency setup](/docs/reference/dependency-setup).
 `dreamboard compile` builds the current authored head.
 
 ## 4. Define the reducer contract
@@ -156,7 +161,10 @@ rules require.
 ```ts
 import { z } from "zod";
 import * as manifestContract from "../shared/manifest-contract";
-import { defineGameContract, type GameStateOf } from "@dreamboard/app-sdk/reducer";
+import {
+  defineGameContract,
+  type GameStateOf,
+} from "@dreamboard/app-sdk/reducer";
 
 const playerId = manifestContract.ids.playerId;
 
@@ -230,7 +238,11 @@ Create `app/phases/take-turn.ts`:
 
 ```ts
 import { z } from "zod";
-import { defineAction, definePhase, setActivePlayers } from "@dreamboard/app-sdk/reducer";
+import {
+  defineAction,
+  definePhase,
+  setActivePlayers,
+} from "@dreamboard/app-sdk/reducer";
 import type { GameContract } from "../game-contract";
 
 const TARGET_SCORE = 10;
@@ -282,7 +294,8 @@ const rollDie = defineAction<GameContract>()({
       table: nextTable,
       publicState: {
         ...state.publicState,
-        currentPlayerId: nextScore >= TARGET_SCORE ? input.playerId : nextPlayerId,
+        currentPlayerId:
+          nextScore >= TARGET_SCORE ? input.playerId : nextPlayerId,
         winnerPlayerId: nextScore >= TARGET_SCORE ? input.playerId : null,
         lastRoll: nextRoll,
         scores: nextScores,
@@ -304,9 +317,7 @@ export const takeTurn = definePhase<GameContract>()({
       return accept(state);
     }
 
-    return accept(
-      setActivePlayers(state, [state.publicState.currentPlayerId]),
-    );
+    return accept(setActivePlayers(state, [state.publicState.currentPlayerId]));
   },
   actions: {
     rollDie,
@@ -363,7 +374,12 @@ At this point the rules exist, but the UI is still the scaffold placeholder.
 Update `ui/App.tsx`:
 
 ```tsx
-import { DiceRoller, useActions, useDice, useGameView } from "@dreamboard/ui-sdk";
+import {
+  DiceRoller,
+  useActions,
+  useDice,
+  useGameView,
+} from "@dreamboard/ui-sdk";
 
 export default function App() {
   const view = useGameView();
@@ -450,12 +466,12 @@ export default defineScenario({
   description: "The deterministic roll sequence lets player 2 reach ten first",
   from: "initial-turn",
   when: async ({ game }) => {
-    await game.action("player-1", "rollDie", {});
-    await game.action("player-2", "rollDie", {});
-    await game.action("player-1", "rollDie", {});
-    await game.action("player-2", "rollDie", {});
-    await game.action("player-1", "rollDie", {});
-    await game.action("player-2", "rollDie", {});
+    await game.action("player-1", "rollDie");
+    await game.action("player-2", "rollDie");
+    await game.action("player-1", "rollDie");
+    await game.action("player-2", "rollDie");
+    await game.action("player-1", "rollDie");
+    await game.action("player-2", "rollDie");
   },
   then: ({ state, view, expect }) => {
     expect(state()).toBe("takeTurn");
@@ -482,7 +498,7 @@ Start the local dev server to play the game in the browser:
 dreamboard dev
 ```
 
-If you edit `rule.md` or `manifest.json`, run `dreamboard sync` again before
+If you edit `rule.md` or `manifest.ts`, run `dreamboard sync` again before
 continuing.
 
 ## Where to go next

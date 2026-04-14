@@ -23,15 +23,10 @@ function stripComments() {
 // Define entry points and their output filenames
 const entries = [
   { input: "./dist/index.d.ts", filename: "ui-sdk.d.ts" },
-  { input: "./dist/components/index.d.ts", filename: "ui-sdk-components.d.ts" },
-  { input: "./dist/hooks/index.d.ts", filename: "ui-sdk-hooks.d.ts" },
 ];
 
 // Output directories
-const outputDirs = [
-  "./dist",
-  "../js-template-resources/src/main/resources/types",
-];
+const outputDirs = ["./dist"];
 
 // Common rollup options
 const commonExternal = [

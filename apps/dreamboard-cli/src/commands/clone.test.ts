@@ -19,13 +19,36 @@ let authoringHeadData: {
   ruleId: "rule-1",
 };
 const pullIntoDirectory = mock(async () => undefined);
-const writeScaffoldFiles = mock(async () => undefined);
+const applyWorkspaceCodegen = mock(async () => ({
+  written: [],
+  skipped: [],
+  merged: [],
+}));
 const actualApiClient = await import("@dreamboard/api-client");
 const actualFlags = await import("../flags.js");
 const actualFs = await import("../utils/fs.js");
 const actualLocalFiles = await import("../services/project/local-files.js");
 const actualSync = await import("../services/project/sync.js");
 const actualStrings = await import("../utils/strings.js");
+
+const MINIMAL_MANIFEST = {
+  players: {
+    minPlayers: 2,
+    maxPlayers: 2,
+    optimalPlayers: 2,
+  },
+  cardSets: [],
+  zones: [],
+  boardTemplates: [],
+  boards: [],
+  pieceTypes: [],
+  pieceSeeds: [],
+  dieTypes: [],
+  dieSeeds: [],
+  resources: [],
+  setupOptions: [],
+  setupProfiles: [],
+} as const;
 
 mock.module("@dreamboard/api-client", () => ({
   ...actualApiClient,
@@ -57,11 +80,7 @@ mock.module("@dreamboard/api-client", () => ({
       sourceRevisionId: "source-revision-2",
       treeHash: "tree-hash-2",
       manifestId: "manifest-2",
-      manifest: {
-        stateMachine: {
-          states: [{ name: "setup" }],
-        },
-      },
+      manifest: MINIMAL_MANIFEST,
       ruleId: "rule-2",
       ruleText: "# Remote rule\n",
     },
@@ -81,16 +100,6 @@ mock.module("@dreamboard/api-client", () => ({
   })),
   findManifests: mock(async () => ({
     data: { currentManifestId: "manifest-1" },
-  })),
-  scaffoldGameSourcesV3: mock(async () => ({
-    data: {
-      generatedFiles: {
-        "C:/temp/outside.ts": "bad",
-      },
-      seedFiles: {},
-    },
-    error: null,
-    response: { status: 200 },
   })),
 }));
 
@@ -182,7 +191,23 @@ mock.module("../services/api/index.js", () => ({
 
 mock.module("../services/project/local-files.js", () => ({
   ...actualLocalFiles,
-  writeScaffoldFiles,
+  collectLocalFiles: async () => ({}),
+  getLocalDiff: async () => ({
+    modified: [],
+    added: [],
+    deleted: [],
+  }),
+  loadManifest: async () => ({
+    ...MINIMAL_MANIFEST,
+  }),
+  loadRule: async () => "",
+  writeManifest: async () => undefined,
+  writeRule: async () => undefined,
+  writeSnapshot: async () => undefined,
+}));
+
+mock.module("../services/project/workspace-codegen.js", () => ({
+  applyWorkspaceCodegen,
 }));
 
 mock.module("../config/project-config.js", () => ({
@@ -200,22 +225,25 @@ mock.module("../services/project/static-scaffold.js", () => ({
 
 mock.module("../utils/errors.js", () => ({
   formatApiError: () => "api error",
+  toDreamboardApiError: () => new Error("api error"),
 }));
 
 const cloneCommand = (await import("./clone.ts")).default;
 
-test("clone command rejects invalid scaffold payloads before writing files", async () => {
+test("clone generates local workspace files from manifest when no authored state exists", async () => {
   authoringHeadData = null;
+  applyWorkspaceCodegen.mockClear();
 
-  await expect(
-    cloneCommand.run({
-      args: {
-        slug: "test-game",
-      },
-    }),
-  ).rejects.toThrow("Invalid scaffold payload");
+  await cloneCommand.run({
+    args: {
+      slug: "test-game",
+    },
+  });
 
-  expect(writeScaffoldFiles).not.toHaveBeenCalled();
+  expect(applyWorkspaceCodegen).toHaveBeenCalledWith({
+    projectRoot: path.resolve(process.cwd(), "test-game"),
+    manifest: {},
+  });
 });
 
 test("clone uses the compiled-result sync path when the project already has a remote result", async () => {
@@ -227,6 +255,7 @@ test("clone uses the compiled-result sync path when the project already has a re
     manifestContentHash: "content-hash",
     ruleId: "rule-1",
   };
+  applyWorkspaceCodegen.mockClear();
   pullIntoDirectory.mockImplementation(async () => ({
     gameId: "game-1",
     slug: "test-game",
@@ -262,5 +291,5 @@ test("clone uses the compiled-result sync path when the project already has a re
       webBaseUrl: "https://web.example.com",
     },
   );
-  expect(writeScaffoldFiles).not.toHaveBeenCalled();
+  expect(applyWorkspaceCodegen).not.toHaveBeenCalled();
 });

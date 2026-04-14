@@ -1,0 +1,26 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "baseUrl": ".",
+    "paths": {
+      "@dreamboard/ui-contract": [
+        "../../packages/ui-sdk/src/ui-contract-internal.ts"
+      ],
+      "@dreamboard/manifest-contract": [
+        "../../packages/ui-sdk/src/manifest-contract.ts"
+      ]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.d.ts"],
+  "exclude": [
+    "dist",
+    "scripts",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/scaffold/assets/**",
+    "src/services/project/__fixtures__/**",
+    "src/dev-host/host-main.tsx",
+    "src/dev-host/plugin-main.ts"
+  ]
+}

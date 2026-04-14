@@ -11,6 +11,14 @@ export interface ValidationResult {
 }
 
 /**
+ * Structured authoritative submission failure returned by runtime submit APIs.
+ */
+export interface SubmissionError extends Error {
+  /** Machine-readable error code when available */
+  errorCode?: string;
+}
+
+/**
  * Plugin session state
  */
 export interface PluginSessionState {
@@ -62,9 +70,9 @@ export interface RuntimeAPI {
    * @param playerId - ID of the player performing the action (e.g., 'player-1')
    * @param actionType - Type of action being performed (e.g., 'playCard', 'drawCard')
    * @param params - Action-specific parameters
-   * @returns Promise that resolves when action is submitted (does not wait for server response)
+   * @returns Promise that resolves when the authority accepts the submission
    *
-   * @throws Error if action submission fails
+   * @throws SubmissionError if action submission fails or is rejected
    *
    * @example
    * ```typescript
@@ -78,6 +86,36 @@ export interface RuntimeAPI {
     playerId: string,
     actionType: string,
     params: Record<string, unknown>,
+  ) => Promise<void>;
+
+  /**
+   * Submit a response to an active gameplay prompt.
+   *
+   * @param playerId - ID of the player responding to the prompt
+   * @param promptId - Active prompt instance ID
+   * @param response - Prompt-specific response payload
+   * @returns Promise that resolves when the authority accepts the response
+   */
+  submitPromptResponse: (
+    playerId: string,
+    promptId: string,
+    response: unknown,
+  ) => Promise<void>;
+
+  /**
+   * Submit a window action for an active gameplay window.
+   *
+   * @param playerId - ID of the player acting in the window
+   * @param windowId - Active window instance ID
+   * @param actionType - Window action type
+   * @param params - Optional action parameters
+   * @returns Promise that resolves when the authority accepts the action
+   */
+  submitWindowAction: (
+    playerId: string,
+    windowId: string,
+    actionType: string,
+    params?: Record<string, unknown>,
   ) => Promise<void>;
 
   /**

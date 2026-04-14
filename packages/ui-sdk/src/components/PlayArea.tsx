@@ -1,10 +1,5 @@
 /**
- * PlayArea component - Central game board area
- *
- * Displays active game components (tricks, played cards, zones, etc.)
- * with smooth animations and clear visual organization
- *
- * This is a presentational component that receives card data as props.
+ * Central game board area for active game components (tricks, played cards, zones, etc.).
  */
 
 import { motion, AnimatePresence } from "framer-motion";
@@ -12,35 +7,21 @@ import { clsx } from "clsx";
 import { Card, type CardProps, type CardItem } from "./Card.js";
 
 export interface PlayAreaProps {
-  /** Array of cards to display */
   cards: CardItem[];
-  /** Filter function to determine which cards to show */
   filter?: (card: CardItem) => boolean;
-  /** Card size */
   cardSize?: CardProps["size"];
-  /** Custom card renderer */
   renderCard?: CardProps["renderContent"];
-  /** Layout style */
   layout?: "grid" | "row";
-  /** Whether cards are interactive */
   interactive?: boolean;
-  /** Card click handler */
   onCardClick?: (cardId: string) => void;
-  /** Label for screen readers */
   "aria-label"?: string;
   className?: string;
 }
 
 /**
- * PlayArea component with multiple layout options
- *
- * @example Basic usage
+ * @example
  * ```tsx
- * <PlayArea
- *   cards={trickCards}
- *   layout="row"
- *   renderCard={(card) => <PlayingCard card={card} />}
- * />
+ * <PlayArea cards={trickCards} layout="row" renderCard={(card) => <PlayingCard card={card} />} />
  * ```
  */
 export function PlayArea({

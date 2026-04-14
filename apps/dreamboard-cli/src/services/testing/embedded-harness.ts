@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
+import type { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { client } from "@dreamboard/api-client/client.gen";
 import consola from "consola";
@@ -20,6 +21,20 @@ const HARNESS_START_MAX_TIMEOUT_MS = 600_000;
 const HARNESS_STOP_TIMEOUT_MS = 10_000;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(MODULE_DIR, "../../../../..");
+const PROJECT_DEPENDENCY_NODE_MODULES = path.join(
+  REPO_ROOT,
+  "apps",
+  "dreamboard-cli",
+  "node_modules",
+);
+const UI_SDK_NODE_MODULES = path.join(
+  REPO_ROOT,
+  "packages",
+  "ui-sdk",
+  "node_modules",
+);
 
 type EmbeddedHarnessReady = {
   status: "ready";
@@ -138,10 +153,52 @@ export async function startEmbeddedHarnessSession(options: {
   };
 }
 
+async function pathExists(targetPath: string): Promise<boolean> {
+  try {
+    await lstat(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function ensureSymlink(targetPath: string, linkPath: string) {
+  if (await pathExists(linkPath)) {
+    return;
+  }
+
+  await mkdir(path.dirname(linkPath), { recursive: true });
+  await symlink(
+    targetPath,
+    linkPath,
+    process.platform === "win32" ? "junction" : "dir",
+  );
+}
+
+async function ensureEmbeddedHarnessDependencies(
+  projectRoot: string,
+): Promise<void> {
+  if (await pathExists(PROJECT_DEPENDENCY_NODE_MODULES)) {
+    await ensureSymlink(
+      PROJECT_DEPENDENCY_NODE_MODULES,
+      path.join(projectRoot, "node_modules"),
+    );
+  }
+
+  if (await pathExists(UI_SDK_NODE_MODULES)) {
+    await ensureSymlink(
+      UI_SDK_NODE_MODULES,
+      path.join(projectRoot, "ui", "node_modules"),
+    );
+  }
+}
+
 async function prepareLocalHarnessFixture(options: {
   projectRoot: string;
   projectConfig: ProjectConfig;
 }): Promise<LocalHarnessFixture> {
+  await ensureEmbeddedHarnessDependencies(options.projectRoot);
+
   const manifestPath = path.join(options.projectRoot, "manifest.json");
   const manifestContent = await readFile(manifestPath, "utf8");
   await loadManifest(options.projectRoot);
@@ -157,29 +214,45 @@ async function prepareLocalHarnessFixture(options: {
   const bundleEntryPath = path.join(bundleRoot, "src", "app", "index.js");
   await mkdir(path.dirname(bundleEntryPath), { recursive: true });
 
-  const buildResult = await Bun.build({
-    entrypoints: [appEntryPath],
-    format: "esm",
-    target: "browser",
-    minify: false,
-    sourcemap: "none",
-    root: options.projectRoot,
-  });
-
-  if (!buildResult.success) {
+  const bunExecutable = Bun.which("bun");
+  if (!bunExecutable) {
     await rm(bundleRoot, { recursive: true, force: true });
-    const issues =
-      buildResult.logs
-        .map((log) => log.message)
-        .filter((message) => typeof message === "string" && message.length > 0)
-        .join("; ") || "unknown Bun build failure";
-    throw new Error(`Failed to bundle local game logic: ${issues}`);
+    throw new Error(
+      "Failed to locate the Bun executable for embedded harness bundling.",
+    );
   }
 
-  for (const output of buildResult.outputs) {
-    const targetPath = path.join(bundleRoot, "src", output.path);
-    await mkdir(path.dirname(targetPath), { recursive: true });
-    await Bun.write(targetPath, output);
+  const buildResult = spawn(
+    bunExecutable,
+    [
+      "build",
+      "app/index.ts",
+      `--outfile=${bundleEntryPath}`,
+      "--format=esm",
+      "--target=browser",
+      "--sourcemap=none",
+    ],
+    {
+      cwd: options.projectRoot,
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+
+  const [stdout, stderr, exitCode] = await Promise.all([
+    readStreamText(buildResult.stdout),
+    readStreamText(buildResult.stderr),
+    waitForExitCode(buildResult),
+  ]);
+
+  if (exitCode !== 0) {
+    await rm(bundleRoot, { recursive: true, force: true });
+    const issues =
+      [stdout.trim(), stderr.trim()]
+        .filter((value) => value.length > 0)
+        .join("\n")
+        .trim() || "unknown Bun build failure";
+    throw new Error(`Failed to bundle local game logic: ${issues}`);
   }
 
   const bundleContent = await readFile(bundleEntryPath, "utf8");
@@ -205,6 +278,31 @@ async function prepareLocalHarnessFixture(options: {
     gameSlug,
     gameName: toTitleCase(gameSlug),
   };
+}
+
+async function waitForExitCode(child: ChildProcess): Promise<number> {
+  if (child.exitCode !== null) {
+    return child.exitCode;
+  }
+
+  return await new Promise<number>((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", (code) => resolve(code ?? 1));
+  });
+}
+
+async function readStreamText(
+  stream: Readable | null | undefined,
+): Promise<string> {
+  if (!stream) {
+    return "";
+  }
+
+  let text = "";
+  for await (const chunk of stream) {
+    text += Buffer.isBuffer(chunk) ? chunk.toString("utf8") : String(chunk);
+  }
+  return text;
 }
 
 async function waitForHarnessReady(

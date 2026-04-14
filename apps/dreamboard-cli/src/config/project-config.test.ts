@@ -30,6 +30,15 @@ describe("project config normalization", () => {
         manifestId: "manifest-1",
         manifestContentHash: "manifest-hash-1",
         ruleId: "rule-1",
+        pendingSync: {
+          phase: "authoring_state_created",
+          authoringStateId: "authoring-2",
+          sourceRevisionId: "source-2",
+          sourceTreeHash: "tree-2",
+          manifestId: "manifest-2",
+          manifestContentHash: "manifest-hash-2",
+          ruleId: "rule-2",
+        },
       },
       compile: {
         latestAttempt: {
@@ -43,6 +52,7 @@ describe("project config normalization", () => {
 
     const loaded = await loadProjectConfig(rootDir);
     expect(loaded.authoring?.authoringStateId).toBe("authoring-1");
+    expect(loaded.authoring?.pendingSync?.authoringStateId).toBe("authoring-2");
     expect(loaded.compile?.latestAttempt?.status).toBe("failed");
     expect(loaded.resultId).toBeUndefined();
   });

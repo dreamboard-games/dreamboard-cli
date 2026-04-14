@@ -3,16 +3,39 @@
 
 # Manifest authoring
 
-Reference for authoring Dreamboard manifest.json files.
+Reference for authoring Dreamboard manifest.ts files.
 
-`manifest.json` defines the stable structure of your game: player counts, card
+`manifest.ts` defines the stable structure of your game: player counts, card
 sets, zones, boards, pieces, dice, resources, and setup metadata.
+
+Author manifests as a typed default export:
+
+```ts
+import { defineTopologyManifest } from "@dreamboard/sdk-types";
+
+export default defineTopologyManifest({
+  players: { minPlayers: 2, maxPlayers: 4, optimalPlayers: 4 },
+  cardSets: [],
+  zones: [],
+  boardTemplates: [],
+  boards: [],
+  pieceTypes: [],
+  pieceSeeds: [],
+  dieTypes: [],
+  dieSeeds: [],
+  resources: [],
+  setupOptions: [],
+  setupProfiles: [],
+});
+```
 
 Boards describe positions, connections, and structural sites. Randomized setup
 contents still belong in reducer setup code. In a Catan-style game, the
 manifest should define stable hex spaces such as `cell-01`, `cell-02`, and
 `cell-03`, while the reducer shuffles terrain pieces and number tokens onto
-those spaces at runtime.
+those spaces at runtime. In a square-grid game, the manifest should define
+stable authored cells such as `a1`, `a2`, and `b1`, while reducer state tracks
+movement, ownership, hazards, or score markers.
 
 ## Top-level shape
 
@@ -85,8 +108,15 @@ required unless their schema sets `optional: true`.
 }
 ```
 
-`properties` and `fields` values in `manifest.json` are stored as authored JSON
+`properties` and `fields` values in `manifest.ts` are stored as authored JSON
 values. Keep those values consistent with the schema you declare.
+
+When you author manifests in TypeScript with
+`defineTopologyManifest(...)`, Dreamboard uses these schemas for static typing
+in authored source. That currently covers manual card `properties`,
+`pieceSeeds[].fields`, `dieSeeds[].fields`, and board or template `fields`
+surfaces. `ObjectSchema` remains the authored source of truth; do not replace
+these schema objects with raw Zod values in `manifest.ts`.
 
 ### `ComponentHomeSpec`
 
@@ -98,16 +128,16 @@ Use `home` on cards, piece seeds, and die seeds to place authored inventory.
 | `zone` | `zoneId` | Place into a zone |
 | `space` | `boardId`, `spaceId` | Place onto a board space or hex space |
 | `container` | `boardId`, `containerId` | Place into a board container |
-| `edge` | `boardId`, `ref` | Place onto a hex edge identified by two spaces |
-| `vertex` | `boardId`, `ref` | Place onto a hex vertex identified by three spaces |
-| `slot` | `hostComponentId`, `slotId` | Place into a component-owned slot |
+| `edge` | `boardId`, `ref` | Place onto a tiled-board edge identified by one or two spaces |
+| `vertex` | `boardId`, `ref` | Place onto a tiled-board vertex identified by one to four spaces |
+| `slot` | `host.kind`, `host.id`, `slotId` | Place into a strict piece-owned or die-owned slot |
 
 ### `ComponentVisibilitySpec`
 
 | Field | Required | Notes |
 | --- | --- | --- |
 | `faceUp` | No | Defaults to `true` |
-| `visibleTo` | No | Player IDs that can see the component; omitted means visible to all players |
+| `visibleTo` | No | Player IDs that can see the component; omitted means visible to all players. In `manifest.ts`, `defineTopologyManifest(...)` narrows this to declared manifest player IDs. |
 
 ## `players`
 
@@ -128,9 +158,28 @@ Use `home` on cards, piece seeds, and die seeds to place authored inventory.
 | Variant | Required fields | Notes |
 | --- | --- | --- |
 | `type: "manual"` | `id`, `name`, `cardSchema`, `cards` | Define your own cards |
-| `type: "preset"` | `id`, `name` | Use a built-in set |
+| `type: "preset"` | `id`, `presetId`, `name` | Use a built-in set with an explicit preset selector |
 
 Current supported preset ID: `standard_52_deck`.
+
+{/* Generated from examples/board-contract-lab/app/docs-snippets.ts (manifest-card-sets) */}
+
+```ts
+cardSets: [
+  {
+    type: "manual",
+    id: "contract-cards",
+    name: "Contract Cards",
+  },
+  {
+    type: "preset",
+    id: "poker-standard",
+    presetId: "standard_52_deck",
+    name: "Standard 52 Deck",
+  },
+],
+//
+```
 
 ### `BoardCard`
 
@@ -187,7 +236,7 @@ Use `zones` for shared piles, per-player hands, pools, bags, and other table-lev
 | `id` | Yes | Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` |
 | `name` | Yes | Display name |
 | `scope` | Yes | `shared` or `perPlayer` |
-| `allowedCardSetIds` | No | Allowed card sets; enforced for card movement |
+| `allowedCardSetIds` | No | Allowed card sets; enforced for card movement. In `manifest.ts`, `defineTopologyManifest(...)` narrows this to declared card-set IDs. |
 | `visibility` | No | `ownerOnly`, `public`, or `hidden`; defaults to `public` |
 
 ```json
@@ -226,12 +275,18 @@ Use templates when multiple boards share the same topology. Use boards for autho
 category. For example, a Monopoly board would usually be `layout: "generic"`
 with `typeId: "track"`.
 
+One manifest can mix multiple board layouts. A shared generic economy board, a
+shared hex map, and per-player square mats are a good authoring benchmark when
+you want one workspace to cover the stricter board APIs in a realistic game
+shape.
+
 ### `BoardTemplateSpec`
 
 | Variant | Required fields | Notes |
 | --- | --- | --- |
 | Generic | `id`, `name`, `layout: "generic"` | Optional `typeId` for authored board category |
 | Hex | `id`, `name`, `layout: "hex"` | Optional `typeId`; `orientation` defaults to `pointy-top` |
+| Square | `id`, `name`, `layout: "square"` | Optional `typeId`; uses authored `row` and `col` coordinates |
 
 Generic templates can include `boardFieldsSchema`, `spaceFieldsSchema`,
 `relationFieldsSchema`, `containerFieldsSchema`, and `spaces`, `relations`,
@@ -240,6 +295,11 @@ Generic templates can include `boardFieldsSchema`, `spaceFieldsSchema`,
 Hex templates can include `boardFieldsSchema`, `spaceFieldsSchema`,
 `edgeFieldsSchema`, `vertexFieldsSchema`, and `spaces`, `edges`, `vertices`.
 Those arrays default to `[]`.
+
+Square templates can include `boardFieldsSchema`, `spaceFieldsSchema`,
+`relationFieldsSchema`, `containerFieldsSchema`, `edgeFieldsSchema`,
+`vertexFieldsSchema`, plus `spaces`, `relations`, `containers`, `edges`, and
+`vertices`. Those arrays default to `[]`.
 
 ```json
 {
@@ -286,11 +346,11 @@ Those arrays default to `[]`.
 | --- | --- | --- |
 | `id` | Yes | Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` |
 | `name` | Yes | Display name |
-| `layout` | Yes | `generic` or `hex` |
+| `layout` | Yes | `generic`, `hex`, or `square` |
 | `typeId` | No | Authored board category used by reducer/UI code |
 | `scope` | Yes | `shared` or `perPlayer` |
 | `templateId` | No | Clone a template before applying inline additions |
-| `fields` | No | JSON-valued board field map |
+| `fields` | No | JSON-valued board field map. In `manifest.ts`, this is schema-typed from `boardFieldsSchema ?? template.boardFieldsSchema`. |
 
 Generic boards can add `boardFieldsSchema`, `spaceFieldsSchema`,
 `relationFieldsSchema`, `containerFieldsSchema`, plus `spaces`, `relations`,
@@ -300,6 +360,11 @@ Hex boards can add `orientation`, `boardFieldsSchema`, `spaceFieldsSchema`,
 `edgeFieldsSchema`, `vertexFieldsSchema`, plus `spaces`, `edges`, and
 `vertices`. Those arrays default to `[]`.
 
+Square boards can add `boardFieldsSchema`, `spaceFieldsSchema`,
+`relationFieldsSchema`, `containerFieldsSchema`, `edgeFieldsSchema`,
+`vertexFieldsSchema`, plus `spaces`, `relations`, `containers`, `edges`, and
+`vertices`. Those arrays default to `[]`.
+
 ### `BoardSpaceSpec`
 
 | Field | Required | Notes |
@@ -307,18 +372,18 @@ Hex boards can add `orientation`, `boardFieldsSchema`, `spaceFieldsSchema`,
 | `id` | Yes | Board-local space ID |
 | `name` | No | Display label |
 | `typeId` | No | Authored space category used by reducer/UI code |
-| `fields` | No | JSON-valued field map |
+| `fields` | No | JSON-valued field map. In `manifest.ts`, this is schema-typed from `spaceFieldsSchema`. |
 
 ### `BoardRelationSpec`
 
 | Field | Required | Notes |
 | --- | --- | --- |
 | `typeId` | Yes | Relation category such as `adjacent` or `next` |
-| `fromSpaceId` | Yes | Source space |
-| `toSpaceId` | Yes | Target space |
+| `fromSpaceId` | Yes | Source space. In `manifest.ts`, `defineTopologyManifest(...)` narrows this to valid space IDs for the containing board or template-backed board. |
+| `toSpaceId` | Yes | Target space. In `manifest.ts`, `defineTopologyManifest(...)` narrows this to valid space IDs for the containing board or template-backed board. |
 | `id` | No | Stable relation ID |
 | `directed` | No | Defaults to `false` |
-| `fields` | No | JSON-valued field map |
+| `fields` | No | JSON-valued field map. In `manifest.ts`, this is schema-typed from `relationFieldsSchema`. |
 
 ### `BoardContainerSpec`
 
@@ -326,9 +391,9 @@ Hex boards can add `orientation`, `boardFieldsSchema`, `spaceFieldsSchema`,
 | --- | --- | --- |
 | `id` | Yes | Board-local container ID |
 | `name` | Yes | Display name |
-| `host` | Yes | `{ "type": "board" }` or `{ "type": "space", "spaceId": "..." }` |
-| `allowedCardSetIds` | No | Allowed card sets |
-| `fields` | No | JSON-valued field map |
+| `host` | Yes | `{ "type": "board" }` or `{ "type": "space", "spaceId": "..." }`. In `manifest.ts`, space-hosted containers narrow `spaceId` to valid board-local spaces. |
+| `allowedCardSetIds` | No | Allowed card sets. In `manifest.ts`, this narrows to declared card-set IDs. |
+| `fields` | No | JSON-valued field map. In `manifest.ts`, this is schema-typed from `containerFieldsSchema`. |
 
 Board containers are for attached holding areas such as market rows, discard
 trays, or board-level displays. Board spaces are topology nodes in the board
@@ -338,13 +403,29 @@ graph such as squares, hexes, map locations, or action spots.
 
 | Type | Required fields | Notes |
 | --- | --- | --- |
-| `HexSpaceSpec` | `id`, `q`, `r` | Optional `typeId`, `label`, `fields` |
-| `HexEdgeSpec` | `ref` | `ref.spaces` must contain exactly 2 adjacent space IDs; optional `typeId`, `label`, `tags`, `fields` |
-| `HexVertexSpec` | `ref` | `ref.spaces` must contain exactly 3 touching space IDs; optional `typeId`, `label`, `tags`, `fields` |
+| `HexSpaceSpec` | `id`, `q`, `r` | Optional `typeId`, `label`, `fields`. In `manifest.ts`, `fields` is schema-typed from `spaceFieldsSchema`. |
+| `HexEdgeSpec` | `ref` | `ref.spaces` must contain exactly 2 adjacent space IDs; optional `typeId`, `label`, `tags`, `fields`. In `manifest.ts`, `fields` is schema-typed from `edgeFieldsSchema`. |
+| `HexVertexSpec` | `ref` | `ref.spaces` must contain exactly 3 touching space IDs; optional `typeId`, `label`, `tags`, `fields`. In `manifest.ts`, `fields` is schema-typed from `vertexFieldsSchema`. |
 
 Use hex spaces for stable board positions. Use edges and vertices for
 structural sites such as roads, borders, settlements, checkpoints, or other
 game-specific metadata.
+
+### `SquareSpaceSpec`, `SquareEdgeSpec`, and `SquareVertexSpec`
+
+| Type | Required fields | Notes |
+| --- | --- | --- |
+| `SquareSpaceSpec` | `id`, `row`, `col` | Optional `typeId`, `label`, `fields`. In `manifest.ts`, `fields` is schema-typed from `spaceFieldsSchema`. |
+| `SquareEdgeSpec` | `ref` | `ref.spaces` must resolve to exactly one shared border; optional `typeId`, `label`, `tags`, `fields`. In `manifest.ts`, `fields` is schema-typed from `edgeFieldsSchema`. |
+| `SquareVertexSpec` | `ref` | `ref.spaces` must resolve to exactly one shared corner; optional `typeId`, `label`, `tags`, `fields`. In `manifest.ts`, `fields` is schema-typed from `vertexFieldsSchema`. |
+
+Use square spaces for stable board positions such as chess cells, tactical-map
+tiles, or fixed tile-placement slots. Use square edges and vertices for shared
+borders, gates, walls, crossings, scoring seams, or any other authored site
+that sits between or around spaces.
+
+Hex and square boards are fixed-topology in this release. Carcassonne-style
+board growth is a future extension, not part of the current board layouts.
 
 For a single real-game example that also lines up with `PieceSeedSpec` and `DieSeedSpec`, a Monopoly-style `track` board is the best fit.
 
@@ -395,8 +476,8 @@ For a single real-game example that also lines up with `PieceSeedSpec` and `DieS
 
 | Type | Core fields | Notes |
 | --- | --- | --- |
-| `PieceTypeSpec` | `id`, `name` | Optional `fieldsSchema` |
-| `DieTypeSpec` | `id`, `name` | Optional `sides` defaults to `6`; optional `fieldsSchema` |
+| `PieceTypeSpec` | `id`, `name` | Optional `fieldsSchema`; optional `slots` for strict piece-hosted slot definitions |
+| `DieTypeSpec` | `id`, `name` | Optional `sides` defaults to `6`; optional `fieldsSchema`; optional `slots` for strict die-hosted slot definitions |
 
 ### `PieceSeedSpec` and `DieSeedSpec`
 
@@ -410,6 +491,10 @@ For a single real-game example that also lines up with `PieceSeedSpec` and `DieS
 | `home` | No | `ComponentHomeSpec` |
 | `visibility` | No | `ComponentVisibilitySpec` |
 | `fields` | No | JSON-valued field map |
+
+Strict slot hosts must be singleton seeds with an explicit `id`. If a
+`PieceTypeSpec` or `DieTypeSpec` declares `slots`, every authored seed of that
+type must omit `count` or set it to `1`, and must provide `id`.
 
 ```json
 {
@@ -465,6 +550,25 @@ For a single real-game example that also lines up with `PieceSeedSpec` and `DieS
 }
 ```
 
+`defineTopologyManifest(...)` from `@dreamboard/sdk-types` is the canonical
+authoring API. It is a compile-time authoring layer only; it does not change
+manifest JSON shape, backend contracts, or generated runtime behavior.
+
+It currently adds these author-time checks in `manifest.ts`:
+
+- schema-derived typing for manual card `properties`
+- schema-derived typing for `pieceSeeds[].fields` and `dieSeeds[].fields`
+- schema-derived typing for board, space, relation, container, edge, and vertex `fields`
+- board-local narrowing for `fromSpaceId`, `toSpaceId`, and container host `spaceId`
+- player-ID narrowing for `visibility.visibleTo`
+- card-set ID narrowing for zone and board/container `allowedCardSetIds`
+- board-scoped `spaceId`, `edgeId`, and `vertexId` property-schema literals inside board-backed field schemas
+- existing narrowing for `space` and `container` homes from the selected `boardId`
+- existing narrowing for `slot` homes from eligible singleton piece/die seeds whose type declares slots
+
+Use `ObjectSchema` and `PropertySchema` values in `manifest.ts`. Do not replace
+them with raw Zod schemas.
+
 ## `resources`, `setupOptions`, and `setupProfiles`
 
 ### `ResourceDefinition`
@@ -515,47 +619,33 @@ interactive setup composition. The runtime still selects setup by
 `setupProfileId`, and actual setup execution stays in reducer-owned
 `app/setup-profiles.ts`.
 
-```json
-{
-  "setupOptions": [
-    {
-      "id": "map",
-      "name": "Map",
-      "choices": [
-        { "id": "tharsis", "label": "Tharsis" },
-        { "id": "hellas", "label": "Hellas" },
-        { "id": "elysium", "label": "Elysium" }
-      ]
+In practice, setup profiles are most useful when they point at real bootstrap
+targets such as shared zones, per-player zones, shared board containers,
+per-player board containers, and shared board spaces.
+
+{/* Generated from examples/board-contract-lab/app/docs-snippets.ts (manifest-setup-metadata) */}
+
+```ts
+setupOptions: [
+  {
+    id: "map",
+    name: "Map",
+    choices: [
+      { id: "frontier", label: "Frontier" },
+      { id: "river", label: "River" },
+    ],
+  },
+],
+setupProfiles: [
+  {
+    id: "river-draft",
+    name: "River Draft",
+    optionValues: {
+      map: "river",
     },
-    {
-      "id": "starting-corporations",
-      "name": "Starting corporations",
-      "choices": [
-        { "id": "beginner", "label": "Beginner corporation" },
-        { "id": "draft", "label": "Draft corporations" }
-      ]
-    },
-    {
-      "id": "expansion",
-      "name": "Expansion",
-      "choices": [
-        { "id": "base", "label": "Base game" },
-        { "id": "prelude", "label": "Prelude" }
-      ]
-    }
-  ],
-  "setupProfiles": [
-    {
-      "id": "terraforming-mars-standard",
-      "name": "Terraforming Mars standard setup",
-      "optionValues": {
-        "map": "tharsis",
-        "starting-corporations": "draft",
-        "expansion": "prelude"
-      }
-    }
-  ]
-}
+  },
+],
+//
 ```
 
 ## Derived behavior
@@ -577,12 +667,21 @@ interactive setup composition. The runtime still selects setup by
   `{boardId}:player-1`.
 - Home references use authored board base IDs. Per-player boards resolve to the
   matching runtime board for the owning player.
-- For hex boards, authored `spaces` are the stable topology positions. Runtime
-  `edgeId` and `vertexId` values are derived from those spaces. Authors attach
-  metadata by referencing `ref.spaces`, not by writing edge or vertex IDs
-  directly.
+- Slot homes use structured hosts like
+  `{ "type": "slot", "host": { "kind": "piece", "id": "mat-a" }, "slotId": "worker-rest" }`.
+- Only explicit singleton `pieceSeeds` and `dieSeeds` whose type declares
+  `slots` can be referenced as slot hosts.
+- For hex and square boards, authored `spaces` are the stable topology
+  positions. Runtime `edgeId` and `vertexId` values are derived from those
+  spaces. Authors attach metadata by referencing `ref.spaces`, not by writing
+  edge or vertex IDs directly.
+- In `manifest.ts`, board-scoped field schemas can still reference `spaceId`,
+  `edgeId`, and `vertexId` values directly. `defineTopologyManifest(...)`
+  narrows those to the exact derived ID literals for the containing board or
+  template-backed board.
 - Preset card sets are materialized into authored cards before code generation.
-  The current supported preset is `standard_52_deck`.
+  Use `presetId` to select the built-in deck while keeping `id` as the local
+  card-set ID that flows into generated unions and `allowedCardSetIds`.
 - `setupProfiles.optionValues` must reference declared setup options and
   declared choice IDs.
 - Dreamboard generates literal unions and Zod schemas for authored categories

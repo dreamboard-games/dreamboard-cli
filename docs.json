@@ -29,6 +29,7 @@
             "group": "Reference",
             "pages": [
               "docs/reference/cli",
+              "docs/reference/dependency-setup",
               "docs/reference/rule-authoring",
               "docs/reference/manifest-authoring",
               "docs/reference/tiled-board-topology",
@@ -53,6 +54,10 @@
     {
       "source": "/reference/cli",
       "destination": "/docs/reference/cli"
+    },
+    {
+      "source": "/reference/dependency-setup",
+      "destination": "/docs/reference/dependency-setup"
     },
     {
       "source": "/reference/manifest-authoring",

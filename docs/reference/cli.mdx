@@ -34,7 +34,7 @@ Use this sequence for the normal authored loop:
 
 1. `dreamboard login`
 2. `dreamboard new ...` or `dreamboard clone ...`
-3. edit `rule.md`, `manifest.json`, and authored source files
+3. edit `rule.md`, `manifest.ts`, and authored source files
 4. `dreamboard sync`
 5. `dreamboard compile`
 6. `dreamboard dev` (play in browser) or `dreamboard test run` (automated tests)
@@ -63,6 +63,14 @@ dreamboard sync
 dreamboard compile
 dreamboard status --json
 ```
+
+`dreamboard sync` also reconciles local workspace dependencies when `package.json`
+changes, so users should not run a separate install command as part of the
+normal authored workflow. If `dreamboard sync` reports missing dependency
+tooling, see [Dependency setup](/docs/reference/dependency-setup).
+
+The CLI materializes `.dreamboard/generated/manifest.json` from `manifest.ts`
+for local tooling. Treat that file as generated output, not authored source.
 
 ## Dev server
 

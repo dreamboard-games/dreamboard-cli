@@ -1,0 +1,38 @@
+{/* Generated from examples/board-contract-lab/app/setup-profiles.ts (reducer-setup-bootstrap) */}
+
+```ts
+bootstrap: [
+  shuffle({
+    type: "sharedZone",
+    zoneId: "contracts-deck",
+  }),
+  seedSharedBoardContainer({
+    from: {
+      type: "sharedZone",
+      zoneId: "contracts-deck",
+    },
+    boardId: "market-board",
+    containerId: "dock-cache",
+    componentIds: ["sealed-ledger"],
+  }),
+  dealToPlayerBoardContainer({
+    from: {
+      type: "sharedZone",
+      zoneId: "contracts-deck",
+    },
+    boardId: "player-mat",
+    containerId: "reserve",
+    count: 1,
+  }),
+  seedSharedBoardContainer({
+    from: {
+      type: "sharedZone",
+      zoneId: "contracts-deck",
+    },
+    boardId: "market-board",
+    containerId: "offer-row",
+    count: 3,
+  }),
+],
+//
+```

@@ -1,42 +1,9 @@
 /**
- * SquareGrid component - Square grid visualization for grid-based games
- *
- * Design Philosophy: "Classic Precision"
- * - SVG-based square grid with row/column coordinates
- * - All rendering controlled by parent via required render functions
- * - Pre-built helper components provided for easy customization
- * - Pan and zoom support using @use-gesture
- *
- * Use cases: Chess, Checkers, Go, Scrabble, Battleship
- *
- * @example Basic usage with pre-built components
- * ```tsx
- * <SquareGrid
- *   rows={8}
- *   cols={8}
- *   pieces={pieces}
- *   cellSize={60}
- *   renderCell={(row, col) => (
- *     <DefaultGridCell
- *       size={60}
- *       isLight={(row + col) % 2 === 0}
- *       isHighlighted={highlightedCells.has(`${row}-${col}`)}
- *       onClick={() => handleCellClick(row, col)}
- *     />
- *   )}
- *   renderPiece={(piece) => (
- *     <DefaultGridPiece
- *       size={60}
- *       color={playerColors[piece.owner]}
- *       label={piece.type.charAt(0).toUpperCase()}
- *       onClick={() => handlePieceClick(piece.id)}
- *     />
- *   )}
- * />
- * ```
+ * SVG-based square grid for grid-based games (Chess, Checkers, Go, Scrabble, Battleship).
+ * All rendering controlled by parent via required render functions.
  */
 
-import { useRef, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { clsx } from "clsx";
 import { usePanZoom } from "../../hooks/usePanZoom.js";
 
@@ -45,62 +12,115 @@ import { usePanZoom } from "../../hooks/usePanZoom.js";
 // ============================================================================
 
 export interface GridCell {
-  /** Row index (0-based) */
+  id?: string;
   row: number;
-  /** Column index (0-based) */
   col: number;
-  /** Cell type for custom rendering */
+  label?: string;
   type?: string;
-  /** Additional data */
   data?: Record<string, unknown>;
 }
 
+type ResolvedCell = GridCell & { id: string };
+
 export interface GridPiece {
-  /** Unique piece identifier */
   id: string;
-  /** Row position (0-based) */
   row: number;
-  /** Column position (0-based) */
   col: number;
-  /** Piece type (e.g., 'king', 'queen', 'pawn') */
   type: string;
-  /** Owner player ID */
   owner?: string;
-  /** Additional data */
   data?: Record<string, unknown>;
+}
+
+export interface SquareGridEdge {
+  id: string;
+  spaceIds: string[];
+  type?: string;
+  owner?: string;
+  label?: string;
+  data?: Record<string, unknown>;
+}
+
+export interface SquareGridVertex {
+  id: string;
+  spaceIds: string[];
+  type?: string;
+  owner?: string;
+  label?: string;
+  data?: Record<string, unknown>;
+}
+
+export interface SquareEdgePosition {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  midX: number;
+  midY: number;
+  angle: number;
+}
+
+export interface SquareVertexPosition {
+  x: number;
+  y: number;
+}
+
+export interface InteractiveSquareEdge {
+  id: string;
+  spaceIds: string[];
+  position: SquareEdgePosition;
+}
+
+export interface InteractiveSquareVertex {
+  id: string;
+  spaceIds: string[];
+  position: SquareVertexPosition;
 }
 
 export interface SquareGridProps {
-  /** Number of rows */
   rows: number;
-  /** Number of columns */
   cols: number;
-  /** Pieces on the board - defaults to empty */
+  cells?: GridCell[];
   pieces: GridPiece[];
-  /** Cell size in pixels */
+  edges?: SquareGridEdge[];
+  vertices?: SquareGridVertex[];
   cellSize?: number;
-  /** Custom cell renderer - required, receives row/col centered at cell position */
+  /** Receives row/col with transform centered at cell position */
   renderCell: (row: number, col: number) => ReactNode;
-  /** Custom piece renderer - required, receives piece centered at cell center */
+  /** Receives piece with transform centered at cell center */
   renderPiece: (piece: GridPiece) => ReactNode;
-  /** Show coordinate labels */
+  renderEdge?: (
+    edge: SquareGridEdge,
+    position: SquareEdgePosition,
+  ) => ReactNode;
+  renderVertex?: (
+    vertex: SquareGridVertex,
+    position: SquareVertexPosition,
+  ) => ReactNode;
   showCoordinates?: boolean;
-  /** Coordinate style */
   coordinateStyle?: "algebraic" | "numeric" | "none";
-  /** Container width (use "100%" for responsive) */
   width?: number | string;
-  /** Container height (use "100%" for responsive) */
   height?: number | string;
-  /** Enable pan and zoom */
   enablePanZoom?: boolean;
-  /** Initial zoom level */
   initialZoom?: number;
-  /** Min zoom level */
   minZoom?: number;
-  /** Max zoom level */
   maxZoom?: number;
-  /** Additional class names */
   className?: string;
+  interactiveEdges?: boolean;
+  interactiveVertices?: boolean;
+  onInteractiveEdgeClick?: (edge: InteractiveSquareEdge) => void;
+  onInteractiveEdgeEnter?: (edge: InteractiveSquareEdge) => void;
+  onInteractiveEdgeLeave?: (edge: InteractiveSquareEdge) => void;
+  onInteractiveVertexClick?: (vertex: InteractiveSquareVertex) => void;
+  onInteractiveVertexEnter?: (vertex: InteractiveSquareVertex) => void;
+  onInteractiveVertexLeave?: (vertex: InteractiveSquareVertex) => void;
+  renderInteractiveEdge?: (
+    edge: InteractiveSquareEdge,
+    isHovered: boolean,
+  ) => ReactNode;
+  renderInteractiveVertex?: (
+    vertex: InteractiveSquareVertex,
+    isHovered: boolean,
+  ) => ReactNode;
 }
 
 // ============================================================================
@@ -108,53 +128,23 @@ export interface SquareGridProps {
 // ============================================================================
 
 export interface DefaultGridCellProps {
-  /** Cell size in pixels */
   size: number;
-  /** Light or dark cell (for alternating pattern) */
   isLight?: boolean;
-  /** Light cell color */
   lightColor?: string;
-  /** Dark cell color */
   darkColor?: string;
-  /** Whether cell is highlighted */
   isHighlighted?: boolean;
-  /** Highlight color */
   highlightColor?: string;
-  /** Whether cell is selected */
   isSelected?: boolean;
-  /** Selection color */
   selectedColor?: string;
-  /** Whether to show valid move indicator */
   isValidMove?: boolean;
-  /** Whether to show capture indicator */
   isCapture?: boolean;
-  /** Click handler */
   onClick?: () => void;
-  /** Pointer enter handler */
   onPointerEnter?: () => void;
-  /** Pointer leave handler */
   onPointerLeave?: () => void;
-  /** Additional className */
   className?: string;
 }
 
-/**
- * Pre-built grid cell component for use in renderCell
- *
- * @example
- * ```tsx
- * renderCell={(row, col) => (
- *   <DefaultGridCell
- *     size={60}
- *     isLight={(row + col) % 2 === 0}
- *     lightColor="#f0d9b5"
- *     darkColor="#b58863"
- *     isHighlighted={selectedPiece?.row === row && selectedPiece?.col === col}
- *     onClick={() => handleCellClick(row, col)}
- *   />
- * )}
- * ```
- */
+/** Pre-built grid cell component for use in `renderCell`. */
 export function DefaultGridCell({
   size,
   isLight = true,
@@ -235,39 +225,17 @@ export function DefaultGridCell({
 }
 
 export interface DefaultGridPieceProps {
-  /** Cell size for scaling */
   size: number;
-  /** Piece color */
   color?: string;
-  /** Stroke color (for contrast) */
   strokeColor?: string;
-  /** Label to display (e.g., piece type initial) */
   label?: string;
-  /** Whether piece is being dragged */
   isDragging?: boolean;
-  /** Click handler */
   onClick?: () => void;
-  /** Pointer down handler (for drag start) */
   onPointerDown?: (e: React.PointerEvent) => void;
-  /** Additional className */
   className?: string;
 }
 
-/**
- * Pre-built grid piece component for use in renderPiece
- *
- * @example
- * ```tsx
- * renderPiece={(piece) => (
- *   <DefaultGridPiece
- *     size={60}
- *     color={piece.owner === 'white' ? '#f8fafc' : '#1e293b'}
- *     label={piece.type.charAt(0).toUpperCase()}
- *     onClick={() => handlePieceClick(piece.id)}
- *   />
- * )}
- * ```
- */
+/** Pre-built grid piece component for use in `renderPiece`. */
 export function DefaultGridPiece({
   size,
   color = "#94a3b8",
@@ -318,17 +286,11 @@ export function DefaultGridPiece({
 }
 
 export interface DefaultChessPieceProps {
-  /** Cell size for scaling */
   size: number;
-  /** Piece type (king, queen, rook, bishop, knight, pawn) */
   type: string;
-  /** Player color (white or black) */
   owner: "white" | "black";
-  /** Click handler */
   onClick?: () => void;
-  /** Pointer down handler (for drag start) */
   onPointerDown?: (e: React.PointerEvent) => void;
-  /** Additional className */
   className?: string;
 }
 
@@ -351,21 +313,7 @@ const CHESS_SYMBOLS: Record<string, Record<string, string>> = {
   },
 };
 
-/**
- * Pre-built chess piece component for use in renderPiece
- *
- * @example
- * ```tsx
- * renderPiece={(piece) => (
- *   <DefaultChessPiece
- *     size={60}
- *     type={piece.type}
- *     owner={piece.owner as 'white' | 'black'}
- *     onClick={() => handlePieceClick(piece.id)}
- *   />
- * )}
- * ```
- */
+/** Pre-built chess piece component using Unicode symbols. */
 export function DefaultChessPiece({
   size,
   type,
@@ -427,6 +375,162 @@ export function toNumeric(row: number, col: number): string {
   return `${row + 1},${col + 1}`;
 }
 
+function getCellId(cell: GridCell): string {
+  return cell.id ?? `${cell.row},${cell.col}`;
+}
+
+function edgePositionForCells(
+  firstCell: GridCell,
+  secondCell: GridCell,
+  cellSize: number,
+  labelMargin: number,
+): SquareEdgePosition | null {
+  if (
+    Math.abs(firstCell.row - secondCell.row) +
+      Math.abs(firstCell.col - secondCell.col) !==
+    1
+  ) {
+    return null;
+  }
+
+  const minRow = Math.min(firstCell.row, secondCell.row);
+  const minCol = Math.min(firstCell.col, secondCell.col);
+
+  if (firstCell.row === secondCell.row) {
+    const x = labelMargin + (minCol + 1) * cellSize;
+    const y1 = minRow * cellSize;
+    const y2 = y1 + cellSize;
+    return {
+      x1: x,
+      y1,
+      x2: x,
+      y2,
+      midX: x,
+      midY: (y1 + y2) / 2,
+      angle: 90,
+    };
+  }
+
+  const y = (minRow + 1) * cellSize;
+  const x1 = labelMargin + minCol * cellSize;
+  const x2 = x1 + cellSize;
+  return {
+    x1,
+    y1: y,
+    x2,
+    y2: y,
+    midX: (x1 + x2) / 2,
+    midY: y,
+    angle: 0,
+  };
+}
+
+function edgePositionForSide(
+  cell: GridCell,
+  side: "north" | "east" | "south" | "west",
+  cellSize: number,
+  labelMargin: number,
+): SquareEdgePosition {
+  const x = labelMargin + cell.col * cellSize;
+  const y = cell.row * cellSize;
+
+  switch (side) {
+    case "north":
+      return {
+        x1: x,
+        y1: y,
+        x2: x + cellSize,
+        y2: y,
+        midX: x + cellSize / 2,
+        midY: y,
+        angle: 0,
+      };
+    case "east":
+      return {
+        x1: x + cellSize,
+        y1: y,
+        x2: x + cellSize,
+        y2: y + cellSize,
+        midX: x + cellSize,
+        midY: y + cellSize / 2,
+        angle: 90,
+      };
+    case "south":
+      return {
+        x1: x,
+        y1: y + cellSize,
+        x2: x + cellSize,
+        y2: y + cellSize,
+        midX: x + cellSize / 2,
+        midY: y + cellSize,
+        angle: 0,
+      };
+    case "west":
+      return {
+        x1: x,
+        y1: y,
+        x2: x,
+        y2: y + cellSize,
+        midX: x,
+        midY: y + cellSize / 2,
+        angle: 90,
+      };
+  }
+}
+
+function cornerKeysForCell(
+  cell: GridCell,
+): Record<string, SquareVertexPosition> {
+  return {
+    [`${cell.col},${cell.row}`]: { x: cell.col, y: cell.row },
+    [`${cell.col + 1},${cell.row}`]: { x: cell.col + 1, y: cell.row },
+    [`${cell.col + 1},${cell.row + 1}`]: {
+      x: cell.col + 1,
+      y: cell.row + 1,
+    },
+    [`${cell.col},${cell.row + 1}`]: { x: cell.col, y: cell.row + 1 },
+  };
+}
+
+function vertexPositionForCells(
+  cells: readonly ResolvedCell[],
+  cellSize: number,
+  labelMargin: number,
+): SquareVertexPosition | null {
+  if (cells.length === 0) {
+    return null;
+  }
+
+  const candidateKeys = cells.map(
+    (cell) => new Set(Object.keys(cornerKeysForCell(cell))),
+  );
+  const sharedKeys = [...candidateKeys[0]!].filter((key) =>
+    candidateKeys.every((keySet) => keySet.has(key)),
+  );
+  if (sharedKeys.length !== 1) {
+    return null;
+  }
+
+  const sharedKey = sharedKeys[0];
+  if (!sharedKey) {
+    return null;
+  }
+  const [colToken, rowToken] = sharedKey.split(",");
+  if (colToken == null || rowToken == null) {
+    return null;
+  }
+  const col = Number(colToken);
+  const row = Number(rowToken);
+  if (!Number.isFinite(col) || !Number.isFinite(row)) {
+    return null;
+  }
+
+  return {
+    x: labelMargin + col * cellSize,
+    y: row * cellSize,
+  };
+}
+
 // ============================================================================
 // Component
 // ============================================================================
@@ -434,10 +538,15 @@ export function toNumeric(row: number, col: number): string {
 export function SquareGrid({
   rows,
   cols,
+  cells: providedCells,
   pieces = [],
+  edges = [],
+  vertices = [],
   cellSize = 60,
   renderCell,
   renderPiece,
+  renderEdge,
+  renderVertex,
   showCoordinates = true,
   coordinateStyle = "algebraic",
   width,
@@ -447,7 +556,24 @@ export function SquareGrid({
   minZoom = 0.5,
   maxZoom = 3,
   className,
+  interactiveEdges = false,
+  interactiveVertices = false,
+  onInteractiveEdgeClick,
+  onInteractiveEdgeEnter,
+  onInteractiveEdgeLeave,
+  onInteractiveVertexClick,
+  onInteractiveVertexEnter,
+  onInteractiveVertexLeave,
+  renderInteractiveEdge,
+  renderInteractiveVertex,
 }: SquareGridProps) {
+  const [hoveredInteractiveEdgeId, setHoveredInteractiveEdgeId] = useState<
+    string | null
+  >(null);
+  const [hoveredInteractiveVertexId, setHoveredInteractiveVertexId] = useState<
+    string | null
+  >(null);
+
   // Use the unified pan/zoom hook
   const {
     transform,
@@ -461,8 +587,6 @@ export function SquareGrid({
     mode: "viewbox",
   });
 
-  const svgRef = useRef<SVGSVGElement>(null);
-
   // Coordinate label margin
   const labelMargin = showCoordinates && coordinateStyle !== "none" ? 24 : 0;
 
@@ -472,13 +596,169 @@ export function SquareGrid({
   const totalWidth = gridWidth + labelMargin;
   const totalHeight = gridHeight + labelMargin;
 
-  // Generate cells
-  const cells: Array<{ row: number; col: number }> = [];
-  for (let row = 0; row < rows; row++) {
-    for (let col = 0; col < cols; col++) {
-      cells.push({ row, col });
+  const renderableCells = useMemo(() => {
+    const result: Array<{ row: number; col: number }> = [];
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        result.push({ row, col });
+      }
     }
-  }
+    return result;
+  }, [rows, cols]);
+
+  const resolvedCells = useMemo<ResolvedCell[]>(() => {
+    if (providedCells && providedCells.length > 0) {
+      return providedCells.map((cell) => ({
+        ...cell,
+        id: getCellId(cell),
+      }));
+    }
+
+    return renderableCells.map(({ row, col }) => ({
+      id: `${row},${col}`,
+      row,
+      col,
+    }));
+  }, [providedCells, renderableCells]);
+
+  const cellsById = useMemo(
+    () => new Map(resolvedCells.map((cell) => [cell.id, cell] as const)),
+    [resolvedCells],
+  );
+
+  const resolvedEdgePositions = useMemo(
+    () =>
+      edges
+        .map((edge) => {
+          if (edge.spaceIds.length < 2) {
+            return null;
+          }
+          const firstCell = cellsById.get(edge.spaceIds[0] ?? "");
+          const secondCell = cellsById.get(edge.spaceIds[1] ?? "");
+          if (!firstCell || !secondCell) {
+            return null;
+          }
+          const position = edgePositionForCells(
+            firstCell,
+            secondCell,
+            cellSize,
+            labelMargin,
+          );
+          return position ? { edge, position } : null;
+        })
+        .filter(
+          (
+            edge,
+          ): edge is { edge: SquareGridEdge; position: SquareEdgePosition } =>
+            edge != null,
+        ),
+    [cellSize, cellsById, edges, labelMargin],
+  );
+
+  const resolvedVertexPositions = useMemo(
+    () =>
+      vertices
+        .map((vertex) => {
+          const vertexCells = vertex.spaceIds
+            .map((spaceId) => cellsById.get(spaceId))
+            .filter((cell): cell is ResolvedCell => cell != null);
+          const position = vertexPositionForCells(
+            vertexCells,
+            cellSize,
+            labelMargin,
+          );
+          return position ? { vertex, position } : null;
+        })
+        .filter(
+          (
+            vertex,
+          ): vertex is {
+            vertex: SquareGridVertex;
+            position: SquareVertexPosition;
+          } => vertex != null,
+        ),
+    [cellSize, cellsById, labelMargin, vertices],
+  );
+
+  const autoInteractiveEdges = useMemo(() => {
+    if (!interactiveEdges) {
+      return [] as InteractiveSquareEdge[];
+    }
+
+    const edgeMap = new Map<string, InteractiveSquareEdge>();
+    const sideConfigs = [
+      {
+        side: "north" as const,
+        key: (cell: GridCell) =>
+          `${cell.col},${cell.row}::${cell.col + 1},${cell.row}`,
+      },
+      {
+        side: "east" as const,
+        key: (cell: GridCell) =>
+          `${cell.col + 1},${cell.row}::${cell.col + 1},${cell.row + 1}`,
+      },
+      {
+        side: "south" as const,
+        key: (cell: GridCell) =>
+          `${cell.col},${cell.row + 1}::${cell.col + 1},${cell.row + 1}`,
+      },
+      {
+        side: "west" as const,
+        key: (cell: GridCell) =>
+          `${cell.col},${cell.row}::${cell.col},${cell.row + 1}`,
+      },
+    ];
+
+    for (const cell of resolvedCells) {
+      for (const { side, key } of sideConfigs) {
+        const geometryKey = key(cell);
+        const existing = edgeMap.get(geometryKey);
+        edgeMap.set(geometryKey, {
+          id: `interactive-edge:${geometryKey}`,
+          spaceIds: existing
+            ? [...new Set([...existing.spaceIds, cell.id])]
+            : [cell.id],
+          position:
+            existing?.position ??
+            edgePositionForSide(cell, side, cellSize, labelMargin),
+        });
+      }
+    }
+
+    return [...edgeMap.values()].sort((left, right) =>
+      left.id.localeCompare(right.id),
+    );
+  }, [cellSize, interactiveEdges, labelMargin, resolvedCells]);
+
+  const autoInteractiveVertices = useMemo(() => {
+    if (!interactiveVertices) {
+      return [] as InteractiveSquareVertex[];
+    }
+
+    const vertexMap = new Map<string, InteractiveSquareVertex>();
+
+    for (const cell of resolvedCells) {
+      for (const [geometryKey, gridPoint] of Object.entries(
+        cornerKeysForCell(cell),
+      )) {
+        const existing = vertexMap.get(geometryKey);
+        vertexMap.set(geometryKey, {
+          id: `interactive-vertex:${geometryKey}`,
+          spaceIds: existing
+            ? [...new Set([...existing.spaceIds, cell.id])]
+            : [cell.id],
+          position: existing?.position ?? {
+            x: labelMargin + gridPoint.x * cellSize,
+            y: gridPoint.y * cellSize,
+          },
+        });
+      }
+    }
+
+    return [...vertexMap.values()].sort((left, right) =>
+      left.id.localeCompare(right.id),
+    );
+  }, [cellSize, interactiveVertices, labelMargin, resolvedCells]);
 
   // Calculate viewBox for pan/zoom
   const viewBoxWidth = totalWidth / transform.zoom;
@@ -492,7 +772,6 @@ export function SquareGrid({
 
   return (
     <svg
-      ref={svgRef}
       width={svgWidth}
       height={svgHeight}
       viewBox={
@@ -520,7 +799,7 @@ export function SquareGrid({
 
       {/* Cells layer */}
       <g className="cells" role="list" aria-label="Grid cells">
-        {cells.map(({ row, col }) => {
+        {renderableCells.map(({ row, col }) => {
           const x = labelMargin + col * cellSize;
           const y = row * cellSize;
 
@@ -540,6 +819,106 @@ export function SquareGrid({
           );
         })}
       </g>
+
+      {renderEdge && resolvedEdgePositions.length > 0 && (
+        <g className="edges" aria-label="Board edges">
+          {resolvedEdgePositions.map(({ edge, position }) => (
+            <g key={edge.id}>{renderEdge(edge, position)}</g>
+          ))}
+        </g>
+      )}
+
+      {interactiveEdges && (
+        <g className="interactive-edges" aria-label="Interactive edges">
+          {autoInteractiveEdges.map((edge) => (
+            <g
+              key={edge.id}
+              onClick={() => onInteractiveEdgeClick?.(edge)}
+              onPointerEnter={() => {
+                setHoveredInteractiveEdgeId(edge.id);
+                onInteractiveEdgeEnter?.(edge);
+              }}
+              onPointerLeave={() => {
+                setHoveredInteractiveEdgeId((currentId) =>
+                  currentId === edge.id ? null : currentId,
+                );
+                onInteractiveEdgeLeave?.(edge);
+              }}
+              className={clsx(
+                (onInteractiveEdgeClick ||
+                  onInteractiveEdgeEnter ||
+                  onInteractiveEdgeLeave) &&
+                  "cursor-pointer",
+              )}
+            >
+              {renderInteractiveEdge ? (
+                renderInteractiveEdge(
+                  edge,
+                  hoveredInteractiveEdgeId === edge.id,
+                )
+              ) : (
+                <line
+                  x1={edge.position.x1}
+                  y1={edge.position.y1}
+                  x2={edge.position.x2}
+                  y2={edge.position.y2}
+                  stroke="transparent"
+                  strokeWidth={Math.max(12, cellSize * 0.18)}
+                />
+              )}
+            </g>
+          ))}
+        </g>
+      )}
+
+      {renderVertex && resolvedVertexPositions.length > 0 && (
+        <g className="vertices" aria-label="Board vertices">
+          {resolvedVertexPositions.map(({ vertex, position }) => (
+            <g key={vertex.id}>{renderVertex(vertex, position)}</g>
+          ))}
+        </g>
+      )}
+
+      {interactiveVertices && (
+        <g className="interactive-vertices" aria-label="Interactive vertices">
+          {autoInteractiveVertices.map((vertex) => (
+            <g
+              key={vertex.id}
+              onClick={() => onInteractiveVertexClick?.(vertex)}
+              onPointerEnter={() => {
+                setHoveredInteractiveVertexId(vertex.id);
+                onInteractiveVertexEnter?.(vertex);
+              }}
+              onPointerLeave={() => {
+                setHoveredInteractiveVertexId((currentId) =>
+                  currentId === vertex.id ? null : currentId,
+                );
+                onInteractiveVertexLeave?.(vertex);
+              }}
+              className={clsx(
+                (onInteractiveVertexClick ||
+                  onInteractiveVertexEnter ||
+                  onInteractiveVertexLeave) &&
+                  "cursor-pointer",
+              )}
+            >
+              {renderInteractiveVertex ? (
+                renderInteractiveVertex(
+                  vertex,
+                  hoveredInteractiveVertexId === vertex.id,
+                )
+              ) : (
+                <circle
+                  cx={vertex.position.x}
+                  cy={vertex.position.y}
+                  r={Math.max(8, cellSize * 0.12)}
+                  fill="transparent"
+                />
+              )}
+            </g>
+          ))}
+        </g>
+      )}
 
       {/* Coordinate labels */}
       {showCoordinates && coordinateStyle !== "none" && (

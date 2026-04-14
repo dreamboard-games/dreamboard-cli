@@ -60,10 +60,6 @@ type CompiledResultResult = {
   ruleId?: string;
 };
 
-type DynamicScaffoldResult = {
-  allFiles: Record<string, string | null>;
-};
-
 type CompletionLights = {
   rules: boolean;
   manifest: boolean;
@@ -101,7 +97,6 @@ type HarnessCalls = {
     localFiles: Record<string, string>;
     remoteUserFiles: Record<string, string>;
   }>;
-  collectModifiedStaticSdkFiles: string[];
   configureClient: ResolvedConfig[];
   getAuthoringHeadSdk: string[];
   createAuthoringStateSdk: Array<{
@@ -124,6 +119,14 @@ type HarnessCalls = {
   createSourceRevisionSdk: Array<{
     gameId: string;
     request: Record<string, unknown>;
+  }>;
+  uploadSourceBlobsSdk: Array<{
+    gameId: string;
+    blobs: Array<{
+      content: string;
+      contentHash: string;
+      byteSize: number;
+    }>;
   }>;
   fetchLatestRemoteSources: string[];
   findLatestSuccessfulCompiledResult: string[];
@@ -153,10 +156,13 @@ type HarnessCalls = {
     gameId: string;
     ruleText: string;
   }>;
+  applyWorkspaceCodegen: Array<{
+    projectRoot: string;
+    manifest: Record<string, unknown>;
+  }>;
   scaffoldStaticWorkspace: Array<{
     projectRoot: string;
     mode: "new" | "update";
-    options: { updateSdk?: boolean };
   }>;
   updateProjectState: Array<{
     rootDir: string;
@@ -165,10 +171,6 @@ type HarnessCalls = {
   writeManifest: Array<{
     rootDir: string;
     manifest: Record<string, unknown>;
-  }>;
-  writeScaffoldFiles: Array<{
-    rootDir: string;
-    files: Record<string, string | null>;
   }>;
   writeSnapshot: string[];
   writeSnapshotFromFiles: Array<{
@@ -188,6 +190,7 @@ export type AuthoringCommandTestState = {
   completionLights: CompletionLights | null;
   config: ResolvedConfig;
   consoleCalls: ConsoleCall[];
+  createAuthoringStateError: Error | null;
   createAuthoringStateResult: RemoteProjectSources;
   queueCompiledResultJobError: Error | null;
   createCompileJobResult: {
@@ -196,8 +199,13 @@ export type AuthoringCommandTestState = {
   createCompiledResultResult: CompiledResultResult;
   createSourceRevisionError: Error | null;
   createSourceRevisionResult: SourceRevisionResult;
-  dynamicScaffoldError: Error | null;
-  dynamicScaffoldResult: DynamicScaffoldResult;
+  applyWorkspaceCodegenError: Error | null;
+  applyWorkspaceCodegenErrorOnCall: number | null;
+  applyWorkspaceCodegenNextCollectLocalFilesResult: Record<
+    string,
+    string
+  > | null;
+  applyWorkspaceCodegenNextLocalDiffResult: LocalDiff | null;
   fetchLatestRemoteSourcesResult: RemoteProjectSources | null;
   getAuthoringHeadSdkResult: RemoteProjectSources | null;
   findLatestSuccessfulCompiledResultResult: { id: string } | null;
@@ -220,9 +228,9 @@ export type AuthoringCommandTestState = {
     output: string;
     skipped?: boolean;
   };
+  loadManifestError: Error | null;
   loadManifestResult: Record<string, unknown>;
   loadRuleResult: string;
-  modifiedStaticSdkFiles: string[];
   projectConfig: ProjectConfig;
   projectRoot: string;
   readTextFiles: Record<string, string | null>;
@@ -235,12 +243,7 @@ export type AuthoringCommandTestState = {
   saveRuleSdkResult: {
     ruleId: string;
   };
-  scaffoldWriteResult: {
-    written: string[];
-    skipped: string[];
-  };
   waitForCompiledResultJobError: Error | null;
-  writeScaffoldFilesError: Error | null;
 };
 
 function createDefaultState(): AuthoringCommandTestState {
@@ -248,7 +251,6 @@ function createDefaultState(): AuthoringCommandTestState {
     calls: {
       assertCliStaticScaffoldComplete: [],
       buildRemoteAlignedSnapshotFiles: [],
-      collectModifiedStaticSdkFiles: [],
       configureClient: [],
       getAuthoringHeadSdk: [],
       createAuthoringStateSdk: [],
@@ -257,6 +259,7 @@ function createDefaultState(): AuthoringCommandTestState {
       runLocalTypecheck: [],
       waitForCompiledResultJobSdk: [],
       createSourceRevisionSdk: [],
+      uploadSourceBlobsSdk: [],
       fetchLatestRemoteSources: [],
       findLatestSuccessfulCompiledResult: [],
       getLatestManifestIdSdk: [],
@@ -267,10 +270,10 @@ function createDefaultState(): AuthoringCommandTestState {
       requireAuth: [],
       saveManifestSdk: [],
       saveRuleSdk: [],
+      applyWorkspaceCodegen: [],
       scaffoldStaticWorkspace: [],
       updateProjectState: [],
       writeManifest: [],
-      writeScaffoldFiles: [],
       writeSnapshot: [],
       writeSnapshotFromFiles: [],
     },
@@ -284,6 +287,7 @@ function createDefaultState(): AuthoringCommandTestState {
       authToken: "token",
     },
     consoleCalls: [],
+    createAuthoringStateError: null,
     createAuthoringStateResult: {
       authoringStateId: "authoring-2",
       files: {
@@ -311,12 +315,10 @@ function createDefaultState(): AuthoringCommandTestState {
       id: "source-revision-2",
       treeHash: "tree-hash-2",
     },
-    dynamicScaffoldError: null,
-    dynamicScaffoldResult: {
-      allFiles: {
-        "app/phases/setup.ts": "export const phase = {}\n",
-      },
-    },
+    applyWorkspaceCodegenError: null,
+    applyWorkspaceCodegenErrorOnCall: null,
+    applyWorkspaceCodegenNextCollectLocalFilesResult: null,
+    applyWorkspaceCodegenNextLocalDiffResult: null,
     fetchLatestRemoteSourcesResult: null,
     getAuthoringHeadSdkResult: {
       authoringStateId: "authoring-1",
@@ -376,13 +378,26 @@ function createDefaultState(): AuthoringCommandTestState {
       success: true,
       output: "",
     },
+    loadManifestError: null,
     loadManifestResult: {
-      stateMachine: {
-        states: [{ name: "setup" }],
+      players: {
+        minPlayers: 2,
+        maxPlayers: 4,
+        optimalPlayers: 2,
       },
+      cardSets: [],
+      zones: [],
+      boardTemplates: [],
+      boards: [],
+      pieceTypes: [],
+      pieceSeeds: [],
+      dieTypes: [],
+      dieSeeds: [],
+      resources: [],
+      setupOptions: [],
+      setupProfiles: [],
     },
     loadRuleResult: "rule text",
-    modifiedStaticSdkFiles: [],
     projectConfig: {
       gameId: "game-1",
       slug: "test-game",
@@ -433,12 +448,7 @@ function createDefaultState(): AuthoringCommandTestState {
     saveRuleSdkResult: {
       ruleId: "rule-2",
     },
-    scaffoldWriteResult: {
-      written: ["app/phases/setup.ts"],
-      skipped: [],
-    },
     waitForCompiledResultJobError: null,
-    writeScaffoldFilesError: null,
   };
 }
 
@@ -489,34 +499,88 @@ mock.module("@dreamboard/api-client", () => ({
             },
     };
   },
-  scaffoldGameSourcesV3: async () => {
-    const state = authoringCommandTestHarness.current;
-    if (state.dynamicScaffoldError) {
-      return {
-        data: null,
-        error: { message: state.dynamicScaffoldError.message },
-        response: { status: 500 },
-      };
-    }
-    return {
-      data: { generatedFiles: {}, seedFiles: {} },
-      error: null,
-      response: { status: 200 },
-    };
-  },
 }));
 
+function mockContentHash(content: string): string {
+  const checksum = Array.from(content).reduce(
+    (total, char) => total + char.charCodeAt(0),
+    0,
+  );
+  return `content-hash-${content.length}-${checksum}`;
+}
+
 mock.module("@dreamboard/api-client/source-revisions", () => ({
-  planSourceRevisionTransport: (request: {
-    changes: Array<{ kind: string }>;
-  }) => ({
-    upsertCount: request.changes.filter((change) => change.kind === "upsert")
-      .length,
-    byteLength: JSON.stringify(request).length,
-    useBundle: false,
-    request,
-    serializedJson: JSON.stringify(request),
-  }),
+  mapUpsertBlobContentsByContentHash: (
+    localChanges: ReadonlyArray<
+      | { kind: "upsert"; path: string; content: string }
+      | { kind: "delete"; path: string }
+    >,
+    materializedChanges: ReadonlyArray<
+      | {
+          kind: "upsert";
+          path: string;
+          contentHash: string;
+          byteSize: number;
+        }
+      | { kind: "delete"; path: string }
+    >,
+  ) => {
+    const uploadBlobs = new Map<
+      string,
+      { contentHash: string; byteSize: number; content: string }
+    >();
+    const length = Math.min(localChanges.length, materializedChanges.length);
+    for (let index = 0; index < length; index += 1) {
+      const localChange = localChanges[index];
+      const materializedChange = materializedChanges[index];
+      if (
+        localChange?.kind !== "upsert" ||
+        materializedChange?.kind !== "upsert"
+      ) {
+        continue;
+      }
+
+      uploadBlobs.set(materializedChange.contentHash, {
+        contentHash: materializedChange.contentHash,
+        byteSize: materializedChange.byteSize,
+        content: localChange.content,
+      });
+    }
+
+    return uploadBlobs;
+  },
+  materializeSourceChangeOperations: async (
+    changes: Array<
+      | { kind: "upsert"; path: string; content: string }
+      | { kind: "delete"; path: string }
+    >,
+  ) => {
+    const textEncoder = new TextEncoder();
+    const blobsByHash = new Map<
+      string,
+      { contentHash: string; byteSize: number }
+    >();
+    const materialized = changes.map((change) => {
+      if (change.kind === "delete") {
+        return structuredClone(change);
+      }
+
+      const contentHash = mockContentHash(change.content);
+      const byteSize = textEncoder.encode(change.content).byteLength;
+      blobsByHash.set(contentHash, { contentHash, byteSize });
+      return {
+        kind: "upsert" as const,
+        path: change.path,
+        contentHash,
+        byteSize,
+      };
+    });
+
+    return {
+      blobs: Array.from(blobsByHash.values()),
+      changes: materialized,
+    };
+  },
 }));
 
 mock.module("../config/global-config.js", () => ({
@@ -574,6 +638,9 @@ mock.module("../services/api/index.js", () => ({
       gameId,
       request: structuredClone(request),
     });
+    if (state.createAuthoringStateError) {
+      throw state.createAuthoringStateError;
+    }
     return structuredClone(state.createAuthoringStateResult);
   },
   queueCompiledResultJobSdk: async (options: {
@@ -610,6 +677,20 @@ mock.module("../services/api/index.js", () => ({
       throw state.createSourceRevisionError;
     }
     return structuredClone(state.createSourceRevisionResult);
+  },
+  uploadSourceBlobsSdk: async (
+    gameId: string,
+    blobs: Array<{
+      content: string;
+      contentHash: string;
+      byteSize: number;
+    }>,
+  ) => {
+    const state = authoringCommandTestHarness.current;
+    state.calls.uploadSourceBlobsSdk.push({
+      gameId,
+      blobs: structuredClone(blobs),
+    });
   },
   findLatestSuccessfulCompiledResult: async (gameId: string) => {
     const state = authoringCommandTestHarness.current;
@@ -709,11 +790,6 @@ mock.module("../services/api/index.js", () => ({
   },
 }));
 
-mock.module("../services/project/dynamic-scaffold-response.js", () => ({
-  validateDynamicScaffoldResponse: () =>
-    structuredClone(authoringCommandTestHarness.current.dynamicScaffoldResult),
-}));
-
 mock.module("../services/project/local-files.js", () => ({
   collectLocalFiles: async () =>
     structuredClone(
@@ -726,27 +802,19 @@ mock.module("../services/project/local-files.js", () => ({
     filePath !== "manifest.json" &&
     filePath !== "rule.md",
   loadManifest: async () =>
-    structuredClone(authoringCommandTestHarness.current.loadManifestResult),
+    (() => {
+      const state = authoringCommandTestHarness.current;
+      if (state.loadManifestError) {
+        throw state.loadManifestError;
+      }
+      return structuredClone(state.loadManifestResult);
+    })(),
   loadRule: async () => authoringCommandTestHarness.current.loadRuleResult,
   writeManifest: async (rootDir: string, manifest: Record<string, unknown>) => {
     authoringCommandTestHarness.current.calls.writeManifest.push({
       rootDir,
       manifest: structuredClone(manifest),
     });
-  },
-  writeScaffoldFiles: async (
-    rootDir: string,
-    files: Record<string, string | null>,
-  ) => {
-    const state = authoringCommandTestHarness.current;
-    state.calls.writeScaffoldFiles.push({
-      rootDir,
-      files: structuredClone(files),
-    });
-    if (state.writeScaffoldFilesError) {
-      throw state.writeScaffoldFilesError;
-    }
-    return structuredClone(state.scaffoldWriteResult);
   },
   writeSnapshot: async (rootDir: string) => {
     authoringCommandTestHarness.current.calls.writeSnapshot.push(rootDir);
@@ -774,20 +842,13 @@ mock.module("../services/project/static-scaffold.js", () => ({
       },
     );
   },
-  collectModifiedStaticSdkFiles: async () => {
-    const state = authoringCommandTestHarness.current;
-    state.calls.collectModifiedStaticSdkFiles.push("called");
-    return [...state.modifiedStaticSdkFiles];
-  },
   scaffoldStaticWorkspace: async (
     projectRoot: string,
     mode: "new" | "update",
-    options: { updateSdk?: boolean } = {},
   ) => {
     authoringCommandTestHarness.current.calls.scaffoldStaticWorkspace.push({
       projectRoot,
       mode,
-      options: { ...options },
     });
   },
 }));
@@ -797,6 +858,42 @@ mock.module("../services/project/local-typecheck.js", () => ({
     const state = authoringCommandTestHarness.current;
     state.calls.runLocalTypecheck.push(projectRoot);
     return structuredClone(state.localTypecheckResult);
+  },
+}));
+
+mock.module("../services/project/workspace-codegen.js", () => ({
+  applyWorkspaceCodegen: async (options: {
+    projectRoot: string;
+    manifest: Record<string, unknown>;
+  }) => {
+    const state = authoringCommandTestHarness.current;
+    state.calls.applyWorkspaceCodegen.push({
+      projectRoot: options.projectRoot,
+      manifest: structuredClone(options.manifest),
+    });
+    if (
+      state.applyWorkspaceCodegenError &&
+      (state.applyWorkspaceCodegenErrorOnCall === null ||
+        state.applyWorkspaceCodegenErrorOnCall ===
+          state.calls.applyWorkspaceCodegen.length)
+    ) {
+      throw state.applyWorkspaceCodegenError;
+    }
+    if (state.applyWorkspaceCodegenNextCollectLocalFilesResult) {
+      state.collectLocalFilesResult = structuredClone(
+        state.applyWorkspaceCodegenNextCollectLocalFilesResult,
+      );
+    }
+    if (state.applyWorkspaceCodegenNextLocalDiffResult) {
+      state.getLocalDiffResult = structuredClone(
+        state.applyWorkspaceCodegenNextLocalDiffResult,
+      );
+    }
+    return {
+      written: [],
+      skipped: [],
+      merged: [],
+    };
   },
 }));
 

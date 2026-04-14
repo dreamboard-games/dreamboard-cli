@@ -1,5 +1,5 @@
 import { createContext, useContext } from "react";
-import { PluginSessionState } from "../types/runtime-api";
+import type { PluginSessionState } from "../types/runtime-api";
 
 /**
  * Context for plugin session metadata.

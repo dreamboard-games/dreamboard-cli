@@ -12,6 +12,7 @@ import {
 import {
   getProjectAuthoringState,
   getProjectCompileState,
+  getProjectPendingAuthoringSync,
 } from "../services/project/project-state.js";
 
 export default defineCommand({
@@ -33,6 +34,7 @@ export default defineCommand({
 
     const diff = await getLocalDiff(projectRoot);
     const localAuthoring = getProjectAuthoringState(projectConfig);
+    const pendingSync = getProjectPendingAuthoringSync(projectConfig);
     const localCompile = getProjectCompileState(projectConfig);
     let remoteHeadId: string | null = null;
     let authoredRelation:
@@ -40,6 +42,7 @@ export default defineCommand({
       | "ahead"
       | "behind"
       | "diverged"
+      | "pending_finalize"
       | "unknown" = "unknown";
     let compileRelation:
       | "successful"
@@ -69,7 +72,9 @@ export default defineCommand({
         diff.modified.length > 0 ||
         diff.added.length > 0 ||
         diff.deleted.length > 0;
-      if (!localAuthoring.authoringStateId) {
+      if (pendingSync) {
+        authoredRelation = "pending_finalize";
+      } else if (!localAuthoring.authoringStateId) {
         authoredRelation = "unknown";
       } else if (remoteHeadId === null) {
         authoredRelation = hasLocalDiff ? "ahead" : "unknown";
@@ -111,6 +116,7 @@ export default defineCommand({
               localAuthoringStateId: localAuthoring.authoringStateId ?? null,
               remoteAuthoringStateId: remoteHeadId,
               relation: authoredRelation,
+              pendingSync: pendingSync ?? null,
             },
             compile: {
               relation: compileRelation,
@@ -160,6 +166,11 @@ export default defineCommand({
     consola.info(
       `Authored state: ${authoredRelation} (local=${localAuthoring.authoringStateId ?? "unknown"}, remote=${remoteHeadId ?? "none"})`,
     );
+    if (pendingSync) {
+      consola.warn(
+        `Previous sync is still being finalized (${pendingSync.phase}). Run 'dreamboard sync' again to finish updating local scaffold files.`,
+      );
+    }
     consola.info(`Compile state: ${compileRelation}`);
     if (compileRelation === "failed") {
       consola.warn(

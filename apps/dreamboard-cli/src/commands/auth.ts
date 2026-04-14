@@ -9,6 +9,10 @@ import {
   loadGlobalConfig,
   saveGlobalConfig,
 } from "../config/global-config.js";
+import {
+  formatStoredSessionInvalidMessage,
+  isInvalidRefreshTokenMessage,
+} from "../config/resolve.js";
 import { parseAuthCommandArgs } from "../flags.js";
 import { IS_PUBLISHED_BUILD, PUBLISHED_ENVIRONMENT } from "../build-target.js";
 
@@ -147,6 +151,7 @@ export default defineCommand({
       let accessToken = config.authToken;
       let refreshToken = config.refreshToken;
       let didRefreshStoredSession = false;
+      let didUseBrowserLogin = false;
 
       if (accessToken) {
         if (refreshToken) {
@@ -156,22 +161,31 @@ export default defineCommand({
           });
 
           if (error) {
-            throw new Error(
-              `Stored session refresh failed: ${error.message}. Run 'dreamboard auth clear' and retry 'dreamboard auth login'.`,
-            );
+            if (isInvalidRefreshTokenMessage(error.message)) {
+              consola.warn(formatStoredSessionInvalidMessage(error.message));
+              accessToken = undefined;
+              refreshToken = undefined;
+            } else {
+              throw new Error(
+                `Stored session refresh failed: ${error.message}`,
+              );
+            }
+          } else {
+            accessToken = data.session?.access_token ?? accessToken;
+            refreshToken = data.session?.refresh_token ?? refreshToken;
+            didRefreshStoredSession = true;
           }
-
-          accessToken = data.session?.access_token ?? accessToken;
-          refreshToken = data.session?.refresh_token ?? refreshToken;
-          didRefreshStoredSession = true;
         }
-      } else {
+      }
+
+      if (!accessToken) {
         const browserLogin = await loginWithBrowser(
           envConfig.webBaseUrl,
           shouldPrintJwt,
         );
         accessToken = browserLogin.token;
         refreshToken = browserLogin.refreshToken;
+        didUseBrowserLogin = true;
       }
 
       if (!accessToken) {
@@ -200,17 +214,17 @@ export default defineCommand({
         return;
       }
 
-      if (config.authToken && didRefreshStoredSession) {
+      if (didUseBrowserLogin) {
+        consola.success(
+          `Browser login successful. Session saved to ${getGlobalConfigPath()}.`,
+        );
+      } else if (config.authToken && didRefreshStoredSession) {
         consola.success(
           `Stored auth session refreshed and saved to ${getGlobalConfigPath()}.`,
         );
       } else if (config.authToken) {
         consola.success(
           `Stored auth token found. Session data remains in ${getGlobalConfigPath()}.`,
-        );
-      } else {
-        consola.success(
-          `Browser login successful. Session saved to ${getGlobalConfigPath()}.`,
         );
       }
       return;

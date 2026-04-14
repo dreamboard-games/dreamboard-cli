@@ -19,4 +19,5 @@ export { getLatestRuleIdSdk, saveRuleSdk } from "./rule-api.js";
 export {
   createSourceRevisionSdk,
   queueCompiledResultJobSdk,
+  uploadSourceBlobsSdk,
 } from "./source-revisions-api.js";

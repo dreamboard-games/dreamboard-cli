@@ -1,9 +1,4 @@
-/**
- * Drawer component - Mobile-friendly slide-out panel
- *
- * Built on vaul for smooth, native-feeling drawer interactions.
- * Used as fallback when cards can't fit on screen.
- */
+/** Mobile-friendly slide-out panel built on vaul. Used as fallback when cards can't fit on screen. */
 
 import * as React from "react";
 import { Drawer as DrawerPrimitive } from "vaul";
@@ -53,9 +48,7 @@ function DrawerOverlay({
 
 interface DrawerContentProps
   extends React.ComponentPropsWithoutRef<typeof DrawerPrimitive.Content> {
-  /** Whether to show the drag handle indicator */
   showHandle?: boolean;
-  /** Content to render inside the drawer */
   children?: React.ReactNode;
 }
 
@@ -102,7 +95,10 @@ function DrawerContent({
   );
 }
 
-function DrawerHeader({ className, ...props }: React.ComponentProps<"div">) {
+function DrawerHeader({
+  className,
+  ...props
+}: React.ComponentPropsWithoutRef<"div">) {
   return (
     <div
       data-slot="drawer-header"
@@ -112,7 +108,10 @@ function DrawerHeader({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
-function DrawerFooter({ className, ...props }: React.ComponentProps<"div">) {
+function DrawerFooter({
+  className,
+  ...props
+}: React.ComponentPropsWithoutRef<"div">) {
   return (
     <div
       data-slot="drawer-footer"

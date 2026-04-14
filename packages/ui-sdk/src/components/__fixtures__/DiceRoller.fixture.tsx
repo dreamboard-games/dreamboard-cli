@@ -2,8 +2,9 @@
  * DiceRoller component fixtures
  * Demonstrates dice display with separate roll action handling
  *
- * Note: In production, the roll() function comes from useDice hook.
- * These fixtures simulate the pattern with local state.
+ * In authored game UIs, the roll action should come from reducer actions or
+ * reducer-projected view state. These fixtures simulate that pattern with local
+ * state.
  */
 import React, { useState, useCallback } from "react";
 import { motion } from "framer-motion";
@@ -118,7 +119,7 @@ function RollButton({
   );
 }
 
-// Simulate useDice hook behavior for fixtures
+// Simulate reducer-driven dice state for fixtures
 function useSimulatedDice(diceCount: number) {
   const [values, setValues] = useState<Array<number | undefined>>(
     Array(diceCount).fill(undefined),
@@ -406,12 +407,12 @@ export default {
   ),
 
   /**
-   * Example of how to use with useDice hook (pseudo-code)
+   * Example of how to use with reducer-provided dice state (pseudo-code)
    *
    * ```tsx
    * function CatanDicePanel() {
-   *   const { values, sum, allRolled, roll } = useDice(['die-1', 'die-2']);
-   *   const { isMyTurn } = useGameState();
+   *   const view = useGameView();
+   *   const actions = useActions();
    *
    *   return (
    *     <div>

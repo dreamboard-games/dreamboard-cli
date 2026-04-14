@@ -8,11 +8,8 @@ import { Component, type ReactNode, type ErrorInfo } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 
 export interface ErrorBoundaryProps {
-  /** Content to render */
   children: ReactNode;
-  /** Custom fallback UI */
   fallback?: (error: Error, reset: () => void) => ReactNode;
-  /** Error handler callback */
   onError?: (error: Error, errorInfo: ErrorInfo) => void;
 }
 
@@ -21,9 +18,6 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-/**
- * Error boundary component with fallback UI
- */
 export class ErrorBoundary extends Component<
   ErrorBoundaryProps,
   ErrorBoundaryState
@@ -65,9 +59,6 @@ export class ErrorBoundary extends Component<
   }
 }
 
-/**
- * Default error fallback UI
- */
 function DefaultErrorFallback({
   error,
   onReset,

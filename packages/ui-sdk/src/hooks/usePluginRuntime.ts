@@ -15,10 +15,16 @@ export interface UsePluginRuntimeOptions {
 export interface UsePluginRuntimeResult {
   /** The RuntimeAPI instance */
   runtime: PluginRuntimeAPI;
-  /** Whether the game state is available and ready to render */
+  /** Whether the initial reducer-native snapshot is available and ready */
   isReady: boolean;
   /** Error message if initialization failed */
   error: string | null;
+}
+
+function hasProjectedView(
+  snapshot: ReturnType<PluginRuntimeAPI["getSnapshot"]> | null | undefined,
+): boolean {
+  return snapshot !== null && snapshot !== undefined && snapshot.view != null;
 }
 
 /**
@@ -26,10 +32,10 @@ export interface UsePluginRuntimeResult {
  *
  * This hook handles:
  * 1. Creating the RuntimeAPI
- * 2. Waiting for state-sync message before setting isReady
+ * 2. Waiting for the first state-sync snapshot before setting isReady
  *
- * In the new architecture, the host only renders the plugin when game state
- * is available, so isReady should become true quickly after init.
+ * In the new architecture, the host only renders the plugin when a reducer-native
+ * snapshot is available, so isReady should become true quickly after init.
  *
  * @example
  * ```tsx
@@ -56,17 +62,16 @@ export function usePluginRuntime(
   // Create runtime once and keep stable reference
   const [runtime] = useState<PluginRuntimeAPI>(() => createPluginRuntimeAPI());
   const [isReady, setIsReady] = useState(() => {
-    // Check if we already have state (host may have sent state-sync before mount)
     const snapshot = runtime.getSnapshot?.();
-    return snapshot?.game !== null && snapshot?.game !== undefined;
+    return hasProjectedView(snapshot);
   });
   const [error, setError] = useState<string | null>(null);
 
-  // Subscribe to state-sync and set isReady when game state arrives
+  // Subscribe to state-sync and set isReady when the first snapshot arrives.
   useEffect(() => {
-    // Check if already ready
     const snapshot = runtime.getSnapshot?.();
-    if (snapshot?.game) {
+    if (hasProjectedView(snapshot)) {
+      setError(null);
       setIsReady(true);
       return;
     }
@@ -74,20 +79,23 @@ export function usePluginRuntime(
     // Set up timeout
     const timeoutId = setTimeout(() => {
       const currentSnapshot = runtime.getSnapshot?.();
-      if (!currentSnapshot?.game) {
+      if (!hasProjectedView(currentSnapshot)) {
         setError(
-          `Timed out waiting for game state after ${timeout}ms. ` +
-            "Ensure the host sends state-sync message.",
+          `Timed out waiting for the initial projected view after ${timeout}ms. ` +
+            "Ensure the host sends a reducer-native state-sync with a seat view.",
         );
       }
     }, timeout);
 
     // Subscribe to state changes
     const unsubscribe = runtime.subscribeToState?.((state) => {
-      if (state.game) {
-        clearTimeout(timeoutId);
-        setIsReady(true);
+      if (!hasProjectedView(state)) {
+        setIsReady(false);
+        return;
       }
+      clearTimeout(timeoutId);
+      setError(null);
+      setIsReady(true);
     });
 
     return () => {

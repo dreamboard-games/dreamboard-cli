@@ -55,7 +55,7 @@ dreamboard test run --scenario test/scenarios/win-the-game.scenario.ts
 Re-run `dreamboard test generate` after changes that affect the runtime shape of
 the game, including:
 
-- `manifest.json`
+- `manifest.ts`
 - reducer code under `app/`
 - setup-profile behavior
 - generated contract output
@@ -66,12 +66,13 @@ A base is a named, seeded checkpoint that scenarios can reuse.
 
 Use `defineBase(...)` from `test/testing-types.ts`.
 
-| Field | Required | Notes |
-| --- | --- | --- |
-| `id` | Yes | Stable base identifier referenced by scenarios |
-| `seed` | Yes | Deterministic random seed |
-| `players` | Yes | Player count used for that base |
-| `setup` | Yes | Async setup callback that prepares the checkpoint |
+| Field            | Required | Notes                                                                                                      |
+| ---------------- | -------- | ---------------------------------------------------------------------------------------------------------- |
+| `id`             | Yes      | Stable base identifier referenced by scenarios                                                             |
+| `seed`           | Yes      | Deterministic random seed                                                                                  |
+| `players`        | Yes      | Player count used for that base                                                                            |
+| `setupProfileId` | No       | Manifest setup profile used before `setup(...)`; omit to use the implicit single or first declared profile |
+| `setup`          | Yes      | Async setup callback that prepares the checkpoint                                                          |
 
 ```ts
 import { defineBase } from "../testing-types";
@@ -80,6 +81,7 @@ export default defineBase({
   id: "initial-turn",
   seed: 1337,
   players: 2,
+  setupProfileId: "standard-expedition",
   setup: async ({ game }) => {
     await game.start();
   },
@@ -90,6 +92,11 @@ The base `seed` drives runtime-owned randomness. Effects such as
 `effects.rollDie(...)`, `effects.randomInt(...)`, `effects.sample(...)`, and
 `effects.shuffleSharedZone(...)` consume the seeded reducer RNG, so repeated
 test runs with the same base seed are reproducible.
+
+Checked-in test startup state belongs on the base via `setupProfileId`.
+When a base omits it, Dreamboard uses the manifest default resolution order:
+the single declared profile, otherwise the first declared profile, otherwise no
+profile when the manifest defines none.
 
 Use bases for:
 
@@ -106,14 +113,14 @@ Scenarios are typed files under `test/scenarios/*.scenario.ts`.
 
 Use `defineScenario(...)` from `test/testing-types.ts`.
 
-| Field | Required | Notes |
-| --- | --- | --- |
-| `id` | Yes | Scenario identifier |
-| `description` | No | Short human-readable summary |
-| `from` | Yes | Base ID from `test/bases/*.base.ts` |
-| `runners` | No | `"reducer"` (default), `"embedded"`, or `"browser"` |
-| `when` | Yes | Async action flow |
-| `then` | Yes | Assertions over state, view, and history |
+| Field         | Required | Notes                                               |
+| ------------- | -------- | --------------------------------------------------- |
+| `id`          | Yes      | Scenario identifier                                 |
+| `description` | No       | Short human-readable summary                        |
+| `from`        | Yes      | Base ID from `test/bases/*.base.ts`                 |
+| `runners`     | No       | `"reducer"` (default), `"embedded"`, or `"browser"` |
+| `when`        | Yes      | Async action flow                                   |
+| `then`        | Yes      | Assertions over state, view, and history            |
 
 ```ts
 import { defineScenario } from "../testing-types";
@@ -123,12 +130,12 @@ export default defineScenario({
   description: "The deterministic roll sequence lets player 2 reach ten first",
   from: "initial-turn",
   when: async ({ game }) => {
-    await game.action("player-1", "rollDie", {});
-    await game.action("player-2", "rollDie", {});
-    await game.action("player-1", "rollDie", {});
-    await game.action("player-2", "rollDie", {});
-    await game.action("player-1", "rollDie", {});
-    await game.action("player-2", "rollDie", {});
+    await game.action("player-1", "rollDie");
+    await game.action("player-2", "rollDie");
+    await game.action("player-1", "rollDie");
+    await game.action("player-2", "rollDie");
+    await game.action("player-1", "rollDie");
+    await game.action("player-2", "rollDie");
   },
   then: ({ state, view, expect }) => {
     expect(state()).toBe("takeTurn");
@@ -160,14 +167,14 @@ Use it to:
 
 Use these in `when(...)` and `then(...)`:
 
-| Helper | Notes |
-| --- | --- |
-| `state()` | Current phase name (`StateName`) |
-| `view(playerId)` | Projected `GameView` for one player |
-| `players()` | Ordered `PlayerId[]` for the session |
+| Helper              | Notes                                              |
+| ------------------- | -------------------------------------------------- |
+| `state()`           | Current phase name (`StateName`)                   |
+| `view(playerId)`    | Projected `GameView` for one player                |
+| `players()`         | Ordered `PlayerId[]` for the session               |
 | `prompts(playerId)` | Active `PromptInstance[]` addressed to that player |
-| `windows(playerId)` | Active `WindowInstance[]` visible to that player |
-| `expect(value)` | Built-in assertion API (see matchers below) |
+| `windows(playerId)` | Active `WindowInstance[]` visible to that player   |
+| `expect(value)`     | Built-in assertion API (see matchers below)        |
 
 `state()` returns the phase name, not the raw reducer state. Assert game-specific
 values through `view(playerId)`, which returns the typed `GameView` projected by
@@ -175,15 +182,15 @@ your reducer.
 
 ### `expect` matchers
 
-| Matcher | Notes |
-| --- | --- |
-| `.toBe(expected)` | Strict equality (`===`) |
-| `.toEqual(expected)` | Deep equality |
-| `.toBeDefined()` | Not `undefined` |
-| `.toBeUndefined()` | Is `undefined` |
-| `.toBeNull()` | Is `null` |
-| `.toContain(expected)` | Array includes value or string includes substring |
-| `.toBeGreaterThanOrEqual(n)` | Numeric `>=` |
+| Matcher                      | Notes                                             |
+| ---------------------------- | ------------------------------------------------- |
+| `.toBe(expected)`            | Strict equality (`===`)                           |
+| `.toEqual(expected)`         | Deep equality                                     |
+| `.toBeDefined()`             | Not `undefined`                                   |
+| `.toBeUndefined()`           | Is `undefined`                                    |
+| `.toBeNull()`                | Is `null`                                         |
+| `.toContain(expected)`       | Array includes value or string includes substring |
+| `.toBeGreaterThanOrEqual(n)` | Numeric `>=`                                      |
 
 ## Generated testing types
 
@@ -196,6 +203,14 @@ It re-exports:
 - `phaseCommands`, `windowCommands`
 - Types: `GameView`, `ActionName`, `ActionParams<Name>`, `ActionCommandForPhase<Name>`, `StateName`, `PlayerId`, `PromptId`, `PromptResponse<Name>`, `WindowId`, `WindowActionName<Name>`, `WindowActionParams<Name, Action>`
 - `TestRunner` (`"reducer" | "embedded" | "browser"`)
+
+Generated zero-param command factories stay zero-arg in tests, so prefer:
+
+```ts
+await game.action("player-1", phaseCommands.takeTurn.rollDie());
+```
+
+instead of passing an empty params object.
 
 Import from `../testing-types` instead of reaching into `test/generated/*`
 directly.

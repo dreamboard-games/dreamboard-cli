@@ -108,7 +108,7 @@ dreamboard run --new-session
 ```
 
 If no successful compile exists yet, `dreamboard run` will compile from the latest scaffolded snapshot automatically.
-By default, the CLI uses `manifest.json`'s `playerConfig.minPlayers` to decide how many seats to create.
+By default, the CLI uses `manifest.ts`'s `players.minPlayers` to decide how many seats to create.
 
 `dreamboard run` now defaults to a wait-and-observe loop when no scenario is provided:
 

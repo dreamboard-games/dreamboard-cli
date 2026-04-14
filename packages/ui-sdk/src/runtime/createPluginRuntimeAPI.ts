@@ -50,12 +50,21 @@ const ValidateActionResultMessageSchema = z.object({
   }),
 });
 
+const SubmitResultMessageSchema = z.object({
+  type: z.literal("submit-result"),
+  messageId: z.string(),
+  accepted: z.boolean(),
+  errorCode: z.string().nullable().optional(),
+  message: z.string().nullable().optional(),
+});
+
 // Union of all messages from main → plugin
 const MainToPluginMessageSchema = z.discriminatedUnion("type", [
   InitMessageSchema,
   PingMessageSchema,
   StateSyncMessageSchema,
   ValidateActionResultMessageSchema,
+  SubmitResultMessageSchema,
 ]);
 
 /**
@@ -69,8 +78,8 @@ export interface PluginRuntimeAPI extends RuntimeAPI {
    * @example
    * ```typescript
    * const snapshot = runtime.getSnapshot();
-   * if (snapshot?.game) {
-   *   console.log('Current state:', snapshot.game.currentState);
+   * if (snapshot?.view) {
+   *   console.log('Current view:', snapshot.view);
    * }
    * ```
    */
@@ -86,7 +95,7 @@ export interface PluginRuntimeAPI extends RuntimeAPI {
    * @example
    * ```typescript
    * const unsubscribe = runtime.subscribeToState((state) => {
-   *   console.log('New state:', state.game?.currentState);
+   *   console.log('New phase:', state.gameplay.currentPhase);
    * });
    * ```
    */
@@ -150,6 +159,14 @@ export function createPluginRuntimeAPI(): PluginRuntimeAPI {
     (result: ValidationResult) => void
   >();
   let validationIdCounter = 0;
+  const pendingSubmissions = new Map<
+    string,
+    {
+      resolve: () => void;
+      reject: (error: Error & { errorCode?: string }) => void;
+    }
+  >();
+  let submitIdCounter = 0;
 
   // Helper functions
   const notifySessionStateChange = () => {
@@ -173,6 +190,62 @@ export function createPluginRuntimeAPI(): PluginRuntimeAPI {
       }
     });
   };
+
+  const createSubmissionError = (
+    errorCode?: string,
+    message?: string,
+  ): Error & { errorCode?: string } => {
+    const error = new Error(message ?? "Submission failed") as Error & {
+      errorCode?: string;
+      name: string;
+    };
+    error.name = "SubmissionError";
+    error.errorCode = errorCode;
+    return error;
+  };
+
+  const submitViaParent = (
+    payload:
+      | {
+          type: "action";
+          playerId: string;
+          actionType: string;
+          params: Record<string, unknown>;
+        }
+      | {
+          type: "prompt-response";
+          playerId: string;
+          promptId: string;
+          response: unknown;
+        }
+      | {
+          type: "window-action";
+          playerId: string;
+          windowId: string;
+          actionType: string;
+          params?: Record<string, unknown>;
+        },
+  ): Promise<void> =>
+    new Promise((resolve, reject) => {
+      const messageId = `submit-${++submitIdCounter}`;
+      pendingSubmissions.set(messageId, { resolve, reject });
+
+      window.parent.postMessage({ ...payload, messageId }, "*");
+
+      setTimeout(() => {
+        const pending = pendingSubmissions.get(messageId);
+        if (!pending) {
+          return;
+        }
+        pendingSubmissions.delete(messageId);
+        pending.reject(
+          createSubmissionError(
+            "submission-timeout",
+            "Submission request timed out",
+          ),
+        );
+      }, 10000);
+    });
 
   // Message handler
   const handleMessage = (event: MessageEvent) => {
@@ -257,6 +330,26 @@ export function createPluginRuntimeAPI(): PluginRuntimeAPI {
             errorCode: message.result.errorCode ?? undefined,
             message: message.result.message ?? undefined,
           });
+        }
+        break;
+      }
+
+      case "submit-result": {
+        const pending = pendingSubmissions.get(message.messageId);
+        if (!pending) {
+          break;
+        }
+
+        pendingSubmissions.delete(message.messageId);
+        if (message.accepted) {
+          pending.resolve();
+        } else {
+          pending.reject(
+            createSubmissionError(
+              message.errorCode ?? undefined,
+              message.message ?? undefined,
+            ),
+          );
         }
         break;
       }
@@ -345,12 +438,30 @@ export function createPluginRuntimeAPI(): PluginRuntimeAPI {
       });
     },
 
-    submitAction: async (playerId, actionType, params) => {
-      window.parent.postMessage(
-        { type: "action", playerId, actionType, params },
-        "*",
-      );
-    },
+    submitAction: async (playerId, actionType, params) =>
+      submitViaParent({
+        type: "action",
+        playerId,
+        actionType,
+        params,
+      }),
+
+    submitPromptResponse: async (playerId, promptId, response) =>
+      submitViaParent({
+        type: "prompt-response",
+        playerId,
+        promptId,
+        response,
+      }),
+
+    submitWindowAction: async (playerId, windowId, actionType, params) =>
+      submitViaParent({
+        type: "window-action",
+        playerId,
+        windowId,
+        actionType,
+        params,
+      }),
 
     getSessionState: () => ({ ...sessionState }),
 
@@ -361,6 +472,7 @@ export function createPluginRuntimeAPI(): PluginRuntimeAPI {
       sessionStateListeners.clear();
       stateListeners.clear();
       pendingValidations.clear();
+      pendingSubmissions.clear();
       currentStateSnapshot = null;
     },
 

@@ -12,12 +12,14 @@ import {
 import {
   collectLocalFiles,
   getLocalDiff,
+  loadManifest,
   writeSnapshotFromFiles,
 } from "../services/project/local-files.js";
 import {
   getProjectAuthoringState,
   updateProjectAuthoringState,
 } from "../services/project/project-state.js";
+import { applyWorkspaceCodegen } from "../services/project/workspace-codegen.js";
 
 export default defineCommand({
   meta: {
@@ -39,6 +41,12 @@ export default defineCommand({
       await resolveProjectContext(parsedArgs);
     const localAuthoring = getProjectAuthoringState(projectConfig);
     const latestRemote = await fetchLatestRemoteSources(projectConfig.gameId);
+
+    if (localAuthoring.pendingSync && !parsedArgs.force) {
+      throw new Error(
+        "This workspace is still finalizing a previous sync. Run 'dreamboard sync' again to finish it, or use 'dreamboard pull --force' to replace local files with remote state.",
+      );
+    }
 
     if (!latestRemote) {
       consola.info("Remote has no authored state yet.");
@@ -101,6 +109,11 @@ export default defineCommand({
           reconcileResult.latest.ruleId ?? projectConfig.authoring?.ruleId,
       }),
     );
+
+    await applyWorkspaceCodegen({
+      projectRoot,
+      manifest: await loadManifest(projectRoot),
+    });
 
     const reconciledLocalFiles = await collectLocalFiles(projectRoot);
     await writeSnapshotFromFiles(

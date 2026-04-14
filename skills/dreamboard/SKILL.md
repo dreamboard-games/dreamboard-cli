@@ -26,8 +26,8 @@ Copy this checklist and track your progress:
 ```
 New Game Development Progress:
 - [ ] Step 1: Author rule.md
-- [ ] Step 2: Author manifest.json to define game components
-- [ ] Step 3: Run `dreamboard sync` to update generate type-safe contract
+- [ ] Step 2: Author manifest.ts to define game topology
+- [ ] Step 3: Run `dreamboard sync` to update generated type-safe contracts
 - [ ] Step 4: Implement reducer contract, phases, actions, and views in `app/`
 - [ ] Step 5: Run `dreamboard compile` and fix any type errors
 - [ ] Step 6: Write bases and scenarios in `test/`, then run `dreamboard test generate` and `dreamboard test run`
@@ -40,15 +40,17 @@ For a full walkthrough of each step, see [references/building-your-first-game.md
 ## References
 
 - Quickstart:
-  [references/quickstart.md](references/quickstart.md)
+  https://dreamboard.games/docs/quickstart
 - Tutorial:
-  [references/building-your-first-game.md](references/building-your-first-game.md)
+  https://dreamboard.games/docs/tutorials/building-your-first-game
 - CLI:
-  [references/cli.md](references/cli.md)
+  https://dreamboard.games/docs/reference/cli
 - Rules:
   [references/rule-authoring.md](references/rule-authoring.md)
 - Manifest:
   [references/manifest-authoring.md](references/manifest-authoring.md)
+- Tiled Boards:
+  [references/tiled-board-topology.md](references/tiled-board-topology.md)
 - Reducer:
   [references/reducer.md](references/reducer.md)
 - UI Library:
@@ -61,7 +63,7 @@ For a full walkthrough of each step, see [references/building-your-first-game.md
 A fresh `dreamboard new` workspace contains:
 
 - authored source:
-  `rule.md`, `manifest.json`
+  `rule.md`, `manifest.ts`
 - reducer:
   `app/game-contract.ts`, `app/game.ts`, `app/phases/setup.ts`,
   `app/setup-profiles.ts`, `app/reducer-support.ts`
@@ -80,7 +82,7 @@ A fresh `dreamboard new` workspace contains:
 Use the commands for different kinds of state:
 
 - `dreamboard sync`
-  Upload local authored changes and advance the remote authored head. Run this after editing `rule.md`, `manifest.json`, or authored source files that should be part of the next remote build.
+  Upload local authored changes and advance the remote authored head. Run this after editing `rule.md`, `manifest.ts`, or authored source files that should be part of the next remote build. Re-running `sync` against the same authored content is safe; Dreamboard reuses already-uploaded source blobs and still refreshes framework-owned generated files. When `package.json` changes, `sync` also prepares workspace dependencies automatically. If Dreamboard reports missing dependency tooling, see https://dreamboard.games/docs/reference/dependency-setup.
 - `dreamboard compile`
   Compile the current remote authored head. Run this after `sync`, or re-run it after a failed compile when you have not made new authored edits.
 - `dreamboard pull`
@@ -94,12 +96,13 @@ Quick rule:
 
 ## Guardrails
 
-- `manifest.json` and `rule.md` are the source of truth for scaffolding.
+- `manifest.ts` and `rule.md` are the source of truth for scaffolding.
 - Run `dreamboard sync` after authored changes to keep generated files and the remote authored head in sync.
+- Fresh `app/setup-profiles.ts` placeholders are framework-owned until you customize them. `dreamboard sync` refreshes empty placeholder entries to match manifest profile IDs, then preserves the file once you add real setup logic.
 - `dreamboard pull` reconciles authored divergence into the current workspace.
 - `dreamboard compile` is separate from authored sync; failed compiles do not mean the workspace needs a pull or another sync unless you changed authored files again.
 - Use `dreamboard status` to distinguish authored sync from compile health before deciding whether the next command should be `sync`, `compile`, or `pull`.
-- Re-run `dreamboard test generate` after runtime-shape changes in `manifest.json` or `app/`.
+- Re-run `dreamboard test generate` after runtime-shape changes in `manifest.ts` or `app/`.
 - Keep reducer-owned UI data in views; do not reintroduce the old `shared/ui-args.ts` pattern in new scaffolds.
 
 ## Editable Surface
@@ -107,7 +110,7 @@ Quick rule:
 Edit:
 
 - `rule.md`
-- `manifest.json`
+- `manifest.ts`
 - `app/game-contract.ts`
 - `app/game.ts`
 - `app/phases/*.ts`

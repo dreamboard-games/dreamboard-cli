@@ -2,41 +2,41 @@
 {/* Run `pnpm docs:gen-props` to regenerate. Do not edit directly. */}
 
 <ParamField path="spaces" type="TrackSpace[]" required>
-  Track spaces
+  `spaces` value
 </ParamField>
 <ParamField path="pieces" type="TrackPiece[]" required>
-  Pieces on the track
+  `pieces` value
 </ParamField>
 <ParamField path="type" type="'linear' | 'circular' | 'branching'">
-  Track type (affects connection rendering for circular tracks)
+  `type` value
 </ParamField>
 <ParamField path="renderSpace" type="(space: TrackSpace, pieces: TrackPiece[]) => ReactNode" required>
-  Required space renderer - receives space data and pieces on that space
+  `renderSpace` value
 </ParamField>
 <ParamField path="renderConnection" type="(from: { x: number; y: number }, to: { x: number; y: number }, fromSpace: TrackSpace, toSpace: TrackSpace) => ReactNode">
-  Optional connection renderer - receives from/to positions
+  `renderConnection` value
 </ParamField>
 <ParamField path="renderJump" type="(from: { x: number; y: number }, to: { x: number; y: number }, fromSpace: TrackSpace, toSpace: TrackSpace, isUp: boolean) => ReactNode">
-  Optional jump renderer - receives from/to positions and direction
+  `renderJump` value
 </ParamField>
 <ParamField path="width" type="number | string">
-  Container width (use "100%" for responsive)
+  `width` value
 </ParamField>
 <ParamField path="height" type="number | string">
-  Container height (use "100%" for responsive)
+  `height` value
 </ParamField>
 <ParamField path="enablePanZoom" type="boolean">
-  Enable pan and zoom
+  `enablePanZoom` value
 </ParamField>
 <ParamField path="initialZoom" type="number">
-  Initial zoom level
+  `initialZoom` value
 </ParamField>
 <ParamField path="minZoom" type="number">
-  Min zoom level
+  `minZoom` value
 </ParamField>
 <ParamField path="maxZoom" type="number">
-  Max zoom level
+  `maxZoom` value
 </ParamField>
 <ParamField path="className" type="string">
-  Additional class names
+  `className` value
 </ParamField>

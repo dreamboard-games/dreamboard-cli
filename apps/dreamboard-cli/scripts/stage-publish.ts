@@ -36,6 +36,9 @@ const bugsUrl =
   typeof sourcePackage.bugs === "string"
     ? sourcePackage.bugs
     : (sourcePackage.bugs?.url ?? process.env.DREAMBOARD_PUBLIC_BUGS_URL);
+const publicSkillRoot = await resolvePublicSkillRoot();
+await assertPublicSkillScriptsArePublishable(publicSkillRoot);
+
 const packageJson: Record<string, unknown> = {
   name: "dreamboard",
   version: sourcePackage.version,
@@ -46,7 +49,9 @@ const packageJson: Record<string, unknown> = {
   bin: {
     dreamboard: "dist/index.js",
   },
-  files: ["dist", "README.md", "skills"],
+  files: publicSkillRoot
+    ? ["dist", "README.md", "skills"]
+    : ["dist", "README.md"],
   keywords: sourcePackage.keywords ?? [
     "dreamboard",
     "cli",
@@ -62,7 +67,6 @@ const packageJson: Record<string, unknown> = {
   },
   dependencies: {
     esbuild: sourcePackage.dependencies?.esbuild ?? "^0.25.1",
-    playwright: sourcePackage.dependencies?.playwright ?? "^1.50.1",
   },
   license:
     sourcePackage.license ??
@@ -86,9 +90,6 @@ if (bugsUrl) {
     url: bugsUrl,
   };
 }
-
-const publicSkillRoot = await resolvePublicSkillRoot();
-await assertPublicSkillScriptsArePublishable(publicSkillRoot);
 
 async function pruneTransientSkillArtifacts(rootDir: string) {
   const entries = await readdir(rootDir, { withFileTypes: true });
@@ -116,13 +117,15 @@ await cp(
   path.join(stageRoot, "README.md"),
   { force: true },
 );
-await mkdir(path.join(stageRoot, "skills"), { recursive: true });
-const stagedSkillRoot = path.join(stageRoot, "skills", "dreamboard");
-await cp(publicSkillRoot, stagedSkillRoot, {
-  recursive: true,
-  force: true,
-});
-await pruneTransientSkillArtifacts(stagedSkillRoot);
+if (publicSkillRoot) {
+  await mkdir(path.join(stageRoot, "skills"), { recursive: true });
+  const stagedSkillRoot = path.join(stageRoot, "skills", "dreamboard");
+  await cp(publicSkillRoot, stagedSkillRoot, {
+    recursive: true,
+    force: true,
+  });
+  await pruneTransientSkillArtifacts(stagedSkillRoot);
+}
 await writeFile(
   path.join(stageRoot, "package.json"),
   `${JSON.stringify(packageJson, null, 2)}\n`,

@@ -1,47 +1,25 @@
-/**
- * PlayerInfo component - Displays player information
- *
- * Features:
- * - Avatar with status indicators
- * - Player name and stats
- * - Turn indicator
- * - Accessible and responsive
- */
+/** Displays player information with avatar, status indicators, and stats. */
 
 import { motion } from "framer-motion";
 import { clsx } from "clsx";
 import { User, Crown, Circle } from "lucide-react";
-import { PlayerId } from "@dreamboard/manifest";
+import type { PlayerId } from "../manifest-contract.js";
 
 export interface PlayerInfoProps {
-  /** Player ID */
   playerId: PlayerId;
-  /** Player name or display text */
   name?: string;
-  /** Whether this player is currently active */
   isActive?: boolean;
-  /** Whether this is the current user */
   isCurrentPlayer?: boolean;
-  /** Whether this is the host/dealer */
   isHost?: boolean;
-  /** Player's assigned color (used for avatar background) */
+  /** Used for avatar background */
   color?: string;
-  /** Player score or points */
   score?: number;
-  /** Additional metadata to display */
   metadata?: Record<string, unknown>;
-  /** Size variant */
   size?: "sm" | "md" | "lg";
-  /** Layout orientation */
   orientation?: "horizontal" | "vertical";
-  /** Custom avatar content */
   avatar?: React.ReactNode;
   className?: string;
 }
-
-/**
- * PlayerInfo component with status indicators
- */
 export function PlayerInfo({
   playerId,
   name,

@@ -37,6 +37,11 @@ const DOCS_TO_COPY = [
     outputName: "manifest-authoring.md",
   },
   {
+    sourcePath: "reference/tiled-board-topology.mdx",
+    docsHref: "/docs/reference/tiled-board-topology",
+    outputName: "tiled-board-topology.md",
+  },
+  {
     sourcePath: "reference/reducer.mdx",
     docsHref: "/docs/reference/reducer",
     outputName: "reducer.md",
@@ -155,7 +160,10 @@ async function inlineSnippets(body: string, repoRoot: string): Promise<string> {
     try {
       const snippetContent = await readFile(filePath, "utf8");
       const rows = parseParamFields(snippetContent);
-      result = result.replace(tag, renderPropsTable(rows));
+      result = result.replace(
+        tag,
+        rows.length > 0 ? renderPropsTable(rows) : snippetContent.trim(),
+      );
     } catch {
       // Snippet file missing — remove the tag silently
       result = result.replace(tag, "");
@@ -211,6 +219,10 @@ async function renderReference(doc: ManagedDoc, source: string): Promise<string>
 
 async function main() {
   const publicSkillRoot = await resolvePublicSkillRoot();
+  if (!publicSkillRoot) {
+    process.stdout.write("Skipped skill docs sync because public skill root was not found.\n");
+    return;
+  }
   const referencesRoot = path.join(publicSkillRoot, "references");
 
   try {

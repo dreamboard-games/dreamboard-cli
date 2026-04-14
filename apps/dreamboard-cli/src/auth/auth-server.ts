@@ -42,7 +42,13 @@ export async function startCliAuthServer(
       server = createServer(
         async (request: IncomingMessage, response: ServerResponse) => {
           try {
-            await handleAuthRequest(request, response, state, resolveToken!);
+            await handleAuthRequest(
+              request,
+              response,
+              state,
+              resolveToken!,
+              () => server?.close(),
+            );
           } catch (error) {
             const message =
               error instanceof Error
@@ -104,6 +110,7 @@ async function handleAuthRequest(
   response: ServerResponse,
   state: string,
   resolveToken: (token: CliAuthResult) => void,
+  closeServer: () => void,
 ): Promise<void> {
   const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
 
@@ -131,7 +138,7 @@ async function handleAuthRequest(
 
     resolveToken({ token, refreshToken: refreshToken ?? null });
     response.once("finish", () => {
-      response.socket?.server?.close();
+      closeServer();
     });
     writeCorsResponse(request, response, 200, "OK");
     return;
@@ -166,7 +173,7 @@ async function readRequestBody(request: IncomingMessage): Promise<string> {
 
 export function openBrowser(url: string): void {
   const platform = process.platform;
-  let command: string[];
+  let command: [string, ...string[]];
   if (platform === "darwin") {
     command = ["open", url];
   } else if (platform === "win32") {
@@ -174,7 +181,8 @@ export function openBrowser(url: string): void {
   } else {
     command = ["xdg-open", url];
   }
-  const child = spawn(command[0], command.slice(1), {
+  const [commandName, ...commandArgs] = command;
+  const child = spawn(commandName, commandArgs, {
     stdio: "ignore",
     detached: true,
   });

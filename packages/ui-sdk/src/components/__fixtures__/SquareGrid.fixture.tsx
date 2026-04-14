@@ -15,7 +15,10 @@ import {
   DefaultGridCell,
   DefaultGridPiece,
   DefaultChessPiece,
+  type GridCell,
   type GridPiece,
+  type SquareGridEdge,
+  type SquareGridVertex,
 } from "../board/SquareGrid.js";
 
 // ============================================================================
@@ -86,6 +89,35 @@ const initialCheckersPieces: GridPiece[] = [
       owner: "black",
     };
   }),
+];
+
+const topologyCells: GridCell[] = Array.from({ length: 3 }, (_, row) =>
+  Array.from({ length: 3 }, (_, col) => ({
+    id: `cell-${row}-${col}`,
+    row,
+    col,
+    label: `${row},${col}`,
+  })),
+).flat();
+
+const topologyEdges: SquareGridEdge[] = [
+  { id: "edge-north", spaceIds: ["cell-0-1", "cell-1-1"], type: "corridor" },
+  { id: "edge-east", spaceIds: ["cell-1-1", "cell-1-2"], type: "corridor" },
+  { id: "edge-south", spaceIds: ["cell-1-1", "cell-2-1"], type: "corridor" },
+  { id: "edge-west", spaceIds: ["cell-1-0", "cell-1-1"], type: "corridor" },
+];
+
+const topologyVertices: SquareGridVertex[] = [
+  {
+    id: "vertex-center",
+    spaceIds: ["cell-0-0", "cell-0-1", "cell-1-0", "cell-1-1"],
+    type: "junction",
+  },
+  {
+    id: "vertex-east",
+    spaceIds: ["cell-0-1", "cell-0-2", "cell-1-1", "cell-1-2"],
+    type: "junction",
+  },
 ];
 
 // ============================================================================
@@ -605,4 +637,121 @@ export default {
       </div>
     </div>
   ),
+
+  /**
+   * Tiled Topology Overlays
+   * Demonstrates the shared edge and vertex interaction pattern used by tiled boards.
+   */
+  "Tiled Topology Overlays": () => {
+    const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
+    const [hoveredVertexId, setHoveredVertexId] = useState<string | null>(null);
+    const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+    const [selectedVertexId, setSelectedVertexId] = useState<string | null>(
+      null,
+    );
+
+    const highlightedCellIds = new Set<string>();
+    topologyEdges
+      .find((edge) => edge.id === hoveredEdgeId || edge.id === selectedEdgeId)
+      ?.spaceIds.forEach((spaceId) => highlightedCellIds.add(spaceId));
+    topologyVertices
+      .find(
+        (vertex) =>
+          vertex.id === hoveredVertexId || vertex.id === selectedVertexId,
+      )
+      ?.spaceIds.forEach((spaceId) => highlightedCellIds.add(spaceId));
+
+    return (
+      <div className="p-6 bg-slate-950 min-h-screen">
+        <h2 className="text-xl font-bold text-white mb-4">
+          Tiled Topology Overlays
+        </h2>
+        <p className="text-slate-400 mb-4 max-w-2xl">
+          Reducer views can project cells, edges, and vertices separately while
+          the UI uses the same edge and vertex interaction pattern as HexGrid.
+        </p>
+
+        <SquareGrid
+          rows={3}
+          cols={3}
+          cells={topologyCells}
+          pieces={[]}
+          edges={topologyEdges}
+          vertices={topologyVertices}
+          cellSize={92}
+          showCoordinates={false}
+          interactiveEdges={true}
+          interactiveVertices={true}
+          onInteractiveEdgeEnter={(edge) => setHoveredEdgeId(edge.id)}
+          onInteractiveEdgeLeave={() => setHoveredEdgeId(null)}
+          onInteractiveEdgeClick={(edge) =>
+            setSelectedEdgeId((current) =>
+              current === edge.id ? null : edge.id,
+            )
+          }
+          onInteractiveVertexEnter={(vertex) => setHoveredVertexId(vertex.id)}
+          onInteractiveVertexLeave={() => setHoveredVertexId(null)}
+          onInteractiveVertexClick={(vertex) =>
+            setSelectedVertexId((current) =>
+              current === vertex.id ? null : vertex.id,
+            )
+          }
+          renderCell={(row, col) => {
+            const cellId = `cell-${row}-${col}`;
+            return (
+              <DefaultGridCell
+                size={92}
+                isLight={(row + col) % 2 === 0}
+                lightColor="#e2e8f0"
+                darkColor="#cbd5e1"
+                isHighlighted={highlightedCellIds.has(cellId)}
+                highlightColor="rgba(14, 165, 233, 0.24)"
+              />
+            );
+          }}
+          renderPiece={() => null}
+          renderEdge={(edge, position) => {
+            const isActive =
+              edge.id === hoveredEdgeId || edge.id === selectedEdgeId;
+            return (
+              <line
+                x1={position.x1}
+                y1={position.y1}
+                x2={position.x2}
+                y2={position.y2}
+                stroke={isActive ? "#0f172a" : "#64748b"}
+                strokeWidth={isActive ? 8 : 4}
+                strokeLinecap="round"
+                className="transition-all duration-150"
+              />
+            );
+          }}
+          renderVertex={(vertex, position) => {
+            const isActive =
+              vertex.id === hoveredVertexId || vertex.id === selectedVertexId;
+            return (
+              <circle
+                cx={position.x}
+                cy={position.y}
+                r={isActive ? 11 : 7}
+                fill={isActive ? "#f97316" : "#fb923c"}
+                stroke="#fff7ed"
+                strokeWidth={isActive ? 3 : 2}
+                className="transition-all duration-150"
+              />
+            );
+          }}
+        />
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-lg border border-slate-800 bg-slate-900 p-3 text-slate-200">
+            Edge target: {selectedEdgeId ?? hoveredEdgeId ?? "none"}
+          </div>
+          <div className="rounded-lg border border-slate-800 bg-slate-900 p-3 text-slate-200">
+            Vertex target: {selectedVertexId ?? hoveredVertexId ?? "none"}
+          </div>
+        </div>
+      </div>
+    );
+  },
 };

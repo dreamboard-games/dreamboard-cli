@@ -16,12 +16,20 @@ type TypecheckRunner = {
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(MODULE_DIR, "../../../../..");
-const WORKSPACE_NODE_MODULES = path.join(REPO_ROOT, "node_modules");
+const PROJECT_DEPENDENCY_NODE_MODULES = path.join(
+  REPO_ROOT,
+  "apps",
+  "dreamboard-cli",
+  "node_modules",
+);
+const TYPESCRIPT_NODE_MODULES = path.join(REPO_ROOT, "node_modules");
+const APP_SDK_NODE_MODULES = path.join(
+  REPO_ROOT,
+  "packages/app-sdk/node_modules",
+);
 const UI_SDK_NODE_MODULES = path.join(
   REPO_ROOT,
-  "packages",
-  "ui-sdk",
-  "node_modules",
+  "packages/ui-sdk/node_modules",
 );
 const TYPESCRIPT_BIN_PATH_SEGMENTS = [
   "node_modules",
@@ -30,7 +38,7 @@ const TYPESCRIPT_BIN_PATH_SEGMENTS = [
   "tsc",
 ];
 const TYPESCRIPT_CLI = path.join(
-  WORKSPACE_NODE_MODULES,
+  TYPESCRIPT_NODE_MODULES,
   "typescript",
   "bin",
   "tsc",
@@ -73,21 +81,28 @@ async function ensureTypecheckDependencies(
     return null;
   }
 
-  if (!(await pathExists(WORKSPACE_NODE_MODULES))) {
-    return `Skipping local typecheck: project dependencies are not installed at ${getProjectNodeModules(projectRoot)}, and workspace dependencies are not installed at ${WORKSPACE_NODE_MODULES}.`;
-  }
-  if (!(await pathExists(UI_SDK_NODE_MODULES))) {
-    return `Skipping local typecheck: project dependencies are not installed at ${getProjectNodeModules(projectRoot)}, and ui-sdk dependencies are not installed at ${UI_SDK_NODE_MODULES}.`;
+  if (!(await pathExists(PROJECT_DEPENDENCY_NODE_MODULES))) {
+    return `Skipping local typecheck: project dependencies are not installed at ${getProjectNodeModules(projectRoot)}, and scaffold dependencies are not installed at ${PROJECT_DEPENDENCY_NODE_MODULES}.`;
   }
 
   await ensureSymlink(
-    WORKSPACE_NODE_MODULES,
+    PROJECT_DEPENDENCY_NODE_MODULES,
     getProjectNodeModules(projectRoot),
   );
-  await ensureSymlink(
-    UI_SDK_NODE_MODULES,
-    path.join(projectRoot, "ui", "node_modules"),
-  );
+
+  if (await pathExists(APP_SDK_NODE_MODULES)) {
+    await ensureSymlink(
+      APP_SDK_NODE_MODULES,
+      path.join(projectRoot, "app", "node_modules"),
+    );
+  }
+
+  if (await pathExists(UI_SDK_NODE_MODULES)) {
+    await ensureSymlink(
+      UI_SDK_NODE_MODULES,
+      path.join(projectRoot, "ui", "node_modules"),
+    );
+  }
 
   return null;
 }

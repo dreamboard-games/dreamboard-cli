@@ -5,6 +5,8 @@
 
 Reference for authoring Dreamboard reducer-native games with @dreamboard/app-sdk/reducer.
 
+import ReducerSetupBootstrapExample from "/snippets/examples/reducer-setup-bootstrap.mdx";
+
 `@dreamboard/app-sdk/reducer` is Dreamboard's reducer-native authoring surface that enforces game logic.
 Use it to define state schemas, phases, actions, prompts, views and setup profiles.
 
@@ -55,7 +57,6 @@ import {
   definePhase,
   definePrompt,
   definePromptContinuation,
-  defineSetupProfilesFor,
   defineView,
   defineWindowContinuation,
   getPlayerZoneCards,
@@ -74,12 +75,12 @@ import {
 `defineGameContract(...)` binds the generated manifest contract to the reducer's
 shared, per-player, and hidden state schemas.
 
-| Field | Required | Notes |
-| --- | --- | --- |
-| `manifest` | Yes | Generated manifest contract from `shared/manifest-contract` |
-| `state.public` | Yes | Shared state visible to every player |
-| `state.private` | Yes | Per-player server-only state |
-| `state.hidden` | Yes | Reducer-only state that never reaches clients |
+| Field           | Required | Notes                                                       |
+| --------------- | -------- | ----------------------------------------------------------- |
+| `manifest`      | Yes      | Generated manifest contract from `shared/manifest-contract` |
+| `state.public`  | Yes      | Shared state visible to every player                        |
+| `state.private` | Yes      | Per-player server-only state                                |
+| `state.hidden`  | Yes      | Reducer-only state that never reaches clients               |
 
 ```ts
 import { z } from "zod";
@@ -108,30 +109,33 @@ export const gameContract = defineGameContract({
 The generated `shared/manifest-contract` module exports more than the
 `manifestContract` object you pass into `defineGameContract(...)`.
 
-| Export | Use |
-| --- | --- |
-| `manifestContract` | Reducer-facing manifest contract passed into `defineGameContract(...)` |
-| `ids` | Zod literal schemas such as `ids.playerId`, `ids.boardId`, and `ids.spaceId` |
-| `literals` | Const arrays and lookup records for authored IDs and categories |
-| `defaults` | Lazy helpers for manifest-backed empty table state |
-| `schemas` | Generated `table` and `runtime` Zod schemas |
-| `createGameStateSchema(...)` | Builds a full reducer runtime schema around your phase and state schemas |
-| `boardHelpers` | Literal lookup tables for board IDs, layouts, spaces, containers, edges, and vertices |
+| Export                       | Use                                                                               |
+| ---------------------------- | --------------------------------------------------------------------------------- |
+| `manifestContract`           | Reducer-facing manifest contract passed into `defineGameContract(...)`            |
+| `ids`                        | Zod literal schemas such as `ids.playerId`, `ids.boardId`, and `ids.spaceId`      |
+| `literals`                   | Const arrays and lookup records for authored IDs and categories                   |
+| `defaults`                   | Lazy helpers for manifest-backed empty table state                                |
+| `createInitialTable(...)`    | Full manifest-backed startup table for authored players and shuffled shared decks |
+| `schemas`                    | Generated `table` and `runtime` Zod schemas                                       |
+| `createGameStateSchema(...)` | Builds a full reducer runtime schema around your phase and state schemas          |
+| `setupProfiles(...)`         | Manifest-bound builder for `app/setup-profiles.ts`                                |
+| `boardHelpers`               | Callable helpers for board IDs, layouts, spaces, containers, edges, and vertices  |
 
 ### `defaults`
 
-Use `defaults` when you need manifest-shaped empty state outside the reducer
-bundle, such as test setup or custom initialization.
+Use `createInitialTable(...)` when you need a full startup table that matches
+the generated runtime contract. Use `defaults` when you only need one empty
+manifest-shaped slice outside the reducer bundle.
 
-| Helper | Returns |
-| --- | --- |
-| `defaults.zones(playerIds?)` | Empty shared/per-player zone state, visibility, and allowed card-set lookup |
-| `defaults.decks()` | Empty shared deck contents |
-| `defaults.hands(playerIds?)` | Empty per-player hand contents |
-| `defaults.handVisibility()` | Zone visibility map for player hands |
-| `defaults.ownerOfCard()` | Default card ownership map |
-| `defaults.visibility()` | Default card visibility map |
-| `defaults.resources(playerIds?)` | Zeroed per-player resource balances |
+| Helper                           | Returns                                                                     |
+| -------------------------------- | --------------------------------------------------------------------------- |
+| `defaults.zones(playerIds?)`     | Empty shared/per-player zone state, visibility, and allowed card-set lookup |
+| `defaults.decks()`               | Empty shared deck contents                                                  |
+| `defaults.hands(playerIds?)`     | Empty per-player hand contents                                              |
+| `defaults.handVisibility()`      | Zone visibility map for player hands                                        |
+| `defaults.ownerOfCard()`         | Default card ownership map                                                  |
+| `defaults.visibility()`          | Default card visibility map                                                 |
+| `defaults.resources(playerIds?)` | Zeroed per-player resource balances                                         |
 
 Pass `playerIds` when you want to seed only a subset of manifest players.
 Omit it to use all authored player IDs.
@@ -139,90 +143,169 @@ Omit it to use all authored player IDs.
 ```ts
 import {
   boardHelpers,
+  createInitialTable,
   defaults,
-  type BoardFieldsByBoardId,
+  type BoardFields,
+  type BoardSpaceFields,
+  type BoardState,
   type DieFieldsByTypeId,
   type PieceFieldsByTypeId,
 } from "../shared/manifest-contract";
 
+const initialTable = createInitialTable({
+  playerIds: ["player-1", "player-2"],
+});
 const initialZones = defaults.zones(["player-1", "player-2"]);
 const initialHands = defaults.hands(["player-1", "player-2"]);
 const initialResources = defaults.resources(["player-1", "player-2"]);
 
-type MainBoardFields = BoardFieldsByBoardId["main-board"];
+type MainBoardState = BoardState<"main-board">;
+type MainBoardFields = BoardFields<"main-board">;
+type MainBoardSpaceFields = BoardSpaceFields<"main-board">;
 type WorkerFields = PieceFieldsByTypeId["worker"];
 type D6Fields = DieFieldsByTypeId["d6"];
 
-const harborEdgeIds = boardHelpers.edgeIdsByTypeId.harbor ?? [];
+const harborEdgeIds = boardHelpers.edgeIds("main-board", "harbor");
+const spaceKinds = boardHelpers.spaceKinds("main-board");
 ```
 
-### Generated field-map types
+### Recommended board aliases
 
-Generated manifest contracts also export typed field maps so reducer code can
-index manifest-authored fields without falling back to `Record<string, unknown>`.
+Generated manifest contracts expose singular aliases that let reducer code jump
+straight to the board-scoped state or field shape it needs.
 
-| Type | Maps |
-| --- | --- |
-| `BoardFieldsByBoardId` | Runtime board ID -> board `fields` shape |
-| `BoardSpaceFieldsByBoardId` | Runtime board ID -> per-space `fields` shape |
-| `BoardRelationFieldsByBoardId` | Runtime board ID -> per-relation `fields` shape |
-| `BoardContainerFieldsByBoardId` | Runtime board ID -> per-container `fields` shape |
-| `HexEdgeFieldsByBoardId` | Runtime hex board ID -> per-edge `fields` shape |
-| `HexVertexFieldsByBoardId` | Runtime hex board ID -> per-vertex `fields` shape |
-| `PieceFieldsByTypeId` | Piece type ID -> piece `properties` shape |
-| `DieFieldsByTypeId` | Die type ID -> die `properties` shape |
+| Type                                                               | Resolves to                                |
+| ------------------------------------------------------------------ | ------------------------------------------ |
+| `BoardState<"board-id">`                                           | Concrete runtime board state record        |
+| `BoardFields<"board-id">`                                          | That board's `fields` shape                |
+| `BoardSpaceState<"board-id">`                                      | Union of space state records on that board |
+| `BoardSpaceFields<"board-id">`                                     | Space `fields` shape for that board        |
+| `BoardRelationState<"board-id">`                                   | Relation state record for that board       |
+| `BoardRelationFields<"board-id">`                                  | Relation `fields` shape for that board     |
+| `BoardContainerState<"board-id">`                                  | Container state record for that board      |
+| `BoardContainerFields<"board-id">`                                 | Container `fields` shape for that board    |
+| `HexEdgeState<"board-id">` / `HexEdgeFields<"board-id">`           | Hex edge record or fields shape            |
+| `HexVertexState<"board-id">` / `HexVertexFields<"board-id">`       | Hex vertex record or fields shape          |
+| `SquareEdgeState<"board-id">` / `SquareEdgeFields<"board-id">`     | Square edge record or fields shape         |
+| `SquareVertexState<"board-id">` / `SquareVertexFields<"board-id">` | Square vertex record or fields shape       |
+| `TiledEdgeState<"board-id">` / `TiledEdgeFields<"board-id">`       | Tiled edge record or fields shape          |
+| `TiledVertexState<"board-id">` / `TiledVertexFields<"board-id">`   | Tiled vertex record or fields shape        |
+
+Use these aliases first when reducer code already knows the runtime `boardId`.
+
+### Low-level field maps
+
+Generated manifest contracts also export the underlying board-ID keyed maps.
+These are mostly useful when you are building higher-order helpers.
+
+| Type                            | Maps                                                          |
+| ------------------------------- | ------------------------------------------------------------- |
+| `BoardFieldsByBoardId`          | Runtime board ID -> board `fields` shape                      |
+| `BoardSpaceFieldsByBoardId`     | Runtime board ID -> board-scoped space `fields` shape         |
+| `BoardRelationFieldsByBoardId`  | Runtime board ID -> board-scoped relation `fields` shape      |
+| `BoardContainerFieldsByBoardId` | Runtime board ID -> board-scoped container `fields` shape     |
+| `HexEdgeFieldsByBoardId`        | Runtime hex board ID -> board-scoped edge `fields` shape      |
+| `HexVertexFieldsByBoardId`      | Runtime hex board ID -> board-scoped vertex `fields` shape    |
+| `SquareEdgeFieldsByBoardId`     | Runtime square board ID -> board-scoped edge `fields` shape   |
+| `SquareVertexFieldsByBoardId`   | Runtime square board ID -> board-scoped vertex `fields` shape |
+| `TiledEdgeFieldsByBoardId`      | Runtime tiled board ID -> board-scoped edge `fields` shape    |
+| `TiledVertexFieldsByBoardId`    | Runtime tiled board ID -> board-scoped vertex `fields` shape  |
+| `PieceFieldsByTypeId`           | Piece type ID -> piece `properties` shape                     |
+| `DieFieldsByTypeId`             | Die type ID -> die `properties` shape                         |
+
+There is intentionally no global `SpaceFieldsBySpaceId` helper. Runtime
+`spaceId`s are not globally unique for per-player boards, so field helpers stay
+scoped by runtime `boardId`.
 
 ### `boardHelpers`
 
-`boardHelpers` exposes literal lookup tables that pair well with reducer table
-helpers.
+`boardHelpers` exposes callable helpers instead of raw lookup tables.
 
-| Helper | Notes |
-| --- | --- |
-| `boardIdsByBaseId` | Expands authored base board IDs into runtime board IDs |
-| `boardLayoutById` | Runtime board ID -> `generic` or `hex` |
-| `boardIdsByTypeId` | Reducer-facing board `typeId` -> runtime board IDs |
-| `spaceIdsByBoardId` | Runtime board ID -> all space IDs on that board |
-| `spaceIdsByTypeId` | Space `typeId` -> matching space IDs |
-| `containerIdsByBoardId` | Runtime board ID -> board container IDs |
-| `relationTypeIdsByBoardId` | Runtime board ID -> relation `typeId`s |
-| `edgeIdsByTypeId` | Hex edge `typeId` -> edge IDs |
-| `vertexIdsByTypeId` | Hex vertex `typeId` -> vertex IDs |
+| Helper                                    | Notes                                                             |
+| ----------------------------------------- | ----------------------------------------------------------------- |
+| `boardIdsForLayout(layout)`               | Layout -> runtime board IDs                                       |
+| `boardBaseIdsForLayout(layout)`           | Layout -> authored base board IDs                                 |
+| `boardIdsForBase(boardBaseId)`            | Expands one authored base board ID into runtime board IDs         |
+| `boardBaseIdsForTemplate(templateId)`     | Template ID -> authored base board IDs                            |
+| `boardIdsForType(typeId)`                 | Reducer-facing board `typeId` -> runtime board IDs                |
+| `boardLayout(boardId)`                    | Runtime board ID -> `generic`, `hex`, or `square`                 |
+| `boardTemplateLayout(templateId)`         | Template ID -> layout                                             |
+| `spaceIds(boardId)`                       | Runtime board ID -> all space IDs on that board                   |
+| `spaceKinds(boardId)`                     | Runtime board ID -> space ID -> authored `spaceTypeId` or `null`  |
+| `spaceIdsForType(typeId)`                 | Space `typeId` -> matching space IDs                              |
+| `containerIds(boardId)`                   | Runtime board ID -> board container IDs                           |
+| `containerHost(boardId, containerId)`     | Runtime board/container -> authored board or space host literal   |
+| `relationTypeIds(boardId)`                | Runtime board ID -> relation `typeId`s                            |
+| `edgeIdsForType(typeId)`                  | Tiled edge `typeId` -> edge IDs across boards                     |
+| `edgeIds(boardId, typeId)`                | Runtime board + edge `typeId` -> matching edge IDs                |
+| `vertexIdsForType(typeId)`                | Tiled vertex `typeId` -> vertex IDs across boards                 |
+| `vertexIds(boardId, typeId)`              | Runtime board + vertex `typeId` -> matching vertex IDs            |
+| `boardIdForPlayer(boardBaseId, playerId)` | Per-player authored board base ID + player ID -> runtime board ID |
 
 ### Board-aware component locations
 
 `state.table.componentLocations` can place components in these board-aware
 runtime locations:
 
-| `type` | Extra fields |
-| --- | --- |
-| `OnSpace` | `boardId`, `spaceId`, optional `position` |
-| `InContainer` | `boardId`, `containerId`, optional `position` |
-| `OnEdge` | `boardId`, `edgeId`, optional `position` |
-| `OnVertex` | `boardId`, `vertexId`, optional `position` |
-| `InSlot` | `hostComponentId`, `slotId`, optional `position` |
+| `type`        | Extra fields                                          |
+| ------------- | ----------------------------------------------------- |
+| `OnSpace`     | `boardId`, `spaceId`, optional `position`             |
+| `InContainer` | `boardId`, `containerId`, optional `position`         |
+| `OnEdge`      | `boardId`, `edgeId`, optional `position`              |
+| `OnVertex`    | `boardId`, `vertexId`, optional `position`            |
+| `InSlot`      | `host.kind`, `host.id`, `slotId`, optional `position` |
 
 The table helpers in this package update those locations for you:
 `moveComponentToSpace(...)`, `moveComponentToContainer(...)`,
 `moveComponentToEdge(...)`, and `moveComponentToVertex(...)`.
+
+### Tiled state pattern
+
+For hex and square boards, keep immutable topology in the manifest-backed table
+and keep mutable gameplay facts in reducer state keyed by runtime IDs.
+
+```ts
+import type {
+  TiledEdgeMap,
+  TiledSpaceMap,
+  TiledVertexMap,
+} from "@dreamboard/app-sdk/reducer";
+
+type Table = GameState["table"];
+
+type OwnershipBySpaceId = TiledSpaceMap<Table, "mars-board", string>;
+type EffectsByEdgeId = TiledEdgeMap<Table, "arena-board", string>;
+type MarkersByVertexId = TiledVertexMap<
+  Table,
+  "arena-board",
+  { ownerId: string; kind: string }
+>;
+```
+
+That pattern works for:
+
+- Terraforming Mars tile ownership and adjacency bonuses
+- Gloomhaven movement, blockers, and range checks
+- Cascadia adjacency-driven scoring
+- Chess-, Checkers-, or Onitama-style square-cell overlays
 
 ## `defineGame(...)`
 
 `defineGame(...)` assembles the reducer definition that `createReducerBundle(...)`
 executes.
 
-| Field | Required | Notes |
-| --- | --- | --- |
-| `contract` | Yes | Output from `defineGameContract(...)` |
-| `initial.public` | No | Lazy initializer for `publicState` |
-| `initial.private` | No | Lazy initializer for one player's private state |
-| `initial.hidden` | No | Lazy initializer for `hiddenState` |
-| `phases` | Yes | Phase registry; object keys are the phase names |
-| `initialPhase` | No | Default starting phase unless a setup profile overrides it |
-| `setupProfiles` | No | Typed setup-profile overrides and bootstrap steps |
-| `views` | No | Named player-facing view projections |
-| `root.system` | No | Root-level system handlers |
-| `root.selectors` | No | Root-level derived selectors |
+| Field             | Required | Notes                                                      |
+| ----------------- | -------- | ---------------------------------------------------------- |
+| `contract`        | Yes      | Output from `defineGameContract(...)`                      |
+| `initial.public`  | No       | Lazy initializer for `publicState`                         |
+| `initial.private` | No       | Lazy initializer for one player's private state            |
+| `initial.hidden`  | No       | Lazy initializer for `hiddenState`                         |
+| `phases`          | Yes      | Phase registry; object keys are the phase names            |
+| `initialPhase`    | No       | Default starting phase unless a setup profile overrides it |
+| `setupProfiles`   | No       | Typed setup-profile overrides and bootstrap steps          |
+| `views`           | No       | Named player-facing view projections                       |
+| `root.system`     | No       | Root-level system handlers                                 |
+| `root.selectors`  | No       | Root-level derived selectors                               |
 
 If you omit `initialPhase`, the first registered phase is used.
 
@@ -265,29 +348,46 @@ export default defineGame({
 });
 ```
 
-## `defineSetupProfilesFor(...)` and `defineSetupProfiles(...)`
+## Generated `setupProfiles(...)`
 
 Use setup profiles when the selected setup should change the initial phase,
 bootstrap authored inventory, or both.
 
-`defineSetupProfilesFor(manifestContract)<SetupProfileId>()(...)` is the
-manifest-aware helper for app code. `defineSetupProfiles<SetupProfileId>()(...)`
-is the generic helper when you already control the setup-profile ID union.
+Author them from the generated manifest contract in `app/setup-profiles.ts`:
+
+```ts
+import { setupProfiles } from "../shared/manifest-contract";
+
+export default setupProfiles({
+  "standard-expedition": {
+    initialPhase: "dealCards",
+    bootstrap: [
+      shuffle({
+        type: "sharedZone",
+        zoneId: "contracts-deck",
+      }),
+    ],
+  },
+});
+```
+
+That generated builder keeps the profile IDs and bootstrap helpers tied to the
+current manifest contract automatically.
 
 ### `SetupProfileDefinition`
 
-| Field | Required | Notes |
-| --- | --- | --- |
-| `initialPhase` | No | Overrides `defineGame(...).initialPhase` for that setup |
-| `bootstrap` | No | Ordered setup bootstrap steps applied before play starts |
+| Field          | Required | Notes                                                    |
+| -------------- | -------- | -------------------------------------------------------- |
+| `initialPhase` | No       | Overrides `defineGame(...).initialPhase` for that setup  |
+| `bootstrap`    | No       | Ordered setup bootstrap steps applied before play starts |
 
 ### `SetupBootstrapStep`
 
-| Variant | Required fields | Notes |
-| --- | --- | --- |
-| `type: "shuffle"` | `container` | Shuffles a shared zone, player zone, or board container |
-| `type: "move"` | `from`, `to` | Moves explicit or counted components between containers or onto board spaces |
-| `type: "deal"` | `from`, `to`, `count` | Deals from a shared source into a per-player destination template |
+| Variant           | Required fields       | Notes                                                                        |
+| ----------------- | --------------------- | ---------------------------------------------------------------------------- |
+| `type: "shuffle"` | `container`           | Shuffles a shared zone, player zone, or board container                      |
+| `type: "move"`    | `from`, `to`          | Moves explicit or counted components between containers or onto board spaces |
+| `type: "deal"`    | `from`, `to`, `count` | Deals from a shared source into a per-player destination template            |
 
 For `move` steps:
 
@@ -302,76 +402,27 @@ For `deal` steps:
 - `to` must be a player zone or player board container template
 - `playerIds` is optional; omit it to target every player
 
-```ts
-import {
-  defineSetupProfilesFor,
-  type SetupProfileDefinition,
-} from "@dreamboard/app-sdk/reducer";
-import {
-  manifestContract,
-  type SetupProfileId,
-} from "../shared/manifest-contract";
+The benchmark workspace uses the higher-level bootstrap helpers instead of raw
+step objects:
 
-export const setupProfiles = defineSetupProfilesFor(
-  manifestContract,
-)<SetupProfileId>()({
-  "draft-setup": {
-    initialPhase: "draft",
-    bootstrap: [
-      {
-        type: "shuffle",
-        container: {
-          type: "sharedZone",
-          zoneId: "draw-deck",
-        },
-      },
-      {
-        type: "deal",
-        from: {
-          type: "sharedZone",
-          zoneId: "draw-deck",
-        },
-        to: {
-          type: "playerZone",
-          zoneId: "main-hand",
-        },
-        count: 5,
-      },
-      {
-        type: "move",
-        from: {
-          type: "sharedBoardContainer",
-          boardId: "market-board",
-          containerId: "offer-row",
-        },
-        to: {
-          type: "sharedBoardSpace",
-          boardId: "market-board",
-          spaceId: "slot-a",
-        },
-        count: 1,
-      },
-    ],
-  } satisfies SetupProfileDefinition<"draft", typeof manifestContract>,
-});
-```
+<ReducerSetupBootstrapExample />
 
 ## `definePhase(...)`
 
 `definePhase(...)` declares one reducer phase.
 
-| Field | Required | Notes |
-| --- | --- | --- |
-| `kind` | No | `auto` or `player` |
-| `state` | Yes | Zod schema for phase-local state |
-| `initialState` | No | Initializes `state.phase` when the phase becomes current |
-| `enter` | No | Runs on initialization and on transitions into the phase |
-| `actions` | No | Player actions available in this phase |
-| `prompts` | No | Prompt registry for this phase |
-| `continuations` | No | Continuation registry for prompt or window resumes |
-| `windows` | No | Window registry; `id` defaults to the object key |
-| `system` | No | Handlers for `effects.dispatchSystem(...)` and scheduled inputs |
-| `selectors` | No | Named derived selectors |
+| Field           | Required | Notes                                                           |
+| --------------- | -------- | --------------------------------------------------------------- |
+| `kind`          | No       | `auto` or `player`                                              |
+| `state`         | Yes      | Zod schema for phase-local state                                |
+| `initialState`  | No       | Initializes `state.phase` when the phase becomes current        |
+| `enter`         | No       | Runs on initialization and on transitions into the phase        |
+| `actions`       | No       | Player actions available in this phase                          |
+| `prompts`       | No       | Prompt registry for this phase                                  |
+| `continuations` | No       | Continuation registry for prompt or window resumes              |
+| `windows`       | No       | Window registry; `id` defaults to the object key                |
+| `system`        | No       | Handlers for `effects.dispatchSystem(...)` and scheduled inputs |
+| `selectors`     | No       | Named derived selectors                                         |
 
 `initialState(...)` receives `manifest`, `state`, `playerIds`, and `setup`.
 
@@ -408,15 +459,15 @@ Continuation IDs and window IDs default to their registry keys when you omit
 
 `defineAction(...)` declares one typed player action.
 
-| Field | Required | Notes |
-| --- | --- | --- |
-| `params` | Yes | Zod schema for `input.params` |
-| `displayName` | No | Metadata label |
-| `description` | No | Metadata description |
-| `errorCodes` | No | Declared rejection codes |
-| `available` | No | UI/runtime availability filter for `getAvailableActions(...)` |
-| `validate` | No | Returns `null` or `{ errorCode, message }` |
-| `reduce` | Yes | Returns `accept(...)`, `reject(...)`, or a `{ state, effects }` object |
+| Field         | Required | Notes                                                                  |
+| ------------- | -------- | ---------------------------------------------------------------------- |
+| `params`      | Yes      | Zod schema for `input.params`                                          |
+| `displayName` | No       | Metadata label                                                         |
+| `description` | No       | Metadata description                                                   |
+| `errorCodes`  | No       | Declared rejection codes                                               |
+| `available`   | No       | UI/runtime availability filter for `getAvailableActions(...)`          |
+| `validate`    | No       | Returns `null` or `{ errorCode, message }`                             |
+| `reduce`      | Yes      | Returns `accept(...)`, `reject(...)`, or a `{ state, effects }` object |
 
 Keep hard legality checks in `validate(...)` or `reduce(...)`. `available(...)`
 only filters the surfaced available-action list.
@@ -464,11 +515,11 @@ session-focused.
 
 ### `definePrompt(...)`
 
-| Field | Required | Notes |
-| --- | --- | --- |
-| `id` | Yes | Prompt type ID |
-| `title` | No | Default title |
-| `responseSchema` | Yes | Zod schema for the response payload |
+| Field            | Required | Notes                               |
+| ---------------- | -------- | ----------------------------------- |
+| `id`             | Yes      | Prompt type ID                      |
+| `title`          | No       | Default title                       |
+| `responseSchema` | Yes      | Zod schema for the response payload |
 
 ```ts
 const judgeNotePrompt = definePrompt<GameContract>()({
@@ -482,11 +533,11 @@ const judgeNotePrompt = definePrompt<GameContract>()({
 
 ### `defineChoicePrompt(...)`
 
-| Field | Required | Notes |
-| --- | --- | --- |
-| `id` | Yes | Prompt type ID |
-| `title` | No | Default title |
-| `options` | Yes | Non-empty option list; response type is inferred from option IDs |
+| Field     | Required | Notes                                                            |
+| --------- | -------- | ---------------------------------------------------------------- |
+| `id`      | Yes      | Prompt type ID                                                   |
+| `title`   | No       | Default title                                                    |
+| `options` | Yes      | Non-empty option list; response type is inferred from option IDs |
 
 ```ts
 const judgePlacementPrompt = defineChoicePrompt<GameContract>()({
@@ -508,11 +559,11 @@ declared option IDs.
 Continuations resume typed reducer logic after a prompt response or window
 action.
 
-| Helper | Resume source | Typed input |
-| --- | --- | --- |
-| `definePromptContinuation(...)` | One declared prompt | `input.promptId` and prompt-typed `input.response` |
-| `defineWindowContinuation(...)` | Window action | `input.windowId`, `input.actionType`, and typed `input.response` |
-| `defineContinuation(...)` | Shared prompt, window, or runtime-effect flow | Union on `input.source` |
+| Helper                          | Resume source                                 | Typed input                                                      |
+| ------------------------------- | --------------------------------------------- | ---------------------------------------------------------------- |
+| `definePromptContinuation(...)` | One declared prompt                           | `input.promptId` and prompt-typed `input.response`               |
+| `defineWindowContinuation(...)` | Window action                                 | `input.windowId`, `input.actionType`, and typed `input.response` |
+| `defineContinuation(...)`       | Shared prompt, window, or runtime-effect flow | Union on `input.source`                                          |
 
 ### `definePromptContinuation(...)`
 
@@ -579,10 +630,10 @@ continuations with `input.source === "shared"`.
 
 Views are typed, player-facing projections of reducer state.
 
-| Field | Required | Notes |
-| --- | --- | --- |
-| `schema` | Yes | Zod schema for the projected payload |
-| `project` | Yes | Maps reducer state to one player's view |
+| Field     | Required | Notes                                   |
+| --------- | -------- | --------------------------------------- |
+| `schema`  | Yes      | Zod schema for the projected payload    |
+| `project` | Yes      | Maps reducer state to one player's view |
 
 `project(...)` receives `state`, `playerId`, `runtime`, `manifest`, and the
 same callback helpers as phases and actions.
@@ -611,36 +662,40 @@ export const playerView = defineView<GameContract>()({
 Reducer callbacks such as `enter(...)`, `validate(...)`, `reduce(...)`,
 continuation reducers, and view projectors receive shared runtime helpers.
 
-| Helper | Notes |
-| --- | --- |
-| `accept(state, effects?)` | Successful reducer result |
-| `reject(errorCode, message?)` | Immediate rejection |
-| `manifest` | Generated manifest contract |
-| `setup` | Selected setup profile plus resolved option values |
-| `currentPhase` | Current phase name |
-| `playerOrder` | Full turn order |
-| `activePlayers` | Current active player IDs |
-| `promptByInstanceId(promptId)` | Reads one open prompt instance |
-| `windowByInstanceId(windowId)` | Reads one open window instance |
+| Helper                         | Notes                                              |
+| ------------------------------ | -------------------------------------------------- |
+| `accept(state, effects?)`      | Successful reducer result                          |
+| `reject(errorCode, message?)`  | Immediate rejection                                |
+| `manifest`                     | Generated manifest contract                        |
+| `setup`                        | Selected setup profile plus resolved option values |
+| `currentPhase`                 | Current phase name                                 |
+| `playerOrder`                  | Full turn order                                    |
+| `activePlayers`                | Current active player IDs                          |
+| `promptByInstanceId(promptId)` | Reads one open prompt instance                     |
+| `windowByInstanceId(windowId)` | Reads one open window instance                     |
+
+`setup.optionValues` is fully resolved in reducer callbacks and initialization
+contexts. Every declared setup option ID is present, with `null` for
+unselected choices.
 
 ### `effects`
 
 Use `effects` to queue runtime side effects alongside an accepted state.
 
-| Effect helper | Notes |
-| --- | --- |
-| `effects.transition(phaseName)` | Transition into another phase |
-| `effects.openPrompt(prompt, { to, resume, title?, payload?, options? })` | Open a prompt and bind a continuation token |
-| `effects.closePrompt(promptId)` | Close one open prompt instance |
-| `effects.openWindow(window, { closePolicy?, addressedTo?, payload?, resume? })` | Open a reducer-owned window |
-| `effects.closeWindow(windowId)` | Close one open window instance |
-| `effects.rollDie(dieId)` | Roll one authored die with runtime-owned RNG |
-| `effects.shuffleSharedZone(zoneId)` | Shuffle a shared zone/deck |
-| `effects.dealCardsToPlayerZone(fromZoneId, playerId, toZoneId, count)` | Deal cards from a shared zone into a player zone |
-| `effects.sample(from, sampleId, resume, count?)` | Sample cards and resume a continuation |
-| `effects.randomInt(min, max, randomIntId, resume)` | Sample one integer and resume a shared continuation |
-| `effects.dispatchSystem(event, payload?)` | Queue a system event immediately |
-| `effects.scheduleTiming(timing, event, payload?)` | Queue a timed system input |
+| Effect helper                                                                   | Notes                                               |
+| ------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `effects.transition(phaseName)`                                                 | Transition into another phase                       |
+| `effects.openPrompt(prompt, { to, resume, title?, payload?, options? })`        | Open a prompt and bind a continuation token         |
+| `effects.closePrompt(promptId)`                                                 | Close one open prompt instance                      |
+| `effects.openWindow(window, { closePolicy?, addressedTo?, payload?, resume? })` | Open a reducer-owned window                         |
+| `effects.closeWindow(windowId)`                                                 | Close one open window instance                      |
+| `effects.rollDie(dieId)`                                                        | Roll one authored die with runtime-owned RNG        |
+| `effects.shuffleSharedZone(zoneId)`                                             | Shuffle a shared zone/deck                          |
+| `effects.dealCardsToPlayerZone(fromZoneId, playerId, toZoneId, count)`          | Deal cards from a shared zone into a player zone    |
+| `effects.sample(from, sampleId, resume, count?)`                                | Sample cards and resume a continuation              |
+| `effects.randomInt(min, max, randomIntId, resume)`                              | Sample one integer and resume a shared continuation |
+| `effects.dispatchSystem(event, payload?)`                                       | Queue a system event immediately                    |
+| `effects.scheduleTiming(timing, event, payload?)`                               | Queue a timed system input                          |
 
 Prompt and window instance IDs are branded runtime IDs. Use the values returned
 by the runtime state instead of raw strings.
@@ -713,19 +768,23 @@ Reducer table helpers are immutable. Each mover returns a cloned table or state.
 
 ### Flow and zones
 
-| Helper | Returns | Notes |
-| --- | --- | --- |
-| `setActivePlayers(state, playerIds)` | State copy | Replaces `flow.activePlayers` |
-| `setPhaseState(state, phaseState)` | State copy | Replaces the current `state.phase` value |
-| `getSharedZoneCards(table, zoneId)` | `readonly string[]` | Reads a shared zone or shared deck |
-| `getPlayerZoneCards(table, playerId, zoneId)` | `readonly string[]` | Reads a per-player zone or hand |
-| `addCardToSharedZone(table, zoneId, cardId, playedBy?)` | Table copy | Appends a card to a shared zone |
-| `removeCardFromSharedZone(table, zoneId, cardId)` | Table copy | Removes a card from a shared zone |
-| `moveCardFromPlayerZoneToSharedZone({ ... })` | Table copy | Moves one card from a player zone to a shared zone |
-| `moveCardBetweenSharedZones({ ... })` | Table copy | Moves one card between shared zones |
+| Helper                                                  | Returns             | Notes                                              |
+| ------------------------------------------------------- | ------------------- | -------------------------------------------------- |
+| `setActivePlayers(state, playerIds)`                    | State copy          | Replaces `flow.activePlayers`                      |
+| `setPhaseState(state, phaseState)`                      | State copy          | Replaces the current `state.phase` value           |
+| `getSharedZoneCards(table, zoneId)`                     | `readonly string[]` | Reads a shared zone or shared deck                 |
+| `getPlayerZoneCards(table, playerId, zoneId)`           | `readonly string[]` | Reads a per-player zone or hand                    |
+| `addCardToSharedZone(table, zoneId, cardId, playedBy?)` | Table copy          | Appends a card to a shared zone                    |
+| `removeCardFromSharedZone(table, zoneId, cardId)`       | Table copy          | Removes a card from a shared zone                  |
+| `moveCardFromPlayerZoneToSharedZone({ ... })`           | Table copy          | Moves one card from a player zone to a shared zone |
+| `moveCardBetweenSharedZones({ ... })`                   | Table copy          | Moves one card between shared zones                |
 
 ```ts
-const handCards = getPlayerZoneCards(state.table, input.playerId, "things-hand");
+const handCards = getPlayerZoneCards(
+  state.table,
+  input.playerId,
+  "things-hand",
+);
 
 const nextTable = moveCardFromPlayerZoneToSharedZone({
   table: state.table,
@@ -739,34 +798,63 @@ const nextTable = moveCardFromPlayerZoneToSharedZone({
 
 ### Boards and containers
 
-| Helper | Returns | Notes |
-| --- | --- | --- |
-| `getBoard(table, boardId)` | Board state | Works for shared and per-player board IDs |
-| `getSpace(table, boardId, spaceId)` | Space state | Reads one board space |
-| `getContainer(table, boardId, containerId)` | Container state | Reads one board container |
-| `getBoardsByTypeId(table, typeId)` | Board ID array | Finds boards by authored `typeId` |
-| `getSpacesByTypeId(table, boardId, typeId)` | Space ID array | Finds spaces by authored `typeId` |
-| `getRelatedSpaces(table, boardId, spaceId, relationTypeId)` | Space ID array | Traverses typed board relations |
-| `getAdjacentSpaces(table, boardId, spaceId)` | Space ID array | Shortcut for `relationTypeId: "adjacent"` |
-| `getComponentsOnSpace(table, boardId, spaceId)` | Component ID array | Reads ordered occupants on a space |
-| `getComponentsInContainer(table, boardId, containerId)` | Component ID array | Reads ordered occupants in a container |
-| `moveComponentToSpace(table, componentId, boardId, spaceId)` | Table copy | Moves any component onto a board space |
-| `moveComponentToContainer(table, componentId, boardId, containerId)` | Table copy | Moves any component into a board container |
-| `assertCardAllowedInContainer(table, boardId, containerId, componentId)` | `void` | Throws if a card-set restriction would be violated |
+| Helper                                                                   | Returns            | Notes                                              |
+| ------------------------------------------------------------------------ | ------------------ | -------------------------------------------------- |
+| `getBoard(table, boardId)`                                               | Board state        | Works for shared and per-player board IDs          |
+| `getSpace(table, boardId, spaceId)`                                      | Space state        | Reads one board space                              |
+| `getContainer(table, boardId, containerId)`                              | Container state    | Reads one board container                          |
+| `getBoardsByTypeId(table, typeId)`                                       | Board ID array     | Finds boards by authored `typeId`                  |
+| `getSpacesByTypeId(table, boardId, typeId)`                              | Space ID array     | Finds spaces by authored `typeId`                  |
+| `getRelatedSpaces(table, boardId, spaceId, relationTypeId)`              | Space ID array     | Traverses typed board relations                    |
+| `getAdjacentSpaces(table, boardId, spaceId)`                             | Space ID array     | Shortcut for `relationTypeId: "adjacent"`          |
+| `getComponentsOnSpace(table, boardId, spaceId)`                          | Component ID array | Reads ordered occupants on a space                 |
+| `getComponentsInContainer(table, boardId, containerId)`                  | Component ID array | Reads ordered occupants in a container             |
+| `moveComponentToSpace(table, componentId, boardId, spaceId)`             | Table copy         | Moves any component onto a board space             |
+| `moveComponentToContainer(table, componentId, boardId, containerId)`     | Table copy         | Moves any component into a board container         |
+| `assertCardAllowedInContainer(table, boardId, containerId, componentId)` | `void`             | Throws if a card-set restriction would be violated |
+
+### Shared tiled-board helpers
+
+| Helper                                                         | Returns            | Notes                                                    |
+| -------------------------------------------------------------- | ------------------ | -------------------------------------------------------- |
+| `getTiledBoard(table, boardId)`                                | Tiled board state  | Narrows a board to `layout: "hex"` or `layout: "square"` |
+| `getEdge(table, boardId, edgeId)`                              | Edge state         | Reads one tiled edge                                     |
+| `getVertex(table, boardId, vertexId)`                          | Vertex state       | Reads one tiled vertex                                   |
+| `getEdgesByTypeId(table, boardId, typeId)`                     | Edge ID array      | Finds tiled edges by authored `typeId`                   |
+| `getVerticesByTypeId(table, boardId, typeId)`                  | Vertex ID array    | Finds tiled vertices by authored `typeId`                |
+| `getSpaceEdges(table, boardId, spaceId)`                       | Edge ID array      | Lists edges that border one space                        |
+| `getSpaceVertices(table, boardId, spaceId)`                    | Vertex ID array    | Lists vertices that touch one space                      |
+| `getIncidentEdges(table, boardId, vertexId)`                   | Edge ID array      | Lists edges that touch a vertex                          |
+| `getIncidentVertices(table, boardId, edgeId)`                  | Vertex ID array    | Lists vertices that touch an edge                        |
+| `getSpaceDistance(table, boardId, fromSpaceId, toSpaceId)`     | Number             | Uses the layout's default adjacency graph                |
+| `getComponentsOnEdge(table, boardId, edgeId)`                  | Component ID array | Reads ordered occupants on an edge                       |
+| `getComponentsOnVertex(table, boardId, vertexId)`              | Component ID array | Reads ordered occupants on a vertex                      |
+| `moveComponentToEdge(table, componentId, boardId, edgeId)`     | Table copy         | Moves a component onto a tiled edge                      |
+| `moveComponentToVertex(table, componentId, boardId, vertexId)` | Table copy         | Moves a component onto a tiled vertex                    |
 
 ### Hex-board helpers
 
-| Helper | Returns | Notes |
-| --- | --- | --- |
-| `getHexBoard(table, boardId)` | Hex board state | Narrows a board to `layout: "hex"` |
-| `getHexSpace(table, boardId, spaceId)` | Hex space state | Reads one hex space |
-| `getHexSpaceAt(table, boardId, q, r)` | Hex space or `undefined` | Looks up by axial coordinates |
-| `getEdge(table, boardId, edgeId)` | Edge state | Reads one hex edge |
-| `getVertex(table, boardId, vertexId)` | Vertex state | Reads one hex vertex |
-| `getEdgesByTypeId(table, boardId, typeId)` | Edge ID array | Finds edges by authored `typeId` |
-| `getVerticesByTypeId(table, boardId, typeId)` | Vertex ID array | Finds vertices by authored `typeId` |
-| `moveComponentToEdge(table, componentId, boardId, edgeId)` | Table copy | Moves a component onto a hex edge |
-| `moveComponentToVertex(table, componentId, boardId, vertexId)` | Table copy | Moves a component onto a hex vertex |
+| Helper                                 | Returns                  | Notes                              |
+| -------------------------------------- | ------------------------ | ---------------------------------- |
+| `getHexBoard(table, boardId)`          | Hex board state          | Narrows a board to `layout: "hex"` |
+| `getHexSpace(table, boardId, spaceId)` | Hex space state          | Reads one hex space                |
+| `getHexSpaceAt(table, boardId, q, r)`  | Hex space or `undefined` | Looks up by axial coordinates      |
+
+### Square-board helpers
+
+| Helper                                                                  | Returns                     | Notes                                            |
+| ----------------------------------------------------------------------- | --------------------------- | ------------------------------------------------ |
+| `getSquareBoard(table, boardId)`                                        | Square board state          | Narrows a board to `layout: "square"`            |
+| `getSquareSpace(table, boardId, spaceId)`                               | Square space state          | Reads one square space                           |
+| `getSquareSpaceAt(table, boardId, row, col)`                            | Square space or `undefined` | Looks up by row and column                       |
+| `getSquareNeighbors(table, boardId, spaceId, { mode })`                 | Space ID array              | `mode` can be `orthogonal`, `diagonal`, or `all` |
+| `getSquareDistance(table, boardId, fromSpaceId, toSpaceId, { metric })` | Number                      | `metric` can be `manhattan` or `chebyshev`       |
+
+`getAdjacentSpaces(...)` now follows the board layout:
+
+- `generic` boards read authored `adjacent` relations
+- `hex` boards use derived hex adjacency
+- `square` boards use derived orthogonal adjacency
 
 ## `applySetupBootstrap(...)`
 
@@ -819,15 +907,15 @@ export default createReducerBundle(game);
 
 ### Returned runtime methods
 
-| Method | Notes |
-| --- | --- |
+| Method                                               | Notes                                                                                    |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | `initialize({ table, playerIds, rngSeed?, setup? })` | Creates the initial reducer state, applies setup overrides, and enters the initial phase |
-| `initializePhase({ state, to })` | Transitions into one phase and initializes its `state.phase` value |
-| `validateInput({ state, input })` | Validates one runtime input |
-| `reduce({ state, input })` | Applies one input without draining follow-up effects |
-| `dispatch({ state, input })` | Applies one input and drains runtime effects |
-| `getAvailableActions({ state, playerId })` | Returns surfaced action metadata for one player |
-| `getView({ state, playerId, viewId? })` | Projects one named reducer view; defaults to `player` |
+| `initializePhase({ state, to })`                     | Transitions into one phase and initializes its `state.phase` value                       |
+| `validateInput({ state, input })`                    | Validates one runtime input                                                              |
+| `reduce({ state, input })`                           | Applies one input without draining follow-up effects                                     |
+| `dispatch({ state, input })`                         | Applies one input and drains runtime effects                                             |
+| `getAvailableActions({ state, playerId })`           | Returns surfaced action metadata for one player                                          |
+| `getView({ state, playerId, viewId? })`              | Projects one named reducer view; defaults to `player`                                    |
 
 The bundle also exposes reducer metadata registries such as `actions`,
 `prompts`, `views`, `windows`, `continuations`, and `metadata`.
@@ -836,17 +924,17 @@ The bundle also exposes reducer metadata registries such as `actions`,
 
 `@dreamboard/app-sdk/reducer` also exports type helpers for reducer authoring.
 
-| Type | Use |
-| --- | --- |
-| `GameStateOf<Source>` | Resolved reducer state for a contract or full game definition |
-| `PhaseMapOf<Contract>` | Type-check a `phases` object against the contract's phase-name union |
-| `ViewOfDefinition<Definition, ViewName>` | Inferred payload for one registered view |
-| `ActionParamsOfDefinition<Definition, ActionName>` | Inferred params for a named action across phases |
-| `ActionParamsOfDefinitionPhase<Definition, PhaseName, ActionName>` | Inferred params for one phase-local action |
-| `PromptIdsOfDefinition<Definition>` | Prompt ID union for a reducer definition |
-| `PromptResponseOfDefinition<Definition, PromptId>` | Response payload for one prompt |
-| `WindowActionNamesOfDefinition<Definition, WindowId>` | Window action-name union for one registered window |
-| `WindowActionParamsOfDefinition<Definition, WindowId, ActionName>` | Inferred params payload for one window action |
+| Type                                                               | Use                                                                  |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| `GameStateOf<Source>`                                              | Resolved reducer state for a contract or full game definition        |
+| `PhaseMapOf<Contract>`                                             | Type-check a `phases` object against the contract's phase-name union |
+| `ViewOfDefinition<Definition, ViewName>`                           | Inferred payload for one registered view                             |
+| `ActionParamsOfDefinition<Definition, ActionName>`                 | Inferred params for a named action across phases                     |
+| `ActionParamsOfDefinitionPhase<Definition, PhaseName, ActionName>` | Inferred params for one phase-local action                           |
+| `PromptIdsOfDefinition<Definition>`                                | Prompt ID union for a reducer definition                             |
+| `PromptResponseOfDefinition<Definition, PromptId>`                 | Response payload for one prompt                                      |
+| `WindowActionNamesOfDefinition<Definition, WindowId>`              | Window action-name union for one registered window                   |
+| `WindowActionParamsOfDefinition<Definition, WindowId, ActionName>` | Inferred params payload for one window action                        |
 
 ```ts
 import type {

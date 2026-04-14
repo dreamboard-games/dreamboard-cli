@@ -2,47 +2,92 @@
 {/* Run `pnpm docs:gen-props` to regenerate. Do not edit directly. */}
 
 <ParamField path="rows" type="number" required>
-  Number of rows
+  `rows` value
 </ParamField>
 <ParamField path="cols" type="number" required>
-  Number of columns
+  `cols` value
+</ParamField>
+<ParamField path="cells" type="GridCell[]">
+  `cells` value
 </ParamField>
 <ParamField path="pieces" type="GridPiece[]" required>
-  Pieces on the board - defaults to empty
+  `pieces` value
+</ParamField>
+<ParamField path="edges" type="SquareGridEdge[]">
+  `edges` value
+</ParamField>
+<ParamField path="vertices" type="SquareGridVertex[]">
+  `vertices` value
 </ParamField>
 <ParamField path="cellSize" type="number">
-  Cell size in pixels
+  `cellSize` value
 </ParamField>
 <ParamField path="renderCell" type="(row: number, col: number) => ReactNode" required>
-  Custom cell renderer - required, receives row/col centered at cell position
+  Receives row/col with transform centered at cell position
 </ParamField>
 <ParamField path="renderPiece" type="(piece: GridPiece) => ReactNode" required>
-  Custom piece renderer - required, receives piece centered at cell center
+  Receives piece with transform centered at cell center
+</ParamField>
+<ParamField path="renderEdge" type="(edge: SquareGridEdge, position: SquareEdgePosition) => ReactNode">
+  `renderEdge` value
+</ParamField>
+<ParamField path="renderVertex" type="(vertex: SquareGridVertex, position: SquareVertexPosition) => ReactNode">
+  `renderVertex` value
 </ParamField>
 <ParamField path="showCoordinates" type="boolean">
-  Show coordinate labels
+  `showCoordinates` value
 </ParamField>
 <ParamField path="coordinateStyle" type="'algebraic' | 'numeric' | 'none'">
-  Coordinate style
+  `coordinateStyle` value
 </ParamField>
 <ParamField path="width" type="number | string">
-  Container width (use "100%" for responsive)
+  `width` value
 </ParamField>
 <ParamField path="height" type="number | string">
-  Container height (use "100%" for responsive)
+  `height` value
 </ParamField>
 <ParamField path="enablePanZoom" type="boolean">
-  Enable pan and zoom
+  `enablePanZoom` value
 </ParamField>
 <ParamField path="initialZoom" type="number">
-  Initial zoom level
+  `initialZoom` value
 </ParamField>
 <ParamField path="minZoom" type="number">
-  Min zoom level
+  `minZoom` value
 </ParamField>
 <ParamField path="maxZoom" type="number">
-  Max zoom level
+  `maxZoom` value
 </ParamField>
 <ParamField path="className" type="string">
-  Additional class names
+  `className` value
+</ParamField>
+<ParamField path="interactiveEdges" type="boolean">
+  `interactiveEdges` value
+</ParamField>
+<ParamField path="interactiveVertices" type="boolean">
+  `interactiveVertices` value
+</ParamField>
+<ParamField path="onInteractiveEdgeClick" type="(edge: InteractiveSquareEdge) => void">
+  `onInteractiveEdgeClick` value
+</ParamField>
+<ParamField path="onInteractiveEdgeEnter" type="(edge: InteractiveSquareEdge) => void">
+  `onInteractiveEdgeEnter` value
+</ParamField>
+<ParamField path="onInteractiveEdgeLeave" type="(edge: InteractiveSquareEdge) => void">
+  `onInteractiveEdgeLeave` value
+</ParamField>
+<ParamField path="onInteractiveVertexClick" type="(vertex: InteractiveSquareVertex) => void">
+  `onInteractiveVertexClick` value
+</ParamField>
+<ParamField path="onInteractiveVertexEnter" type="(vertex: InteractiveSquareVertex) => void">
+  `onInteractiveVertexEnter` value
+</ParamField>
+<ParamField path="onInteractiveVertexLeave" type="(vertex: InteractiveSquareVertex) => void">
+  `onInteractiveVertexLeave` value
+</ParamField>
+<ParamField path="renderInteractiveEdge" type="(edge: InteractiveSquareEdge, isHovered: boolean) => ReactNode">
+  `renderInteractiveEdge` value
+</ParamField>
+<ParamField path="renderInteractiveVertex" type="(vertex: InteractiveSquareVertex, isHovered: boolean) => ReactNode">
+  `renderInteractiveVertex` value
 </ParamField>

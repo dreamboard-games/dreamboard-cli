@@ -9,16 +9,10 @@ import { clsx } from "clsx";
 import { Loader2 } from "lucide-react";
 
 export interface GameSkeletonProps {
-  /** Type of skeleton to show */
   variant?: "default" | "cards" | "players" | "minimal";
-  /** Optional loading message */
   message?: string;
   className?: string;
 }
-
-/**
- * Pulsing skeleton box
- */
 function SkeletonBox({
   className,
   animate = true,
@@ -46,9 +40,6 @@ function SkeletonBox({
   );
 }
 
-/**
- * Card skeleton
- */
 function CardSkeleton({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
   const sizeClasses = {
     sm: "w-16 h-24 sm:w-20 sm:h-28",
@@ -71,9 +62,6 @@ function CardSkeleton({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
   );
 }
 
-/**
- * Player info skeleton
- */
 function PlayerSkeleton() {
   return (
     <div className="flex items-center gap-3 p-3 bg-white/80 rounded-xl border-2 border-slate-200">
@@ -86,9 +74,6 @@ function PlayerSkeleton() {
   );
 }
 
-/**
- * Full game skeleton with loading states
- */
 export function GameSkeleton({
   variant = "default",
   message = "Loading game...",

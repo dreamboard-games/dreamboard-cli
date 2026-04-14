@@ -1,76 +1,34 @@
-/**
- * ResourceCounter component - Displays resource counts with icons
- *
- * Design Philosophy: "At-a-glance Resource Tracking"
- * - Clear visual hierarchy with icons and counts
- * - Flexible layouts for different UI contexts
- * - Smooth animations for count changes
- * - Touch-optimized interactions
- *
- * @example Basic usage
- * ```tsx
- * <ResourceCounter
- *   resources={[
- *     { type: 'gold', label: 'Gold', icon: Coins, color: 'text-yellow-400' },
- *     { type: 'wood', label: 'Wood', icon: TreePine, color: 'text-amber-700' },
- *   ]}
- *   counts={{ gold: 5, wood: 3 }}
- * />
- * ```
- */
+/** Displays resource counts with icons and animated updates. */
 
 import { motion, AnimatePresence } from "framer-motion";
 import { clsx } from "clsx";
 import type { ComponentType } from "react";
-import { ResourceId } from "@dreamboard/manifest";
+import type { ResourceId } from "../manifest-contract.js";
 
 export interface ResourceDisplayConfig {
-  /** Unique resource type identifier */
   type: ResourceId;
-  /** Human-readable label */
   label: string;
-  /** Icon component to display */
   icon: ComponentType<{
     className?: string;
     strokeWidth?: number;
     "aria-hidden"?: string;
   }>;
-  /** Icon color class (e.g., 'text-primary'). Defaults to 'text-foreground' */
   iconColor?: string;
-  /** Background color class (e.g., 'bg-[#fff9c4]'). Defaults to 'bg-white' */
   bgColor?: string;
-  /** Count text color class (e.g., 'text-primary'). Defaults to 'text-foreground' */
   textColor?: string;
 }
 
 export interface ResourceCounterProps {
-  /** Resource display configs with icons and styling */
   resources: ResourceDisplayConfig[];
-  /** Current counts keyed by resource type */
   counts: Record<ResourceId, number>;
-  /** Layout style */
   layout?: "row" | "grid" | "compact";
   /** Number of columns for grid layout */
   columns?: number;
-  /** Show zero values */
   showZero?: boolean;
-  /** Size variant */
   size?: "sm" | "md" | "lg";
-  /** Click handler for individual resources */
   onResourceClick?: (resourceType: ResourceId) => void;
-  /** Additional class names */
   className?: string;
 }
-
-/**
- * ResourceCounter component for displaying resource amounts
- *
- * Features:
- * - Multiple layout options (row, grid, compact)
- * - Animated count changes
- * - Interactive click handling
- * - Configurable icons and colors
- */
 export function ResourceCounter({
   resources,
   counts,

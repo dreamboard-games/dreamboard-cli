@@ -4,14 +4,14 @@ import { usePluginRuntime } from "../hooks/usePluginRuntime.js";
 import { GameSkeleton } from "./GameSkeleton.js";
 
 export interface PluginRuntimeProps {
-  /** Child components to render after game has started */
+  /** Child components to render after state sync has started */
   children: React.ReactNode;
   /**
-   * Timeout in milliseconds to wait for GAME_STARTED message.
+   * Timeout in milliseconds to wait for the first state-sync snapshot.
    * @default 10000 (10 seconds)
    */
   timeout?: number;
-  /** Custom loading component to show while waiting for game to start */
+  /** Custom loading component to show while waiting for state sync */
   loadingComponent?: React.ReactNode;
   /** Custom error component to show when initialization fails */
   errorComponent?: (error: string) => React.ReactNode;
@@ -22,8 +22,7 @@ export interface PluginRuntimeProps {
  *
  * This component:
  * - Creates a RuntimeAPI instance using the SDK-provided implementation
- * - Waits for GAME_STARTED before rendering children
- * - Buffers game messages until handlers are set up
+ * - Waits for the first reducer-native state-sync snapshot before rendering children
  * - Provides RuntimeAPI and session state to all child components
  *
  * @example
@@ -65,7 +64,7 @@ export function PluginRuntime({
     if (loadingComponent) {
       return <>{loadingComponent}</>;
     }
-    return <GameSkeleton message="Waiting for game to start..." />;
+    return <GameSkeleton message="Waiting for game state..." />;
   }
 
   return <RuntimeProvider runtime={runtime}>{children}</RuntimeProvider>;

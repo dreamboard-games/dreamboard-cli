@@ -1,5 +1,6 @@
 import { getGameBySlug, type Game } from "@dreamboard/api-client";
-import { formatApiError } from "../../utils/errors.js";
+import { toApiProblem, toDreamboardApiError } from "../../utils/errors.js";
+import { CLI_PROBLEM_TYPES } from "../../utils/problem-types.js";
 
 /**
  * Look up a game by slug, returning null only for genuine 404s.
@@ -15,15 +16,18 @@ export async function tryGetGameBySlug(
     query: { includeDeleted: opts?.includeDeleted },
   });
   if (error) {
-    if (response?.status === 404) {
+    const problem = toApiProblem(
+      error,
+      response,
+      `Failed to look up game by slug '${slug}'`,
+    );
+    if (problem.type === CLI_PROBLEM_TYPES.RESOURCE_NOT_FOUND) {
       return null;
     }
-    throw new Error(
-      formatApiError(
-        error,
-        response,
-        `Failed to look up game by slug '${slug}'`,
-      ),
+    throw toDreamboardApiError(
+      error,
+      response,
+      `Failed to look up game by slug '${slug}'`,
     );
   }
   return data ?? null;

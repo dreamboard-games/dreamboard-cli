@@ -6,7 +6,6 @@ import {
   getLatestGameRule,
   getManifest,
   findManifests,
-  scaffoldGameSourcesV3,
 } from "@dreamboard/api-client";
 import {
   resolveConfig,
@@ -16,7 +15,7 @@ import {
 import { parseCloneCommandArgs } from "../flags.js";
 import { loadGlobalConfig } from "../config/global-config.js";
 import { normalizeSlug } from "../utils/strings.js";
-import { ensureDir, installSkillFile } from "../utils/fs.js";
+import { ensureDir } from "../utils/fs.js";
 import { CONFIG_FLAG_ARGS } from "../command-args.js";
 import {
   findCompiledResultsForAuthoringState,
@@ -27,9 +26,7 @@ import {
   writeManifest,
   writeRule,
   writeSnapshot,
-  writeScaffoldFiles,
 } from "../services/project/local-files.js";
-import { validateDynamicScaffoldResponse } from "../services/project/dynamic-scaffold-response.js";
 import { updateProjectState } from "../config/project-config.js";
 import { scaffoldStaticWorkspace } from "../services/project/static-scaffold.js";
 import { pullIntoDirectory } from "../services/project/sync.js";
@@ -37,7 +34,8 @@ import {
   setLatestCompileAttempt,
   updateProjectAuthoringState,
 } from "../services/project/project-state.js";
-import { formatApiError } from "../utils/errors.js";
+import { toDreamboardApiError } from "../utils/errors.js";
+import { applyWorkspaceCodegen } from "../services/project/workspace-codegen.js";
 
 export default defineCommand({
   meta: { name: "clone", description: "Clone an existing game by slug" },
@@ -66,8 +64,10 @@ export default defineCommand({
       path: { slug: normalizedSlug },
     });
     if (error || !game) {
-      throw new Error(
-        formatApiError(error, response, `Game '${normalizedSlug}' not found`),
+      throw toDreamboardApiError(
+        error,
+        response,
+        `Game '${normalizedSlug}' not found`,
       );
     }
 
@@ -91,29 +91,6 @@ export default defineCommand({
         );
       }
 
-      const {
-        data: dynamicScaffold,
-        error: dynamicError,
-        response: dynamicResponse,
-      } = await scaffoldGameSourcesV3({
-        path: { gameId: game.id },
-        body: {
-          manifestId,
-          ruleId,
-          mode: "update",
-          seedMissingOnly: true,
-        },
-      });
-      if (dynamicError || !dynamicScaffold) {
-        throw new Error(
-          formatApiError(
-            dynamicError,
-            dynamicResponse,
-            "Failed to scaffold dynamic files",
-          ),
-        );
-      }
-
       const { data: manifestResponse, error: manifestError } =
         await getManifest({
           path: { manifestId },
@@ -130,12 +107,13 @@ export default defineCommand({
         throw new Error("Failed to fetch latest rule content for clone.");
       }
 
-      const scaffoldFiles =
-        validateDynamicScaffoldResponse(dynamicScaffold).allFiles;
-      await writeScaffoldFiles(targetDir, scaffoldFiles);
       await writeManifest(targetDir, manifestResponse.manifest);
       await writeRule(targetDir, latestRuleResponse.ruleText);
-      await scaffoldStaticWorkspace(targetDir, "update", { updateSdk: false });
+      await scaffoldStaticWorkspace(targetDir, "update");
+      await applyWorkspaceCodegen({
+        projectRoot: targetDir,
+        manifest: manifestResponse.manifest,
+      });
       await updateProjectState(
         targetDir,
         updateProjectAuthoringState(
@@ -160,7 +138,7 @@ export default defineCommand({
         apiBaseUrl: config.apiBaseUrl,
         webBaseUrl: config.webBaseUrl,
       });
-      await scaffoldStaticWorkspace(targetDir, "update", { updateSdk: false });
+      await scaffoldStaticWorkspace(targetDir, "update");
 
       const remoteResults = await findCompiledResultsForAuthoringState({
         gameId: game.id,
@@ -180,8 +158,6 @@ export default defineCommand({
         );
       }
     }
-
-    await installSkillFile(targetDir);
 
     consola.success(`Cloned ${normalizedSlug} into ${targetDir}`);
   },

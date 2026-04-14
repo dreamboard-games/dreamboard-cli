@@ -4,6 +4,20 @@ export type ClientOptions = {
     baseUrl: 'https://dreamboard.games' | 'http://localhost:8080' | (string & {});
 };
 
+/**
+ * Backend runtime version metadata used by local development hosts.
+ */
+export type ApiVersionResponse = {
+    /**
+     * Deployed backend application revision or git SHA, when available.
+     */
+    backendRevision: string;
+    /**
+     * UI SDK version expected by the backend runtime.
+     */
+    uiSdkVersion: string;
+};
+
 export type GameMetadata = {
     /**
      * URL to the game's cover image
@@ -132,17 +146,64 @@ export type Game = {
     initialized: boolean;
 };
 
-export type ErrorResponse = {
+/**
+ * Stable machine-readable problem identifier
+ */
+export type ProblemType = 'urn:dreamboard:problem:action-rejected' | 'urn:dreamboard:problem:active-job-conflict' | 'urn:dreamboard:problem:authoring-state-base-missing' | 'urn:dreamboard:problem:authoring-state-drift' | 'urn:dreamboard:problem:forbidden' | 'urn:dreamboard:problem:game-slug-conflict' | 'urn:dreamboard:problem:internal-error' | 'urn:dreamboard:problem:resource-not-found' | 'urn:dreamboard:problem:source-revision-base-missing' | 'urn:dreamboard:problem:source-revision-drift' | 'urn:dreamboard:problem:source-revision-not-found' | 'urn:dreamboard:problem:state-conflict' | 'urn:dreamboard:problem:too-many-requests' | 'urn:dreamboard:problem:unauthorized' | 'urn:dreamboard:problem:validation-failed';
+
+export type ProblemViolation = {
     /**
-     * Human-readable error message
+     * Optional field or input path associated with the issue
+     */
+    field?: string;
+    /**
+     * Optional machine-readable issue code
+     */
+    code?: string;
+    /**
+     * Human-readable issue description
      */
     message: string;
+};
+
+export type ProblemDetails = {
+    type: ProblemType;
     /**
-     * List of specific error details
+     * Short summary of the problem type
      */
-    errors?: Array<string>;
+    title: string;
     /**
-     * ISO 8601 timestamp of the error
+     * HTTP status code for this problem
+     */
+    status: number;
+    /**
+     * Human-readable explanation specific to this occurrence
+     */
+    detail: string;
+    /**
+     * Request URI or other occurrence identifier
+     */
+    instance?: string;
+    /**
+     * Correlation ID for tracing this request across logs and support tooling
+     */
+    requestId?: string;
+    /**
+     * Whether retrying the same request may succeed without changing input
+     */
+    retryable?: boolean;
+    /**
+     * Structured context for programmatic handling and richer UX
+     */
+    context?: {
+        [key: string]: string;
+    };
+    /**
+     * Optional structured issues associated with the problem
+     */
+    violations?: Array<ProblemViolation>;
+    /**
+     * ISO 8601 timestamp of the problem response
      */
     timestamp?: string;
 };
@@ -173,6 +234,15 @@ export type CreateGameRequest = {
     enhanceRule?: boolean;
 };
 
+/**
+ * Supported player-count metadata for the game
+ */
+export type PlayersDefinition = {
+    minPlayers: number;
+    maxPlayers: number;
+    optimalPlayers?: number;
+};
+
 export type PresetCardSetDefinition = {
     /**
      * Unique identifier for the card set
@@ -192,11 +262,19 @@ export type PropertySchema = {
     /**
      * The data type of the property.
      */
-    type: 'string' | 'integer' | 'number' | 'boolean' | 'deckId' | 'cardId' | 'playerId' | 'array' | 'object' | 'enum';
+    type: 'string' | 'integer' | 'number' | 'boolean' | 'zoneId' | 'cardId' | 'playerId' | 'boardId' | 'edgeId' | 'vertexId' | 'spaceId' | 'pieceId' | 'dieId' | 'resourceId' | 'array' | 'object' | 'record' | 'enum';
     /**
      * Optional description of the property's purpose and usage.
      */
     description?: string;
+    /**
+     * Whether an object property may be omitted.
+     */
+    optional?: boolean;
+    /**
+     * Whether the value may be null.
+     */
+    nullable?: boolean;
     /**
      * For array types, the schema of the array items. Required if type is 'array'.
      */
@@ -211,6 +289,10 @@ export type PropertySchema = {
      * For enum types, the list of allowed string values. Required if type is 'enum'.
      */
     enums?: Array<string>;
+    /**
+     * For record types, the schema of the record's values. Required if type is 'record'.
+     */
+    values?: PropertySchema;
 };
 
 export type ObjectSchema = {
@@ -220,6 +302,93 @@ export type ObjectSchema = {
     properties: {
         [key: string]: PropertySchema;
     };
+};
+
+export type DetachedHomeSpec = {
+    type: 'detached';
+};
+
+export type ZoneHomeSpec = {
+    type: 'zone';
+    zoneId: string;
+};
+
+export type SpaceHomeSpec = {
+    type: 'space';
+    boardId: string;
+    spaceId: string;
+};
+
+export type ContainerHomeSpec = {
+    type: 'container';
+    boardId: string;
+    containerId: string;
+};
+
+/**
+ * Tiled board edge identified by the spaces that border it
+ */
+export type BoardEdgeRef = {
+    spaces: Array<string>;
+};
+
+export type EdgeHomeSpec = {
+    type: 'edge';
+    boardId: string;
+    ref: BoardEdgeRef;
+};
+
+/**
+ * Tiled board vertex identified by the spaces that touch it
+ */
+export type BoardVertexRef = {
+    spaces: Array<string>;
+};
+
+export type VertexHomeSpec = {
+    type: 'vertex';
+    boardId: string;
+    ref: BoardVertexRef;
+};
+
+export type SlotHomeSpec = {
+    type: 'slot';
+    hostComponentId: string;
+    slotId: string;
+};
+
+export type ComponentHomeSpec = ({
+    type: 'detached';
+} & DetachedHomeSpec) | ({
+    type: 'zone';
+} & ZoneHomeSpec) | ({
+    type: 'space';
+} & SpaceHomeSpec) | ({
+    type: 'container';
+} & ContainerHomeSpec) | ({
+    type: 'edge';
+} & EdgeHomeSpec) | ({
+    type: 'vertex';
+} & VertexHomeSpec) | ({
+    type: 'slot';
+} & SlotHomeSpec);
+
+/**
+ * Default authored visibility for a component instance
+ */
+export type ComponentVisibilitySpec = {
+    faceUp?: boolean;
+    /**
+     * When omitted, visible to all players
+     */
+    visibleTo?: Array<string>;
+};
+
+/**
+ * Arbitrary authored JSON value.
+ */
+export type JsonValue = string | number | number | boolean | null | Array<JsonValue> | {
+    [key: string]: JsonValue;
 };
 
 export type BoardCard = {
@@ -244,14 +413,22 @@ export type BoardCard = {
      */
     count: number;
     /**
-     * Card type identifier. This field is optional and can be used for categorizing cards within a deck.
+     * Optional authored card category or subtype identifier
      */
     cardType?: string;
     /**
-     * Actual property values for this specific card instance. Keys must match the properties defined in the referenced cardSchema. Values are validated against the schema's type definitions.
+     * Optional authored home for this card inventory. When omitted, cards start detached until reducer setup places them.
+     */
+    home?: ComponentHomeSpec;
+    /**
+     * Default authored visibility for the card inventory
+     */
+    visibility?: ComponentVisibilitySpec;
+    /**
+     * Actual property values for this specific card instance. Keys must match the properties defined in the referenced cardSchema.
      */
     properties: {
-        [key: string]: string;
+        [key: string]: JsonValue;
     };
 };
 
@@ -269,11 +446,11 @@ export type ManualCardSetDefinition = {
      */
     type: 'manual';
     /**
-     * Schema definition for card properties in this card set. Defines the structure and types of properties that cards in this card set can have.
+     * Schema definition for authored card properties in this card set
      */
     cardSchema: ObjectSchema;
     /**
-     * List of cards in this card set
+     * List of authored cards in this card set
      */
     cards: Array<BoardCard>;
 };
@@ -285,226 +462,559 @@ export type CardSetDefinition = ({
 } & ManualCardSetDefinition);
 
 /**
- * Definition of a player hand type
+ * Whether authored topology exists once for the table or once per player
  */
-export type PlayerHandDefinition = {
-    /**
-     * Unique identifier for this hand type (becomes HandId literal)
-     */
-    id: string;
-    /**
-     * Human-readable name for UI display
-     */
-    displayName: string;
-    /**
-     * Optional longer description of this hand's purpose
-     */
-    description?: string;
-    /**
-     * Maximum number of cards allowed in this hand
-     */
-    maxCards?: number;
-    /**
-     * Minimum number of cards required in this hand
-     */
-    minCards?: number;
-    /**
-     * Who can see cards in this hand
-     */
-    visibility?: 'ownerOnly' | 'public' | 'hidden';
-    /**
-     * List of card set IDs that can be stored in this hand. If empty, the hand can store cards from any card set.
-     */
-    cardSetIds?: Array<string>;
-};
+export type TopologyScope = 'shared' | 'perPlayer';
 
-export type DeckDefinition = {
+/**
+ * Default topology visibility for a zone or slot
+ */
+export type ZoneVisibility = 'ownerOnly' | 'public' | 'hidden';
+
+/**
+ * Generic authored container that can hold cards, pieces, or dice
+ */
+export type ZoneSpec = {
     /**
-     * Unique identifier for the deck
+     * Stable zone identifier
      */
     id: string;
     /**
-     * Display name of the deck
+     * Display name for the zone
      */
     name: string;
+    scope: TopologyScope;
     /**
-     * ID of the card set this deck uses
+     * Optional card-set restriction for this zone
      */
-    cardSetId: string;
+    allowedCardSetIds?: Array<string>;
+    visibility?: ZoneVisibility;
 };
 
 /**
- * A die component for randomization and chance mechanics
+ * Stable authored board space or slot anchor
  */
-export type DieDefinition = {
+export type BoardSpaceSpec = {
     /**
-     * Unique identifier for the die
+     * Stable space identifier local to the board
      */
     id: string;
     /**
-     * Display name of the die
+     * Human-readable space name
+     */
+    name?: string;
+    /**
+     * Optional authored space type identifier
+     */
+    typeId?: string;
+    /**
+     * Typed authored fields validated against the board's spaceFieldsSchema
+     */
+    fields?: {
+        [key: string]: JsonValue;
+    };
+};
+
+/**
+ * Named relation between two authored spaces
+ */
+export type BoardRelationSpec = {
+    /**
+     * Optional stable relation identifier
+     */
+    id?: string;
+    /**
+     * Relation type identifier such as adjacent, covers, blocks, or linked
+     */
+    typeId: string;
+    fromSpaceId: string;
+    toSpaceId: string;
+    directed?: boolean;
+    /**
+     * Typed authored relation fields validated against relationFieldsSchema
+     */
+    fields?: {
+        [key: string]: JsonValue;
+    };
+};
+
+export type BoardHostSpec = {
+    type: 'board';
+};
+
+export type SpaceHostSpec = {
+    type: 'space';
+    spaceId: string;
+};
+
+export type BoardContainerHostSpec = ({
+    type: 'board';
+} & BoardHostSpec) | ({
+    type: 'space';
+} & SpaceHostSpec);
+
+/**
+ * Authored board-attached or space-attached container/slot
+ */
+export type BoardContainerSpec = {
+    /**
+     * Stable container identifier local to the board
+     */
+    id: string;
+    /**
+     * Display name for the container
      */
     name: string;
+    host: BoardContainerHostSpec;
+    allowedCardSetIds?: Array<string>;
     /**
-     * Number of sides on the die (e.g., 6 for standard die)
+     * Typed authored container fields validated against containerFieldsSchema
      */
+    fields?: {
+        [key: string]: JsonValue;
+    };
+};
+
+/**
+ * Reusable authored board topology template
+ */
+export type GenericBoardTemplateSpec = {
+    /**
+     * Stable template identifier
+     */
+    id: string;
+    name: string;
+    layout: 'generic';
+    /**
+     * Optional authored board type identifier such as track, map, tableau, or grid
+     */
+    typeId?: string;
+    boardFieldsSchema?: ObjectSchema;
+    spaceFieldsSchema?: ObjectSchema;
+    relationFieldsSchema?: ObjectSchema;
+    containerFieldsSchema?: ObjectSchema;
+    spaces?: Array<BoardSpaceSpec>;
+    relations?: Array<BoardRelationSpec>;
+    containers?: Array<BoardContainerSpec>;
+};
+
+/**
+ * Visual orientation for authored hex coordinates
+ */
+export type HexOrientation = 'pointy-top' | 'flat-top';
+
+/**
+ * One authored hex space in axial coordinates
+ */
+export type HexSpaceSpec = {
+    /**
+     * Stable space identifier local to the board
+     */
+    id: string;
+    /**
+     * Axial q coordinate
+     */
+    q: number;
+    /**
+     * Axial r coordinate
+     */
+    r: number;
+    /**
+     * Optional authored space type identifier
+     */
+    typeId?: string;
+    /**
+     * Optional hex-space label for setup or rendering
+     */
+    label?: string;
+    /**
+     * Typed authored fields validated against the board's spaceFieldsSchema
+     */
+    fields?: {
+        [key: string]: JsonValue;
+    };
+};
+
+/**
+ * Hex edge identified by two adjacent hex spaces
+ */
+export type HexEdgeRef = {
+    spaces: [
+        string,
+        string
+    ];
+};
+
+/**
+ * Authored metadata attached to one derived hex edge
+ */
+export type HexEdgeSpec = {
+    ref: HexEdgeRef;
+    /**
+     * Optional authored edge type identifier
+     */
+    typeId?: string;
+    /**
+     * Optional edge label for setup or rendering
+     */
+    label?: string;
+    tags?: Array<string>;
+    /**
+     * Typed authored edge fields validated against edgeFieldsSchema
+     */
+    fields?: {
+        [key: string]: JsonValue;
+    };
+};
+
+/**
+ * Hex vertex identified by three touching hex spaces
+ */
+export type HexVertexRef = {
+    spaces: [
+        string,
+        string,
+        string
+    ];
+};
+
+/**
+ * Authored metadata attached to one derived hex vertex
+ */
+export type HexVertexSpec = {
+    ref: HexVertexRef;
+    /**
+     * Optional authored vertex type identifier
+     */
+    typeId?: string;
+    /**
+     * Optional vertex label for setup or rendering
+     */
+    label?: string;
+    tags?: Array<string>;
+    /**
+     * Typed authored vertex fields validated against vertexFieldsSchema
+     */
+    fields?: {
+        [key: string]: JsonValue;
+    };
+};
+
+/**
+ * Reusable authored hex board topology template
+ */
+export type HexBoardTemplateSpec = {
+    /**
+     * Stable template identifier
+     */
+    id: string;
+    name: string;
+    layout: 'hex';
+    /**
+     * Optional authored board type identifier
+     */
+    typeId?: string;
+    orientation?: HexOrientation;
+    boardFieldsSchema?: ObjectSchema;
+    spaceFieldsSchema?: ObjectSchema;
+    edgeFieldsSchema?: ObjectSchema;
+    vertexFieldsSchema?: ObjectSchema;
+    spaces?: Array<HexSpaceSpec>;
+    edges?: Array<HexEdgeSpec>;
+    vertices?: Array<HexVertexSpec>;
+};
+
+/**
+ * One authored square space in row/column coordinates
+ */
+export type SquareSpaceSpec = {
+    /**
+     * Stable space identifier local to the board
+     */
+    id: string;
+    /**
+     * Zero-based row coordinate
+     */
+    row: number;
+    /**
+     * Zero-based column coordinate
+     */
+    col: number;
+    /**
+     * Optional authored space type identifier
+     */
+    typeId?: string;
+    /**
+     * Optional square-space label for setup or rendering
+     */
+    label?: string;
+    /**
+     * Typed authored fields validated against the board's spaceFieldsSchema
+     */
+    fields?: {
+        [key: string]: JsonValue;
+    };
+};
+
+/**
+ * Authored metadata attached to one derived square edge
+ */
+export type SquareEdgeSpec = {
+    ref: BoardEdgeRef;
+    /**
+     * Optional authored edge type identifier
+     */
+    typeId?: string;
+    /**
+     * Optional edge label for setup or rendering
+     */
+    label?: string;
+    tags?: Array<string>;
+    /**
+     * Typed authored edge fields validated against edgeFieldsSchema
+     */
+    fields?: {
+        [key: string]: JsonValue;
+    };
+};
+
+/**
+ * Authored metadata attached to one derived square vertex
+ */
+export type SquareVertexSpec = {
+    ref: BoardVertexRef;
+    /**
+     * Optional authored vertex type identifier
+     */
+    typeId?: string;
+    /**
+     * Optional vertex label for setup or rendering
+     */
+    label?: string;
+    tags?: Array<string>;
+    /**
+     * Typed authored vertex fields validated against vertexFieldsSchema
+     */
+    fields?: {
+        [key: string]: JsonValue;
+    };
+};
+
+/**
+ * Reusable authored square board topology template
+ */
+export type SquareBoardTemplateSpec = {
+    /**
+     * Stable template identifier
+     */
+    id: string;
+    name: string;
+    layout: 'square';
+    /**
+     * Optional authored board type identifier
+     */
+    typeId?: string;
+    boardFieldsSchema?: ObjectSchema;
+    spaceFieldsSchema?: ObjectSchema;
+    relationFieldsSchema?: ObjectSchema;
+    containerFieldsSchema?: ObjectSchema;
+    edgeFieldsSchema?: ObjectSchema;
+    vertexFieldsSchema?: ObjectSchema;
+    spaces?: Array<SquareSpaceSpec>;
+    relations?: Array<BoardRelationSpec>;
+    containers?: Array<BoardContainerSpec>;
+    edges?: Array<SquareEdgeSpec>;
+    vertices?: Array<SquareVertexSpec>;
+};
+
+export type BoardTemplateSpec = ({
+    layout: 'generic';
+} & GenericBoardTemplateSpec) | ({
+    layout: 'hex';
+} & HexBoardTemplateSpec) | ({
+    layout: 'square';
+} & SquareBoardTemplateSpec);
+
+/**
+ * Shared or per-player authored board instance shell
+ */
+export type GenericBoardSpec = {
+    /**
+     * Stable board identifier
+     */
+    id: string;
+    name: string;
+    layout: 'generic';
+    /**
+     * Optional authored board type identifier such as track, map, tableau, or grid
+     */
+    typeId?: string;
+    scope: TopologyScope;
+    /**
+     * Optional board template to clone before applying inline authored additions
+     */
+    templateId?: string;
+    boardFieldsSchema?: ObjectSchema;
+    spaceFieldsSchema?: ObjectSchema;
+    relationFieldsSchema?: ObjectSchema;
+    containerFieldsSchema?: ObjectSchema;
+    /**
+     * Typed authored board fields validated against boardFieldsSchema
+     */
+    fields?: {
+        [key: string]: JsonValue;
+    };
+    spaces?: Array<BoardSpaceSpec>;
+    relations?: Array<BoardRelationSpec>;
+    containers?: Array<BoardContainerSpec>;
+};
+
+/**
+ * Shared or per-player authored hex board instance shell
+ */
+export type HexBoardSpec = {
+    /**
+     * Stable board identifier
+     */
+    id: string;
+    name: string;
+    layout: 'hex';
+    /**
+     * Optional authored board type identifier
+     */
+    typeId?: string;
+    scope: TopologyScope;
+    /**
+     * Optional hex board template to clone before applying inline authored additions
+     */
+    templateId?: string;
+    orientation?: HexOrientation;
+    boardFieldsSchema?: ObjectSchema;
+    spaceFieldsSchema?: ObjectSchema;
+    edgeFieldsSchema?: ObjectSchema;
+    vertexFieldsSchema?: ObjectSchema;
+    /**
+     * Typed authored board fields validated against boardFieldsSchema
+     */
+    fields?: {
+        [key: string]: JsonValue;
+    };
+    spaces?: Array<HexSpaceSpec>;
+    edges?: Array<HexEdgeSpec>;
+    vertices?: Array<HexVertexSpec>;
+};
+
+/**
+ * Shared or per-player authored square board instance shell
+ */
+export type SquareBoardSpec = {
+    /**
+     * Stable board identifier
+     */
+    id: string;
+    name: string;
+    layout: 'square';
+    /**
+     * Optional authored board type identifier
+     */
+    typeId?: string;
+    scope: TopologyScope;
+    /**
+     * Optional square board template to clone before applying inline authored additions
+     */
+    templateId?: string;
+    boardFieldsSchema?: ObjectSchema;
+    spaceFieldsSchema?: ObjectSchema;
+    relationFieldsSchema?: ObjectSchema;
+    containerFieldsSchema?: ObjectSchema;
+    edgeFieldsSchema?: ObjectSchema;
+    vertexFieldsSchema?: ObjectSchema;
+    /**
+     * Typed authored board fields validated against boardFieldsSchema
+     */
+    fields?: {
+        [key: string]: JsonValue;
+    };
+    spaces?: Array<SquareSpaceSpec>;
+    relations?: Array<BoardRelationSpec>;
+    containers?: Array<BoardContainerSpec>;
+    edges?: Array<SquareEdgeSpec>;
+    vertices?: Array<SquareVertexSpec>;
+};
+
+export type BoardSpec = ({
+    layout: 'generic';
+} & GenericBoardSpec) | ({
+    layout: 'hex';
+} & HexBoardSpec) | ({
+    layout: 'square';
+} & SquareBoardSpec);
+
+/**
+ * Reusable authored piece type
+ */
+export type PieceTypeSpec = {
+    id: string;
+    name: string;
+    fieldsSchema?: ObjectSchema;
+};
+
+/**
+ * Authored seeded piece inventory or supply definition
+ */
+export type PieceSeedSpec = {
+    /**
+     * Stable piece id seed. When count > 1, runtime ids are generated as '{id}-1', '{id}-2', etc.
+     */
+    id?: string;
+    name?: string;
+    typeId: string;
+    count?: number;
+    ownerId?: string;
+    home?: ComponentHomeSpec;
+    visibility?: ComponentVisibilitySpec;
+    /**
+     * Typed authored piece fields validated against the piece type schema
+     */
+    fields?: {
+        [key: string]: JsonValue;
+    };
+};
+
+/**
+ * Reusable authored die type
+ */
+export type DieTypeSpec = {
+    id: string;
+    name: string;
     sides: number;
-};
-
-export type PlayerConfig = {
-    /**
-     * Minimum number of players required
-     */
-    minPlayers: number;
-    /**
-     * Maximum number of players supported
-     */
-    maxPlayers: number;
-    /**
-     * Optimal number of players for best experience
-     */
-    optimalPlayers: number;
-};
-
-export type VariableSchema = {
-    /**
-     * Schema for global variables.
-     */
-    globalVariableSchema: ObjectSchema;
-    /**
-     * Schema for player-specific variables.
-     */
-    playerVariableSchema: ObjectSchema;
+    fieldsSchema?: ObjectSchema;
 };
 
 /**
- * Type of parameter accepted by an action. cardId refers to runtime card instance IDs (e.g., 'lumber-1', 'lumber-2'), while cardType refers to manifest-level card type identifiers (e.g., 'lumber'). tileId is used for hex tiles and network nodes.
+ * Authored seeded die inventory or supply definition
  */
-export type ParameterType = 'cardId' | 'cardType' | 'deckId' | 'playerId' | 'string' | 'number' | 'boolean' | 'zoneId' | 'tokenId' | 'tileId' | 'edgeId' | 'vertexId' | 'spaceId' | 'pieceId' | 'resourceId';
-
-/**
- * Defines a parameter for an action
- */
-export type ActionParameterDefinition = {
+export type DieSeedSpec = {
     /**
-     * Parameter name
+     * Stable die id seed. When count > 1, runtime ids are generated as '{id}-1', '{id}-2', etc.
      */
-    name: string;
-    type: ParameterType;
+    id?: string;
+    name?: string;
+    typeId: string;
+    count?: number;
+    ownerId?: string;
+    home?: ComponentHomeSpec;
+    visibility?: ComponentVisibilitySpec;
     /**
-     * Whether this parameter is required
+     * Typed authored die fields validated against the die type schema
      */
-    required?: boolean;
-    /**
-     * Whether this parameter accepts an array of values
-     */
-    array?: boolean;
-    /**
-     * Minimum length for array parameters (only applicable when array=true)
-     */
-    minLength?: number;
-    /**
-     * Maximum length for array parameters (only applicable when array=true)
-     */
-    maxLength?: number;
-    /**
-     * Optional card set ID to specify which card set the CARD_ID parameter refers to (only applicable when type is CARD_ID)
-     */
-    cardSetId?: string;
-    /**
-     * Optional help text for this parameter
-     */
-    description?: string;
+    fields?: {
+        [key: string]: JsonValue;
+    };
 };
 
 /**
- * Defines an available player action with metadata and parameter definitions
- */
-export type ActionDefinition = {
-    /**
-     * Unique action identifier (e.g., 'playCard', 'pass', 'drawCard')
-     */
-    actionType: string;
-    /**
-     * UI display name for this action
-     */
-    displayName: string;
-    /**
-     * Optional help text describing the action
-     */
-    description?: string;
-    /**
-     * List of parameters this action accepts
-     */
-    parameters: Array<ActionParameterDefinition>;
-    /**
-     * List of possible error codes that this action's validation can return
-     */
-    errorCodes?: Array<string>;
-};
-
-/**
- * Type of state in the state machine
- */
-export type StateType = 'AUTO' | 'SINGLE_PLAYER' | 'ALL_PLAYERS';
-
-/**
- * Definition of a state transition with optional documentation to help guide game logic implementation
- */
-export type StateTransition = {
-    /**
-     * The name of the state to transition to
-     */
-    targetState: string;
-    /**
-     * Optional description explaining when/why this transition should occur
-     */
-    description?: string;
-};
-
-/**
- * Definition of a state in the game state machine
- */
-export type StateDefinition = {
-    /**
-     * Unique name of the state
-     */
-    name: string;
-    type: StateType;
-    /**
-     * Description of the state. It should include the full logic of what happens in this state, including any automatic actions taken by the system, as well as what the active player(s) can do.
-     */
-    description: string;
-    /**
-     * List of action types that can be performed in this state (only applicable for active_player and multiple_active_player states). Must reference actions defined in BoardManifest.availableActions
-     */
-    availableActions?: Array<string>;
-    /**
-     * List of possible next state transitions with optional metadata
-     */
-    transitions: Array<StateTransition>;
-    /**
-     * Whether the state should automatically advance when complete
-     */
-    autoAdvance?: boolean;
-};
-
-/**
- * Definition of the game's state machine
- */
-export type StateMachineDefinition = {
-    /**
-     * List of state definitions
-     */
-    states: Array<StateDefinition>;
-    /**
-     * Initial state when the game starts
-     */
-    initialState: string;
-};
-
-/**
- * Definition of a game resource type.
+ * Definition of a game resource type
  */
 export type ResourceDefinition = {
     /**
@@ -518,441 +1028,73 @@ export type ResourceDefinition = {
 };
 
 /**
- * Layout pattern for hex board tile placement
+ * One authored setup option choice
  */
-export type HexLayoutType = 'ring' | 'rectangle' | 'custom';
+export type SetupOptionChoiceSpec = {
+    id: string;
+    label: string;
+    description?: string;
+};
 
 /**
- * Definition of a hex tile
+ * Authored setup module/variant axis metadata
  */
-export type HexTileDefinition = {
-    /**
-     * Unique tile ID
-     */
+export type SetupOptionSpec = {
     id: string;
+    name: string;
+    description?: string;
+    choices?: Array<SetupOptionChoiceSpec>;
+};
+
+/**
+ * Reducer-consumed authored setup profile, recipe, or loadout metadata
+ */
+export type SetupProfileSpec = {
+    id: string;
+    name: string;
+    description?: string;
     /**
-     * Axial Q coordinate (only used with 'custom' layout)
+     * Selected setup-option values for this profile
      */
-    q?: number;
-    /**
-     * Axial R coordinate (only used with 'custom' layout)
-     */
-    r?: number;
-    /**
-     * Tile type (must be in tileTypes)
-     */
-    type?: string;
-    /**
-     * Tile properties (validated against tileSchema)
-     */
-    properties?: {
+    optionValues?: {
         [key: string]: string;
     };
 };
 
 /**
- * Definition of a hex edge
+ * Authoritative topology manifest for reducer-native games
  */
-export type HexEdgeDefinition = {
+export type GameTopologyManifest = {
+    players: PlayersDefinition;
     /**
-     * Unique edge ID
-     */
-    id: string;
-    /**
-     * Edge type (must be in edgeTypes)
-     */
-    type?: string;
-    /**
-     * Edge properties (validated against edgeSchema)
-     */
-    properties?: {
-        [key: string]: string;
-    };
-};
-
-/**
- * Definition of a hex vertex
- */
-export type HexVertexDefinition = {
-    /**
-     * Unique vertex ID
-     */
-    id: string;
-    /**
-     * Vertex type (must be in vertexTypes)
-     */
-    type?: string;
-    /**
-     * Vertex properties (validated against vertexSchema)
-     */
-    properties?: {
-        [key: string]: string;
-    };
-};
-
-/**
- * Definition for a hexagonal grid board (Catan, wargames, etc.)
- */
-export type HexBoardDefinition = {
-    /**
-     * Unique board ID
-     */
-    id: string;
-    boardType: 'hex';
-    /**
-     * Layout pattern for tile placement. Defaults to 'ring' if not specified.
-     */
-    layout?: HexLayoutType;
-    /**
-     * Number of rings for 'ring' layout (1=1 tile, 2=7 tiles, 3=19 tiles like Catan). Defaults to 3.
-     */
-    rings?: number;
-    /**
-     * Board width for 'rectangle' layout
-     */
-    width?: number;
-    /**
-     * Board height for 'rectangle' layout
-     */
-    height?: number;
-    /**
-     * Schema for tile properties
-     */
-    tileSchema?: ObjectSchema;
-    /**
-     * Schema for edge properties
-     */
-    edgeSchema?: ObjectSchema;
-    /**
-     * Schema for vertex properties
-     */
-    vertexSchema?: ObjectSchema;
-    /**
-     * Valid tile type IDs (e.g., 'desert', 'forest')
-     */
-    tileTypes?: Array<string>;
-    /**
-     * Valid edge type IDs (e.g., 'road')
-     */
-    edgeTypes?: Array<string>;
-    /**
-     * Valid vertex type IDs (e.g., 'settlement', 'city')
-     */
-    vertexTypes?: Array<string>;
-    /**
-     * List of tile definitions. Tiles are assigned positions based on layout.
-     */
-    tiles: Array<HexTileDefinition>;
-    /**
-     * List of edge definitions
-     */
-    edges?: Array<HexEdgeDefinition>;
-    /**
-     * List of vertex definitions
-     */
-    vertices?: Array<HexVertexDefinition>;
-};
-
-/**
- * Layout pattern for network board node placement
- */
-export type NetworkLayoutType = 'circle' | 'grid' | 'custom';
-
-/**
- * Definition of a network node
- */
-export type NetworkNodeDefinition = {
-    /**
-     * Unique node ID
-     */
-    id: string;
-    /**
-     * X coordinate (only used with 'custom' layout)
-     */
-    x?: number;
-    /**
-     * Y coordinate (only used with 'custom' layout)
-     */
-    y?: number;
-    /**
-     * Node type (must be in nodeTypes)
-     */
-    type?: string;
-    /**
-     * Display label
-     */
-    label?: string;
-    /**
-     * Node properties (validated against nodeSchema)
-     */
-    properties?: {
-        [key: string]: string;
-    };
-};
-
-/**
- * Definition of a network edge
- */
-export type NetworkEdgeDefinition = {
-    /**
-     * Unique edge ID
-     */
-    id: string;
-    /**
-     * Edge type (must be in edgeTypes)
-     */
-    type?: string;
-    /**
-     * Display label
-     */
-    label?: string;
-    /**
-     * Edge properties (validated against edgeSchema)
-     */
-    properties?: {
-        [key: string]: string;
-    };
-};
-
-/**
- * Definition for a network/graph board (Ticket to Ride, Pandemic, etc.)
- */
-export type NetworkBoardDefinition = {
-    /**
-     * Unique board ID
-     */
-    id: string;
-    boardType: 'network';
-    /**
-     * Layout pattern for node placement. Defaults to 'circle' if not specified.
-     */
-    layout?: NetworkLayoutType;
-    /**
-     * Radius for 'circle' layout. Defaults to 100.
-     */
-    radius?: number;
-    /**
-     * Number of columns for 'grid' layout
-     */
-    columns?: number;
-    /**
-     * Spacing between nodes for 'grid' layout. Defaults to 100.
-     */
-    spacing?: number;
-    /**
-     * Schema for node properties
-     */
-    nodeSchema?: ObjectSchema;
-    /**
-     * Schema for edge properties
-     */
-    edgeSchema?: ObjectSchema;
-    /**
-     * Valid node type IDs
-     */
-    nodeTypes?: Array<string>;
-    /**
-     * Valid edge type IDs
-     */
-    edgeTypes?: Array<string>;
-    /**
-     * List of node definitions. Nodes are assigned positions based on layout.
-     */
-    nodes: Array<NetworkNodeDefinition>;
-    /**
-     * List of edge definitions
-     */
-    edges?: Array<NetworkEdgeDefinition>;
-};
-
-/**
- * Definition of a square board piece
- */
-export type SquarePieceDefinition = {
-    /**
-     * Unique piece ID
-     */
-    id: string;
-    /**
-     * Piece type (must be in pieceTypes)
-     */
-    type?: string;
-    /**
-     * Piece properties
-     */
-    properties?: {
-        [key: string]: string;
-    };
-};
-
-/**
- * Definition for a square grid board (Chess, Checkers, Go, etc.)
- */
-export type SquareBoardDefinition = {
-    /**
-     * Unique board ID
-     */
-    id: string;
-    boardType: 'square';
-    /**
-     * Number of rows
-     */
-    rows: number;
-    /**
-     * Number of columns
-     */
-    cols: number;
-    /**
-     * Schema for cell properties
-     */
-    cellSchema?: ObjectSchema;
-    /**
-     * Valid cell type IDs
-     */
-    cellTypes?: Array<string>;
-    /**
-     * Valid piece type IDs
-     */
-    pieceTypes?: Array<string>;
-    /**
-     * List of piece definitions
-     */
-    pieces?: Array<SquarePieceDefinition>;
-};
-
-/**
- * Definition of a track space
- */
-export type TrackSpaceDefinition = {
-    /**
-     * Unique space ID
-     */
-    id: string;
-    /**
-     * Space type (must be in spaceTypes)
-     */
-    type?: string;
-    /**
-     * Display name
-     */
-    name?: string;
-    /**
-     * Space properties (validated against spaceSchema)
-     */
-    properties?: {
-        [key: string]: string;
-    };
-};
-
-/**
- * Definition of a track board piece
- */
-export type TrackPieceDefinition = {
-    /**
-     * Unique piece ID
-     */
-    id: string;
-    /**
-     * Piece type (must be in pieceTypes)
-     */
-    type?: string;
-    /**
-     * Piece properties
-     */
-    properties?: {
-        [key: string]: string;
-    };
-};
-
-/**
- * Definition for a track/path board (Monopoly, Game of Life, etc.)
- */
-export type TrackBoardDefinition = {
-    /**
-     * Unique board ID
-     */
-    id: string;
-    boardType: 'track';
-    /**
-     * Type of track layout
-     */
-    trackType?: 'linear' | 'circular' | 'branching';
-    /**
-     * Schema for space properties
-     */
-    spaceSchema?: ObjectSchema;
-    /**
-     * Valid space type IDs
-     */
-    spaceTypes?: Array<string>;
-    /**
-     * List of space definitions
-     */
-    spaces: Array<TrackSpaceDefinition>;
-    /**
-     * Valid piece type IDs
-     */
-    pieceTypes?: Array<string>;
-    /**
-     * List of piece definitions
-     */
-    pieces?: Array<TrackPieceDefinition>;
-};
-
-/**
- * Board definition - can be hex, network, square, or track board.
- */
-export type BoardDefinition = ({
-    boardType: 'hex';
-} & HexBoardDefinition) | ({
-    boardType: 'network';
-} & NetworkBoardDefinition) | ({
-    boardType: 'square';
-} & SquareBoardDefinition) | ({
-    boardType: 'track';
-} & TrackBoardDefinition);
-
-export type BoardManifest = {
-    /**
-     * List of card sets
+     * Authored card catalogs and schemas
      */
     cardSets: Array<CardSetDefinition>;
     /**
-     * Definitions of different hand types players can hold
+     * Shared and per-player authored containers
      */
-    playerHandDefinitions: Array<PlayerHandDefinition>;
+    zones?: Array<ZoneSpec>;
     /**
-     * Shared decks available to the whole game
+     * Reusable board topology templates
      */
-    decks?: Array<DeckDefinition>;
+    boardTemplates?: Array<BoardTemplateSpec>;
     /**
-     * Dice available to the whole game
+     * Shared and per-player authored board shells
      */
-    dice?: Array<DieDefinition>;
-    /**
-     * Player configuration settings
-     */
-    playerConfig: PlayerConfig;
-    /**
-     * Schema definitions for game variables at different scopes.
-     */
-    variableSchema: VariableSchema;
-    /**
-     * List of available actions that players can perform
-     */
-    availableActions: Array<ActionDefinition>;
-    /**
-     * Definition of the game's state machine
-     */
-    stateMachine: StateMachineDefinition;
-    /**
-     * List of resource definitions.
-     */
+    boards?: Array<BoardSpec>;
+    pieceTypes?: Array<PieceTypeSpec>;
+    pieceSeeds?: Array<PieceSeedSpec>;
+    dieTypes?: Array<DieTypeSpec>;
+    dieSeeds?: Array<DieSeedSpec>;
     resources?: Array<ResourceDefinition>;
     /**
-     * List of board definitions for hex, network, square, or track boards.
+     * Authored setup-option metadata consumed by reducer-owned setup flows
      */
-    boardDefinitions?: Array<BoardDefinition>;
+    setupOptions?: Array<SetupOptionSpec>;
+    /**
+     * Authored setup recipes, loadouts, or module profiles consumed by reducer setup code
+     */
+    setupProfiles?: Array<SetupProfileSpec>;
 };
 
 export type UpdateGameRequest = {
@@ -972,7 +1114,7 @@ export type UpdateGameRequest = {
      * Updated visibility setting
      */
     public?: boolean;
-    manifest?: BoardManifest;
+    manifest?: GameTopologyManifest;
     metadata?: GameMetadata;
 };
 
@@ -1040,7 +1182,7 @@ export type SaveManifestRequest = {
     /**
      * The board manifest to save
      */
-    manifest: BoardManifest;
+    manifest: GameTopologyManifest;
     /**
      * Agent job that created this manifest
      */
@@ -1091,7 +1233,7 @@ export type GameManifestDto = {
     /**
      * The board manifest data
      */
-    manifest: BoardManifest;
+    manifest: GameTopologyManifest;
     /**
      * Version number for this game
      */
@@ -1341,7 +1483,7 @@ export type GameSourcesResponse = {
     /**
      * The board manifest data (null if no manifest is associated)
      */
-    manifest?: BoardManifest;
+    manifest?: GameTopologyManifest;
     /**
      * ID of the game rule associated with this authoring state
      */
@@ -1350,73 +1492,6 @@ export type GameSourcesResponse = {
      * The game rules text content (null if no rule is associated)
      */
     ruleText?: string;
-};
-
-/**
- * Request options for dynamic scaffold generation.
- */
-export type DynamicScaffoldRequest = {
-    /**
-     * Manifest ID to scaffold from
-     */
-    manifestId: string;
-    /**
-     * Optional rule ID for generators that use rule context.
-     */
-    ruleId?: string;
-    /**
-     * Generation profile.
-     */
-    mode: 'new' | 'update';
-    /**
-     * Advisory metadata for clients indicating seed write policy preference.
-     */
-    seedMissingOnly?: boolean;
-    /**
-     * Optional template version pinning request.
-     */
-    templateVersion?: string;
-};
-
-/**
- * Metadata describing the dynamic scaffold generation run.
- */
-export type DynamicScaffoldMetadata = {
-    /**
-     * ISO timestamp when files were generated.
-     */
-    generatedAt: string;
-    /**
-     * Template version used for generation.
-     */
-    templateVersion: string;
-    /**
-     * List of phase names in the manifest at generation time.
-     */
-    phaseNames: Array<string>;
-    /**
-     * Optional deprecation notices for generated output.
-     */
-    deprecations?: Array<string>;
-};
-
-/**
- * Response containing generated files and seed files with explicit ownership split.
- */
-export type DynamicScaffoldResponse = {
-    /**
-     * Dynamic generated files that should always be replaced by clients.
-     */
-    generatedFiles: {
-        [key: string]: string;
-    };
-    /**
-     * Dynamic seed files that should only be written when missing/empty unless forced.
-     */
-    seedFiles: {
-        [key: string]: string;
-    };
-    metadata: DynamicScaffoldMetadata;
 };
 
 /**
@@ -1434,9 +1509,13 @@ export type SourceFileUpsert = {
      */
     path: string;
     /**
-     * UTF-8 file content for the authored source file.
+     * SHA-256 hash of the UTF-8 file content stored in the blob store.
      */
-    content: string;
+    contentHash: string;
+    /**
+     * Size of the UTF-8 file content in bytes.
+     */
+    byteSize: number;
 };
 
 /**
@@ -1503,6 +1582,86 @@ export type SourceRevision = {
      * Revision creation timestamp
      */
     createdAt: string;
+};
+
+/**
+ * Metadata describing a blob the client may need to upload before finalizing a source revision.
+ */
+export type SourceBlobUploadDescriptor = {
+    /**
+     * SHA-256 hash of the UTF-8 file content.
+     */
+    contentHash: string;
+    /**
+     * Size of the UTF-8 file content in bytes.
+     */
+    byteSize: number;
+};
+
+/**
+ * Request upload targets for one or more source blobs.
+ */
+export type CreateSourceBlobUploadSessionRequest = {
+    /**
+     * Unique blobs the client may need to upload.
+     */
+    blobs: Array<SourceBlobUploadDescriptor>;
+};
+
+/**
+ * Provider-agnostic direct-upload target for a source blob.
+ */
+export type SourceBlobUploadTarget = {
+    /**
+     * HTTP method the client must use when uploading the blob.
+     */
+    method: string;
+    /**
+     * Fully qualified direct-upload URL.
+     */
+    url: string;
+    /**
+     * Required request headers for the direct upload.
+     */
+    headers: {
+        [key: string]: string;
+    };
+};
+
+/**
+ * Upload instructions for a single source blob.
+ */
+export type SourceBlobUploadSessionEntry = {
+    /**
+     * SHA-256 hash of the UTF-8 file content.
+     */
+    contentHash: string;
+    /**
+     * Whether the blob already exists in storage or requires upload.
+     */
+    status: 'exists' | 'upload_required';
+    /**
+     * Present only when status is upload_required.
+     */
+    uploadTarget?: SourceBlobUploadTarget;
+};
+
+/**
+ * Direct-upload session for source blobs needed by a source revision.
+ */
+export type SourceBlobUploadSession = {
+    /**
+     * Opaque identifier for the upload session.
+     */
+    sessionId: string;
+    /**
+     * Expiration time for any issued upload targets.
+     */
+    expiresAt: string;
+    /**
+     * Upload instructions for each requested blob.
+     */
+    uploads: Array<SourceBlobUploadSessionEntry>;
 };
 
 /**
@@ -1780,6 +1939,10 @@ export type CreateSessionRequest = {
      * If true, assign all seats to the host user (skips lobby seat assignment)
      */
     autoAssignSeats?: boolean;
+    /**
+     * Optional authored setup profile to apply when creating the session
+     */
+    setupProfileId?: string;
 };
 
 export type CreateSessionResponse = {
@@ -1825,7 +1988,7 @@ export type SeatAssignment = {
 };
 
 /**
- * Complete session status including all fields needed by the frontend. Player IDs are provided via GAME_STARTED SSE message.
+ * Complete session status including all fields needed by the frontend. Durable lobby and gameplay details are provided via the SESSION_BOOTSTRAP SSE message.
  */
 export type SessionStatus = {
     /**
@@ -1860,558 +2023,219 @@ export type SessionStatus = {
      * Whether the game can be started (all required seats filled)
      */
     canStart: boolean;
+    /**
+     * Selected authored setup profile for this session
+     */
+    setupProfileId?: string;
+};
+
+export type SessionSnapshotPhase = 'lobby' | 'gameplay' | 'ended';
+
+export type SessionSnapshotLobby = {
+    /**
+     * Current seat assignments for the session
+     */
+    seats: Array<SeatAssignment>;
+    /**
+     * Whether the lobby can currently be started
+     */
+    canStart: boolean;
+    /**
+     * User ID of the session host
+     */
+    hostUserId: string;
+    /**
+     * Selected authored setup profile for this session
+     */
+    setupProfileId?: string;
 };
 
 /**
- * Card information including type and properties
+ * Type of parameter accepted by a runtime action
  */
-export type CardInfo = {
+export type ParameterType = 'cardId' | 'cardType' | 'playerId' | 'string' | 'number' | 'boolean' | 'zoneId' | 'pieceId' | 'dieId' | 'boardId' | 'edgeId' | 'vertexId' | 'spaceId' | 'resourceId';
+
+/**
+ * Defines a parameter for an action
+ */
+export type ActionParameterDefinition = {
+    name: string;
+    type: ParameterType;
+    required?: boolean;
+    array?: boolean;
+    minLength?: number;
+    maxLength?: number;
     /**
-     * Card type identifier matching a card set in the manifest
+     * Optional card set ID to specify which card set a CARD_ID parameter refers to
      */
-    cardType: string;
+    cardSetId?: string;
+    description?: string;
+};
+
+/**
+ * Defines an available player action with metadata and parameter definitions
+ */
+export type ActionDefinition = {
     /**
-     * The card set ID this card was created from (e.g., 'standard_52_deck')
+     * Unique action identifier
      */
-    cardSetId: string;
+    actionType: string;
     /**
-     * Display name for the card
+     * UI display name for this action
      */
-    cardName?: string;
+    displayName: string;
     /**
-     * Optional rules text or description
+     * Optional help text describing the action
      */
     description?: string;
     /**
-     * JSON-serialized custom properties specific to this game's cards as defined by the game's BoardManifest card set schemas
+     * List of parameters this action accepts
      */
-    properties: string;
+    parameters: Array<ActionParameterDefinition>;
+    /**
+     * List of possible validation error codes
+     */
+    errorCodes?: Array<string>;
 };
 
-/**
- * State of a hex tile on a hex board
- */
-export type SimpleHexTileState = {
-    /**
-     * Unique tile identifier
-     */
-    id: string;
-    /**
-     * Axial coordinate Q
-     */
-    q: number;
-    /**
-     * Axial coordinate R
-     */
-    r: number;
-    /**
-     * Tile type identifier for rendering
-     */
-    typeId?: string;
-    /**
-     * Display label on the tile
-     */
-    label?: string;
-    /**
-     * Player ID who owns this tile
-     */
-    owner?: string;
-    /**
-     * JSON-serialized custom properties
-     */
-    properties?: string;
+export type PlayerAvailableActions = {
+    playerId: string;
+    actions: Array<ActionDefinition>;
 };
 
-/**
- * State of an edge between two hex tiles (e.g., roads in Catan)
- */
-export type SimpleHexEdgeState = {
-    /**
-     * Unique edge identifier
-     */
+export type GameplayPromptOption = {
     id: string;
-    /**
-     * First hex tile ID this edge borders
-     */
-    hex1: string;
-    /**
-     * Second hex tile ID this edge borders
-     */
-    hex2: string;
-    /**
-     * Edge type identifier for rendering
-     */
-    typeId?: string;
-    /**
-     * Player ID who owns this edge
-     */
-    owner?: string;
-    /**
-     * JSON-serialized custom properties
-     */
-    properties?: string;
+    label: string;
 };
 
-/**
- * State of a vertex where three hex tiles meet (e.g., settlements in Catan)
- */
-export type SimpleHexVertexState = {
-    /**
-     * Unique vertex identifier
-     */
+export type GameplayPromptInstance = {
     id: string;
-    /**
-     * The three hex tile IDs this vertex touches
-     */
-    hexes: [
-        string,
-        string,
-        string
-    ];
-    /**
-     * Vertex type identifier for rendering
-     */
-    typeId?: string;
-    /**
-     * Player ID who owns this vertex
-     */
-    owner?: string;
-    /**
-     * JSON-serialized custom properties
-     */
-    properties?: string;
-};
-
-/**
- * Complete state of a hex board
- */
-export type SimpleHexBoardState = {
-    /**
-     * Unique board identifier
-     */
-    id: string;
-    /**
-     * All tiles on the board
-     */
-    tiles: Array<SimpleHexTileState>;
-    /**
-     * All edges on the board
-     */
-    edges: Array<SimpleHexEdgeState>;
-    /**
-     * All vertices on the board
-     */
-    vertices: Array<SimpleHexVertexState>;
-};
-
-/**
- * State of a node in a network graph board
- */
-export type SimpleNetworkNodeState = {
-    /**
-     * Unique node identifier
-     */
-    id: string;
-    /**
-     * X coordinate position
-     */
-    x: number;
-    /**
-     * Y coordinate position
-     */
-    y: number;
-    /**
-     * Node type identifier for rendering
-     */
-    typeId?: string;
-    /**
-     * Display label on the node
-     */
-    label?: string;
-    /**
-     * Player ID who owns this node
-     */
-    owner?: string;
-    /**
-     * JSON-serialized custom properties
-     */
-    properties?: string;
-};
-
-/**
- * State of an edge connecting two nodes in a network graph
- */
-export type SimpleNetworkEdgeState = {
-    /**
-     * Unique edge identifier
-     */
-    id: string;
-    /**
-     * Source node ID
-     */
-    from: string;
-    /**
-     * Target node ID
-     */
+    promptId: string;
     to: string;
+    title?: string;
     /**
-     * Edge type identifier for rendering
+     * JSON-serialized prompt payload
      */
-    typeId?: string;
-    /**
-     * Display label on the edge
-     */
-    label?: string;
-    /**
-     * Player ID who owns this edge
-     */
-    owner?: string;
-    /**
-     * JSON-serialized custom properties
-     */
-    properties?: string;
+    payload?: string;
+    options: Array<GameplayPromptOption>;
 };
 
-/**
- * State of a piece placed on a network node
- */
-export type SimpleNetworkPieceState = {
-    /**
-     * Unique piece identifier
-     */
+export type GameplayWindowClosePolicy = 'allPassInSequence' | 'allResponded' | 'firstValidAction' | 'manual';
+
+export type GameplayWindowInstance = {
     id: string;
+    windowId: string;
+    closePolicy: GameplayWindowClosePolicy;
+    addressedTo: Array<string>;
     /**
-     * ID of the node this piece is on
+     * JSON-serialized window payload
      */
-    nodeId: string;
-    /**
-     * Piece type identifier for rendering
-     */
-    typeId?: string;
-    /**
-     * Player ID who owns this piece
-     */
-    owner?: string;
-    /**
-     * JSON-serialized custom properties
-     */
-    properties?: string;
+    payload?: string;
 };
 
-/**
- * Complete state of a network graph board
- */
-export type SimpleNetworkBoardState = {
+export type GameplaySnapshot = {
     /**
-     * Unique board identifier
+     * Monotonic gameplay version for stale-client detection
      */
-    id: string;
+    version: number;
     /**
-     * All nodes on the board
+     * Player IDs currently active in the game state
      */
-    nodes: Array<SimpleNetworkNodeState>;
+    activePlayers: Array<string>;
     /**
-     * All edges on the board
+     * Player IDs this user can control in the session
      */
-    edges: Array<SimpleNetworkEdgeState>;
+    controllablePlayerIds: Array<string>;
     /**
-     * All pieces on the board
+     * Current reducer-native gameplay phase
      */
-    pieces: Array<SimpleNetworkPieceState>;
-};
-
-/**
- * State of a cell on a square grid board
- */
-export type SimpleSquareCellState = {
+    currentPhase: string;
     /**
-     * Row index (0-based)
+     * JSON-serialized reducer-projected UI views keyed by player ID
      */
-    row: number;
-    /**
-     * Column index (0-based)
-     */
-    col: number;
-    /**
-     * Cell type identifier for rendering
-     */
-    typeId?: string;
-    /**
-     * Player ID who owns this cell
-     */
-    owner?: string;
-    /**
-     * JSON-serialized custom properties
-     */
-    properties?: string;
-};
-
-/**
- * State of a piece on a square grid board
- */
-export type SimpleSquarePieceState = {
-    /**
-     * Unique piece identifier
-     */
-    id: string;
-    /**
-     * Row index where piece is located
-     */
-    row: number;
-    /**
-     * Column index where piece is located
-     */
-    col: number;
-    /**
-     * Piece type identifier for rendering
-     */
-    typeId: string;
-    /**
-     * Player ID who owns this piece
-     */
-    owner?: string;
-    /**
-     * JSON-serialized custom properties
-     */
-    properties?: string;
-};
-
-/**
- * Complete state of a square grid board
- */
-export type SimpleSquareBoardState = {
-    /**
-     * Unique board identifier
-     */
-    id: string;
-    /**
-     * Number of rows in the grid
-     */
-    rows: number;
-    /**
-     * Number of columns in the grid
-     */
-    cols: number;
-    /**
-     * All cells with non-default state
-     */
-    cells: Array<SimpleSquareCellState>;
-    /**
-     * All pieces on the board
-     */
-    pieces: Array<SimpleSquarePieceState>;
-};
-
-/**
- * State of a space on a track board (e.g., Monopoly board spaces)
- */
-export type SimpleTrackSpaceState = {
-    /**
-     * Unique space identifier
-     */
-    id: string;
-    /**
-     * Position index in the track sequence
-     */
-    index: number;
-    /**
-     * X coordinate for rendering
-     */
-    x: number;
-    /**
-     * Y coordinate for rendering
-     */
-    y: number;
-    /**
-     * Display name of the space
-     */
-    name?: string;
-    /**
-     * Space type identifier for rendering
-     */
-    typeId?: string;
-    /**
-     * Player ID who owns this space
-     */
-    owner?: string;
-    /**
-     * IDs of spaces that can be reached from here (for branching tracks)
-     */
-    nextSpaces?: Array<string>;
-    /**
-     * JSON-serialized custom properties
-     */
-    properties?: string;
-};
-
-/**
- * State of a piece on a track board
- */
-export type SimpleTrackPieceState = {
-    /**
-     * Unique piece identifier
-     */
-    id: string;
-    /**
-     * ID of the space this piece occupies
-     */
-    spaceId: string;
-    /**
-     * Player ID who owns this piece
-     */
-    owner: string;
-    /**
-     * Piece type identifier for rendering
-     */
-    typeId?: string;
-    /**
-     * JSON-serialized custom properties
-     */
-    properties?: string;
-};
-
-/**
- * Complete state of a track board
- */
-export type SimpleTrackBoardState = {
-    /**
-     * Unique board identifier
-     */
-    id: string;
-    /**
-     * All spaces on the track
-     */
-    spaces: Array<SimpleTrackSpaceState>;
-    /**
-     * All pieces on the board
-     */
-    pieces: Array<SimpleTrackPieceState>;
-};
-
-/**
- * Container for all board states organized by type
- */
-export type SimpleBoardStates = {
-    /**
-     * Map of board IDs to hex board states (e.g., Catan, Hive)
-     */
-    hex: {
-        [key: string]: SimpleHexBoardState;
-    };
-    /**
-     * Map of board IDs to network board states (e.g., Ticket to Ride)
-     */
-    network: {
-        [key: string]: SimpleNetworkBoardState;
-    };
-    /**
-     * Map of board IDs to square grid board states (e.g., Chess, Go)
-     */
-    square: {
-        [key: string]: SimpleSquareBoardState;
-    };
-    /**
-     * Map of board IDs to track board states (e.g., Monopoly)
-     */
-    track: {
-        [key: string]: SimpleTrackBoardState;
-    };
-};
-
-/**
- * State of a die component
- */
-export type SimpleDieState = {
-    /**
-     * Unique die identifier
-     */
-    id: string;
-    /**
-     * Number of sides on the die (e.g., 6 for standard die)
-     */
-    sides: number;
-    /**
-     * Current face value (1 to sides, null if not rolled)
-     */
-    currentValue?: number;
-    /**
-     * Optional color for visual identification
-     */
-    color?: string;
-};
-
-/**
- * Simplified game state for API responses
- */
-export type SimpleGameState = {
-    /**
-     * IDs of all currently active players (supports MULTIPLE_ACTIVE_PLAYER states)
-     */
-    currentPlayerIds: Array<string>;
-    /**
-     * Map of deck IDs to array of card IDs (arrays are always present, never null)
-     */
-    decks: {
-        [key: string]: Array<string>;
-    };
-    /**
-     * Nested map of playerId -> handId -> card IDs. Frontend extracts only the controlling player's hands.
-     */
-    hands: {
-        [key: string]: {
-            [key: string]: Array<string>;
-        };
-    };
-    /**
-     * Public hands grouped by hand ID then player ID.
-     */
-    publicHands: {
-        [key: string]: {
-            [key: string]: Array<string>;
-        };
-    };
-    /**
-     * Map of card IDs to their card info including type and properties
-     */
-    cards: {
-        [key: string]: CardInfo;
-    };
-    /**
-     * JSON-serialized global game variables as defined in manifest variableSchema.globalVariableSchema
-     */
-    globalVariables: string;
-    /**
-     * JSON-serialized map of player IDs to their variables as defined in manifest variableSchema.playerVariableSchema
-     */
-    playerVariables: string;
-    /**
-     * JSON-serialized map of player IDs to their resource amounts (resourceId -> amount)
-     */
-    playerResources?: string;
-    /**
-     * Current state in the game's state machine
-     */
-    currentState: string;
-    /**
-     * Whether it is the current user's turn
-     */
-    isMyTurn: boolean;
-    /**
-     * Map of player ID to JSON-serialized UI arguments for each controlled player
-     */
-    uiArgs?: {
+    seatViewsByPlayerId: {
         [key: string]: string;
     };
     /**
-     * Container for all board states organized by type
+     * Available action metadata grouped by controllable player
      */
-    boards: SimpleBoardStates;
+    availableActions: Array<PlayerAvailableActions>;
+    prompts: Array<GameplayPromptInstance>;
+    windows: Array<GameplayWindowInstance>;
+};
+
+/**
+ * Summary of a game state history entry
+ */
+export type HistoryEntrySummary = {
     /**
-     * Map of die IDs to their current state
+     * Unique identifier for this history entry
      */
-    dice: {
-        [key: string]: SimpleDieState;
-    };
+    id: string;
+    /**
+     * Event store version number
+     */
+    version: number;
+    /**
+     * When this snapshot was created
+     */
+    timestamp: string;
+    /**
+     * Human-readable description of the action
+     */
+    description: string;
+    /**
+     * Player who performed the action
+     */
+    playerId?: string;
+    /**
+     * Type of action that triggered this snapshot
+     */
+    actionType?: string;
+    /**
+     * Whether this is the current game state
+     */
+    isCurrent: boolean;
+};
+
+export type SessionSnapshotHistory = {
+    /**
+     * Durable game history entries available to the current user
+     */
+    entries: Array<HistoryEntrySummary>;
+    /**
+     * Index of the selected history entry
+     */
+    currentIndex: number;
+    /**
+     * Whether an earlier history entry exists
+     */
+    canGoBack: boolean;
+    /**
+     * Whether a later history entry exists
+     */
+    canGoForward: boolean;
+};
+
+/**
+ * Durable session snapshot sent first on every session event stream connection
+ */
+export type SessionSnapshotMessage = {
+    type: 'SESSION_BOOTSTRAP';
+    /**
+     * User ID this message is addressed to
+     */
+    toUser: string;
+    phase: SessionSnapshotPhase;
+    lobby: SessionSnapshotLobby;
+    gameplay?: GameplaySnapshot;
+    history?: SessionSnapshotHistory;
+};
+
+export type GameplayUpdateMessage = {
+    type: 'GAMEPLAY_UPDATE';
+    toUser: string;
+    gameplay: GameplaySnapshot;
 };
 
 export type GameStartedMessage = {
@@ -2420,7 +2244,6 @@ export type GameStartedMessage = {
      * User ID this message is addressed to
      */
     toUser: string;
-    gameState: SimpleGameState;
     /**
      * Player IDs of currently active players
      */
@@ -2441,7 +2264,6 @@ export type YourTurnMessage = {
      * List of action definitions available to the player
      */
     availableActions: Array<ActionDefinition>;
-    gameState: SimpleGameState;
     /**
      * Player IDs whose turn it is
      */
@@ -2473,7 +2295,6 @@ export type ActionExecutedMessage = {
      */
     playerId: string;
     action: GameAction;
-    newState: SimpleGameState;
 };
 
 export type ActionRejectedMessage = {
@@ -2540,7 +2361,6 @@ export type StateUpdateMessage = {
      * User ID this message is addressed to
      */
     toUser: string;
-    gameState: SimpleGameState;
     /**
      * Current game phase
      */
@@ -2609,40 +2429,10 @@ export type LobbyUpdateMessage = {
      * User ID of the session host
      */
     hostUserId: string;
-};
-
-/**
- * Summary of a game state history entry
- */
-export type HistoryEntrySummary = {
     /**
-     * Unique identifier for this history entry
+     * Selected authored setup profile for this session
      */
-    id: string;
-    /**
-     * Event store version number
-     */
-    version: number;
-    /**
-     * When this snapshot was created
-     */
-    timestamp: string;
-    /**
-     * Human-readable description of the action
-     */
-    description: string;
-    /**
-     * Player who performed the action
-     */
-    playerId?: string;
-    /**
-     * Type of action that triggered this snapshot
-     */
-    actionType?: string;
-    /**
-     * Whether this is the current game state
-     */
-    isCurrent: boolean;
+    setupProfileId?: string;
 };
 
 /**
@@ -2686,16 +2476,16 @@ export type HistoryRestoredMessage = {
      */
     restoredToVersion: number;
     /**
-     * The restored game state
-     */
-    gameState: SimpleGameState;
-    /**
      * Description of the restored point
      */
     description?: string;
 };
 
 export type GameMessage = ({
+    type: 'SESSION_BOOTSTRAP';
+} & SessionSnapshotMessage) | ({
+    type: 'GAMEPLAY_UPDATE';
+} & GameplayUpdateMessage) | ({
     type: 'GAME_STARTED';
 } & GameStartedMessage) | ({
     type: 'YOUR_TURN';
@@ -2746,7 +2536,7 @@ export type LogMessageDto = {
 };
 
 /**
- * Response containing gameplay session data after starting the game. Player IDs are sent via GAME_STARTED SSE message.
+ * Response containing gameplay session data after starting the game. Durable gameplay details are sent via the SESSION_BOOTSTRAP SSE message.
  */
 export type StartGameResponse = {
     /**
@@ -2763,61 +2553,90 @@ export type StartGameResponse = {
     shortCode: string;
 };
 
-export type SubmitActionRequest = {
-    /**
-     * Player identifier submitting the action
-     */
+export type ActionGameInput = {
+    kind: 'action';
     playerId: string;
-    /**
-     * Type of action being performed
-     */
     actionType: string;
     /**
      * JSON-serialized action parameters
      */
-    parameters: string;
+    params: string;
 };
 
-export type SubmitActionResponse = {
+export type PromptResponseGameInput = {
+    kind: 'promptResponse';
+    playerId: string;
+    promptId: string;
     /**
-     * Whether the action was successfully submitted
+     * JSON-serialized prompt response payload
      */
+    response: string;
+};
+
+export type WindowActionGameInput = {
+    kind: 'windowAction';
+    playerId: string;
+    windowId: string;
+    actionType: string;
+    /**
+     * Optional JSON-serialized window action parameters
+     */
+    params?: string;
+};
+
+export type SystemGameInput = {
+    kind: 'system';
+    event: string;
+    /**
+     * Optional JSON-serialized internal system payload
+     */
+    payload?: string;
+};
+
+export type GameInput = ({
+    kind: 'action';
+} & ActionGameInput) | ({
+    kind: 'promptResponse';
+} & PromptResponseGameInput) | ({
+    kind: 'windowAction';
+} & WindowActionGameInput) | ({
+    kind: 'system';
+} & SystemGameInput);
+
+export type SubmitInputRequest = {
+    input: GameInput;
+    /**
+     * Client-observed gameplay version. Requests fail if the server has advanced beyond this version.
+     */
+    expectedVersion: number;
+};
+
+export type SubmitInputResponse = {
     success: boolean;
+    /**
+     * Gameplay version after the accepted input. Rejections return the current server version.
+     */
+    version: number;
+    accepted?: boolean;
+    errorCode?: string;
+    message?: string;
 };
 
-/**
- * Request to validate a player action before submitting
- */
-export type ValidateActionRequest = {
+export type ValidateInputRequest = {
+    input: GameInput;
     /**
-     * Player identifier submitting the action
+     * Client-observed gameplay version. Validation fails if the server has advanced beyond this version.
      */
-    playerId: string;
-    /**
-     * Type of action being validated
-     */
-    actionType: string;
-    /**
-     * JSON-serialized action parameters
-     */
-    parameters: string;
+    expectedVersion: number;
 };
 
-/**
- * Result of action validation
- */
-export type ValidateActionResponse = {
-    /**
-     * Whether the action is valid
-     */
+export type ValidateInputResponse = {
     valid: boolean;
     /**
-     * Machine-readable error code if validation failed
+     * Current server gameplay version used for validation.
      */
+    version: number;
     errorCode?: string;
-    /**
-     * Human-readable error message if validation failed
-     */
     message?: string;
 };
 
@@ -3431,92 +3250,17 @@ export type SandboxWebhookCompletePayload = {
 /**
  * Type of game message sent via Server-Sent Events
  */
-export type GameMessageType = 'GAME_STARTED' | 'YOUR_TURN' | 'ACTION_EXECUTED' | 'ACTION_REJECTED' | 'TURN_CHANGED' | 'GAME_ENDED' | 'STATE_UPDATE' | 'STATE_CHANGED' | 'AVAILABLE_ACTIONS' | 'ERROR' | 'LOBBY_UPDATE' | 'HISTORY_UPDATED' | 'HISTORY_RESTORED';
-
-/**
- * Type of location where a component can be
- */
-export type LocationType = 'InDeck' | 'InHand' | 'InZone' | 'Detached';
-
-export type InDeckLocation = {
-    type: 'InDeck';
-    /**
-     * ID of the deck containing this component
-     */
-    deckId: string;
-    /**
-     * Position within the deck (null means unordered)
-     */
-    position?: number;
-};
-
-export type InHandLocation = {
-    type: 'InHand';
-    /**
-     * ID of the player holding this component
-     */
-    playerId: string;
-    /**
-     * Position in hand (null means unordered)
-     */
-    position?: number;
-};
-
-export type InZoneLocation = {
-    type: 'InZone';
-    /**
-     * ID of the zone containing this component
-     */
-    zoneId: string;
-    /**
-     * Position within the zone (null means unordered)
-     */
-    position?: number;
-};
-
-/**
- * Component is not in any location (detached/removed from play)
- */
-export type DetachedLocation = {
-    type: 'Detached';
-};
-
-export type SimpleLocation = ({
-    type: 'InDeck';
-} & InDeckLocation) | ({
-    type: 'InHand';
-} & InHandLocation) | ({
-    type: 'InZone';
-} & InZoneLocation) | ({
-    type: 'Detached';
-} & DetachedLocation);
+export type GameMessageType = 'SESSION_BOOTSTRAP' | 'GAMEPLAY_UPDATE' | 'GAME_STARTED' | 'YOUR_TURN' | 'ACTION_EXECUTED' | 'ACTION_REJECTED' | 'TURN_CHANGED' | 'GAME_ENDED' | 'STATE_UPDATE' | 'STATE_CHANGED' | 'AVAILABLE_ACTIONS' | 'ERROR' | 'LOBBY_UPDATE' | 'HISTORY_UPDATED' | 'HISTORY_RESTORED';
 
 /**
  * Type of source for the card set
  */
 export type CardSetSourceType = 'preset' | 'csv' | 'manual';
 
-export type TurnStepDefinition = {
-    /**
-     * Turn step identifier
-     */
-    name: string;
-};
-
-export type ValidationResult = {
-    /**
-     * Whether the validation passed
-     */
-    isValid: boolean;
-    /**
-     * List of validation errors
-     */
-    errors: Array<string>;
-    /**
-     * List of validation warnings
-     */
-    warnings: Array<string>;
-};
+/**
+ * Engine-level structural board layout discriminator
+ */
+export type BoardLayout = 'generic' | 'hex' | 'square';
 
 export type BuildAppRequest = {
     /**
@@ -3623,7 +3367,7 @@ export type GameManifestResponse = {
     /**
      * The board manifest data
      */
-    manifest: BoardManifest;
+    manifest: GameTopologyManifest;
     /**
      * Version number for this game
      */
@@ -3672,6 +3416,22 @@ export type HealthCheckResponses = {
 
 export type HealthCheckResponse = HealthCheckResponses[keyof HealthCheckResponses];
 
+export type GetApiVersionData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/version';
+};
+
+export type GetApiVersionResponses = {
+    /**
+     * Successfully retrieved backend version metadata
+     */
+    200: ApiVersionResponse;
+};
+
+export type GetApiVersionResponse = GetApiVersionResponses[keyof GetApiVersionResponses];
+
 export type ListGamesData = {
     body?: never;
     path?: never;
@@ -3688,11 +3448,11 @@ export type ListGamesErrors = {
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type ListGamesError = ListGamesErrors[keyof ListGamesErrors];
@@ -3717,15 +3477,19 @@ export type CreateGameErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
+    /**
+     * Conflict - version mismatch or resource state conflict
+     */
+    409: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type CreateGameError = CreateGameErrors[keyof CreateGameErrors];
@@ -3755,19 +3519,19 @@ export type DeleteGameErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type DeleteGameError = DeleteGameErrors[keyof DeleteGameErrors];
@@ -3797,19 +3561,19 @@ export type GetGameErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type GetGameError = GetGameErrors[keyof GetGameErrors];
@@ -3839,19 +3603,19 @@ export type UpdateGameErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type UpdateGameError = UpdateGameErrors[keyof UpdateGameErrors];
@@ -3886,19 +3650,19 @@ export type GetGameBySlugErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type GetGameBySlugError = GetGameBySlugErrors[keyof GetGameBySlugErrors];
@@ -3928,19 +3692,19 @@ export type QueryWorkshopRulebookErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type QueryWorkshopRulebookError = QueryWorkshopRulebookErrors[keyof QueryWorkshopRulebookErrors];
@@ -3979,19 +3743,19 @@ export type FindManifestsErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type FindManifestsError = FindManifestsErrors[keyof FindManifestsErrors];
@@ -4021,19 +3785,19 @@ export type SaveManifestErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type SaveManifestError = SaveManifestErrors[keyof SaveManifestErrors];
@@ -4063,15 +3827,15 @@ export type GetManifestErrors = {
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type GetManifestError = GetManifestErrors[keyof GetManifestErrors];
@@ -4106,15 +3870,15 @@ export type GetLatestCompiledResultErrors = {
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type GetLatestCompiledResultError = GetLatestCompiledResultErrors[keyof GetLatestCompiledResultErrors];
@@ -4153,15 +3917,15 @@ export type ListCompiledResultsErrors = {
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type ListCompiledResultsError = ListCompiledResultsErrors[keyof ListCompiledResultsErrors];
@@ -4191,15 +3955,15 @@ export type QueueCompiledResultJobErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type QueueCompiledResultJobError = QueueCompiledResultJobErrors[keyof QueueCompiledResultJobErrors];
@@ -4233,19 +3997,19 @@ export type GetCompiledResultErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type GetCompiledResultError = GetCompiledResultErrors[keyof GetCompiledResultErrors];
@@ -4275,15 +4039,15 @@ export type DownloadGameSourcesErrors = {
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type DownloadGameSourcesError = DownloadGameSourcesErrors[keyof DownloadGameSourcesErrors];
@@ -4318,15 +4082,15 @@ export type GetGameSourcesErrors = {
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type GetGameSourcesError = GetGameSourcesErrors[keyof GetGameSourcesErrors];
@@ -4339,48 +4103,6 @@ export type GetGameSourcesResponses = {
 };
 
 export type GetGameSourcesResponse = GetGameSourcesResponses[keyof GetGameSourcesResponses];
-
-export type ScaffoldGameSourcesV3Data = {
-    body: DynamicScaffoldRequest;
-    path: {
-        /**
-         * Unique identifier for the game
-         */
-        gameId: string;
-    };
-    query?: never;
-    url: '/api/games/{gameId}/scaffold/v3';
-};
-
-export type ScaffoldGameSourcesV3Errors = {
-    /**
-     * Bad request - invalid input parameters
-     */
-    400: ErrorResponse;
-    /**
-     * Unauthorized - authentication required
-     */
-    401: ErrorResponse;
-    /**
-     * Resource not found
-     */
-    404: ErrorResponse;
-    /**
-     * Internal server error
-     */
-    500: ErrorResponse;
-};
-
-export type ScaffoldGameSourcesV3Error = ScaffoldGameSourcesV3Errors[keyof ScaffoldGameSourcesV3Errors];
-
-export type ScaffoldGameSourcesV3Responses = {
-    /**
-     * Dynamic scaffolding completed successfully
-     */
-    200: DynamicScaffoldResponse;
-};
-
-export type ScaffoldGameSourcesV3Response = ScaffoldGameSourcesV3Responses[keyof ScaffoldGameSourcesV3Responses];
 
 export type CreateSourceRevisionData = {
     body: CreateSourceRevisionRequest;
@@ -4398,19 +4120,19 @@ export type CreateSourceRevisionErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Base source revision does not match the current head revision
      */
-    409: ErrorResponse;
+    409: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type CreateSourceRevisionError = CreateSourceRevisionErrors[keyof CreateSourceRevisionErrors];
@@ -4423,6 +4145,44 @@ export type CreateSourceRevisionResponses = {
 };
 
 export type CreateSourceRevisionResponse = CreateSourceRevisionResponses[keyof CreateSourceRevisionResponses];
+
+export type CreateSourceBlobUploadSessionData = {
+    body: CreateSourceBlobUploadSessionRequest;
+    path: {
+        /**
+         * Unique identifier for the game
+         */
+        gameId: string;
+    };
+    query?: never;
+    url: '/api/games/{gameId}/source-blobs/upload-sessions';
+};
+
+export type CreateSourceBlobUploadSessionErrors = {
+    /**
+     * Bad request - invalid input parameters
+     */
+    400: ProblemDetails;
+    /**
+     * Unauthorized - authentication required
+     */
+    401: ProblemDetails;
+    /**
+     * Internal server error
+     */
+    500: ProblemDetails;
+};
+
+export type CreateSourceBlobUploadSessionError = CreateSourceBlobUploadSessionErrors[keyof CreateSourceBlobUploadSessionErrors];
+
+export type CreateSourceBlobUploadSessionResponses = {
+    /**
+     * Upload session created
+     */
+    201: SourceBlobUploadSession;
+};
+
+export type CreateSourceBlobUploadSessionResponse = CreateSourceBlobUploadSessionResponses[keyof CreateSourceBlobUploadSessionResponses];
 
 export type GetAuthoringHeadData = {
     body?: never;
@@ -4440,15 +4200,15 @@ export type GetAuthoringHeadErrors = {
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type GetAuthoringHeadError = GetAuthoringHeadErrors[keyof GetAuthoringHeadErrors];
@@ -4478,23 +4238,23 @@ export type CreateAuthoringStateErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Base authoring state does not match the current head
      */
-    409: ErrorResponse;
+    409: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type CreateAuthoringStateError = CreateAuthoringStateErrors[keyof CreateAuthoringStateErrors];
@@ -4507,48 +4267,6 @@ export type CreateAuthoringStateResponses = {
 };
 
 export type CreateAuthoringStateResponse = CreateAuthoringStateResponses[keyof CreateAuthoringStateResponses];
-
-export type CreateSourceRevisionBundleData = {
-    body: Blob | File;
-    path: {
-        /**
-         * Unique identifier for the game
-         */
-        gameId: string;
-    };
-    query?: never;
-    url: '/api/games/{gameId}/source-revisions/bundle';
-};
-
-export type CreateSourceRevisionBundleErrors = {
-    /**
-     * Bad request - invalid input parameters
-     */
-    400: ErrorResponse;
-    /**
-     * Unauthorized - authentication required
-     */
-    401: ErrorResponse;
-    /**
-     * Base source revision does not match the current head revision
-     */
-    409: ErrorResponse;
-    /**
-     * Internal server error
-     */
-    500: ErrorResponse;
-};
-
-export type CreateSourceRevisionBundleError = CreateSourceRevisionBundleErrors[keyof CreateSourceRevisionBundleErrors];
-
-export type CreateSourceRevisionBundleResponses = {
-    /**
-     * Source revision created
-     */
-    201: SourceRevision;
-};
-
-export type CreateSourceRevisionBundleResponse = CreateSourceRevisionBundleResponses[keyof CreateSourceRevisionBundleResponses];
 
 export type GetGameScriptsData = {
     body?: never;
@@ -4571,15 +4289,15 @@ export type GetGameScriptsErrors = {
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type GetGameScriptsError = GetGameScriptsErrors[keyof GetGameScriptsErrors];
@@ -4609,15 +4327,15 @@ export type GetAgentChatContextErrors = {
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type GetAgentChatContextError = GetAgentChatContextErrors[keyof GetAgentChatContextErrors];
@@ -4647,19 +4365,19 @@ export type GetActiveJobErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type GetActiveJobError = GetActiveJobErrors[keyof GetActiveJobErrors];
@@ -4694,19 +4412,19 @@ export type ListGameRulesErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type ListGameRulesError = ListGameRulesErrors[keyof ListGameRulesErrors];
@@ -4736,19 +4454,19 @@ export type CreateGameRuleErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type CreateGameRuleError = CreateGameRuleErrors[keyof CreateGameRuleErrors];
@@ -4778,15 +4496,15 @@ export type GetLatestGameRuleErrors = {
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type GetLatestGameRuleError = GetLatestGameRuleErrors[keyof GetLatestGameRuleErrors];
@@ -4816,15 +4534,15 @@ export type GetGameRuleErrors = {
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type GetGameRuleError = GetGameRuleErrors[keyof GetGameRuleErrors];
@@ -4854,19 +4572,19 @@ export type CreateSessionErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type CreateSessionError = CreateSessionErrors[keyof CreateSessionErrors];
@@ -4896,15 +4614,15 @@ export type GetSessionByShortCodeErrors = {
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type GetSessionByShortCodeError = GetSessionByShortCodeErrors[keyof GetSessionByShortCodeErrors];
@@ -4934,23 +4652,23 @@ export type GetSessionStatusErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Forbidden - insufficient permissions
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type GetSessionStatusError = GetSessionStatusErrors[keyof GetSessionStatusErrors];
@@ -4972,11 +4690,19 @@ export type SubscribeToSessionEventsData = {
          */
         sessionId: string;
     };
-    query?: {
+    query: {
         /**
-         * Last message ID received; server replays events with ID > lastMessageId
+         * Stable browser-tab identifier used to replace stale reconnects from the same tab.
          */
-        lastMessageId?: number;
+        clientId: string;
+        /**
+         * Unique identifier for this specific connection attempt.
+         */
+        connectionAttemptId: string;
+        /**
+         * Optional caller label for diagnostics, such as `play-page` or `session-play-panel`.
+         */
+        clientSource?: string;
     };
     url: '/api/sessions/{sessionId}/events';
 };
@@ -4985,23 +4711,27 @@ export type SubscribeToSessionEventsErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Forbidden - insufficient permissions
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
+    /**
+     * Too many requests or live connections
+     */
+    429: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type SubscribeToSessionEventsError = SubscribeToSessionEventsErrors[keyof SubscribeToSessionEventsErrors];
@@ -5009,12 +4739,63 @@ export type SubscribeToSessionEventsError = SubscribeToSessionEventsErrors[keyof
 export type SubscribeToSessionEventsResponses = {
     /**
      * Server-Sent Events stream. Each event contains a JSON-serialized GameMessage.
+     * Every connection begins with a `SESSION_BOOTSTRAP` event that fully describes the current durable session state.
+     * After bootstrap, the stream includes only live updates and does not replay historical messages.
      *
      */
     200: GameMessage;
 };
 
 export type SubscribeToSessionEventsResponse = SubscribeToSessionEventsResponses[keyof SubscribeToSessionEventsResponses];
+
+export type DisconnectSessionEventsData = {
+    body?: never;
+    path: {
+        /**
+         * Unique identifier for the game session
+         */
+        sessionId: string;
+    };
+    query: {
+        /**
+         * Stable browser-tab identifier originally used to open the session event stream.
+         */
+        clientId: string;
+        /**
+         * Unique identifier for the specific connection attempt being released.
+         */
+        connectionAttemptId: string;
+    };
+    url: '/api/sessions/{sessionId}/events/disconnect';
+};
+
+export type DisconnectSessionEventsErrors = {
+    /**
+     * Bad request - invalid input parameters
+     */
+    400: ProblemDetails;
+    /**
+     * Unauthorized - authentication required
+     */
+    401: ProblemDetails;
+    /**
+     * Forbidden - insufficient permissions
+     */
+    403: ProblemDetails;
+    /**
+     * Resource not found
+     */
+    404: ProblemDetails;
+};
+
+export type DisconnectSessionEventsError = DisconnectSessionEventsErrors[keyof DisconnectSessionEventsErrors];
+
+export type DisconnectSessionEventsResponses = {
+    /**
+     * Disconnect request accepted
+     */
+    202: unknown;
+};
 
 export type SubscribeToGameLogsData = {
     body?: never;
@@ -5037,23 +4818,23 @@ export type SubscribeToGameLogsErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Forbidden - insufficient permissions
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type SubscribeToGameLogsError = SubscribeToGameLogsErrors[keyof SubscribeToGameLogsErrors];
@@ -5083,23 +4864,23 @@ export type StartGameErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Forbidden - insufficient permissions
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type StartGameError = StartGameErrors[keyof StartGameErrors];
@@ -5113,8 +4894,8 @@ export type StartGameResponses = {
 
 export type StartGameResponse2 = StartGameResponses[keyof StartGameResponses];
 
-export type SubmitActionData = {
-    body: SubmitActionRequest;
+export type SubmitInputData = {
+    body: SubmitInputRequest;
     path: {
         /**
          * Unique identifier for the game session
@@ -5122,49 +4903,49 @@ export type SubmitActionData = {
         sessionId: string;
     };
     query?: never;
-    url: '/api/sessions/{sessionId}/actions';
+    url: '/api/sessions/{sessionId}/inputs';
 };
 
-export type SubmitActionErrors = {
+export type SubmitInputErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Forbidden - insufficient permissions
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Conflict - version mismatch or resource state conflict
      */
-    409: ErrorResponse;
+    409: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
-export type SubmitActionError = SubmitActionErrors[keyof SubmitActionErrors];
+export type SubmitInputError = SubmitInputErrors[keyof SubmitInputErrors];
 
-export type SubmitActionResponses = {
+export type SubmitInputResponses = {
     /**
-     * Action submitted successfully
+     * Input submission processed successfully
      */
-    200: SubmitActionResponse;
+    200: SubmitInputResponse;
 };
 
-export type SubmitActionResponse2 = SubmitActionResponses[keyof SubmitActionResponses];
+export type SubmitInputResponse2 = SubmitInputResponses[keyof SubmitInputResponses];
 
-export type ValidateActionData = {
-    body: ValidateActionRequest;
+export type ValidateInputData = {
+    body: ValidateInputRequest;
     path: {
         /**
          * Unique identifier for the game session
@@ -5172,42 +4953,46 @@ export type ValidateActionData = {
         sessionId: string;
     };
     query?: never;
-    url: '/api/sessions/{sessionId}/validate-action';
+    url: '/api/sessions/{sessionId}/validate-input';
 };
 
-export type ValidateActionErrors = {
+export type ValidateInputErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Forbidden - insufficient permissions
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
+    /**
+     * Conflict - version mismatch or resource state conflict
+     */
+    409: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
-export type ValidateActionError = ValidateActionErrors[keyof ValidateActionErrors];
+export type ValidateInputError = ValidateInputErrors[keyof ValidateInputErrors];
 
-export type ValidateActionResponses = {
+export type ValidateInputResponses = {
     /**
      * Validation result returned successfully
      */
-    200: ValidateActionResponse;
+    200: ValidateInputResponse;
 };
 
-export type ValidateActionResponse2 = ValidateActionResponses[keyof ValidateActionResponses];
+export type ValidateInputResponse2 = ValidateInputResponses[keyof ValidateInputResponses];
 
 export type AddSeatData = {
     body?: never;
@@ -5225,23 +5010,23 @@ export type AddSeatErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Forbidden - insufficient permissions
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type AddSeatError = AddSeatErrors[keyof AddSeatErrors];
@@ -5275,23 +5060,23 @@ export type RemoveSeatErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Forbidden - insufficient permissions
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type RemoveSeatError = RemoveSeatErrors[keyof RemoveSeatErrors];
@@ -5325,23 +5110,23 @@ export type UpdateSeatErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Forbidden - insufficient permissions
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type UpdateSeatError = UpdateSeatErrors[keyof UpdateSeatErrors];
@@ -5375,19 +5160,19 @@ export type AssignSeatErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type AssignSeatError = AssignSeatErrors[keyof AssignSeatErrors];
@@ -5417,23 +5202,23 @@ export type RestoreHistoryErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Forbidden - insufficient permissions
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type RestoreHistoryError = RestoreHistoryErrors[keyof RestoreHistoryErrors];
@@ -5467,23 +5252,23 @@ export type UnassignSeatErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Forbidden - insufficient permissions
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type UnassignSeatError = UnassignSeatErrors[keyof UnassignSeatErrors];
@@ -5513,15 +5298,15 @@ export type StreamConversationErrors = {
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type StreamConversationError = StreamConversationErrors[keyof StreamConversationErrors];
@@ -5551,15 +5336,15 @@ export type CancelConversationJobErrors = {
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Forbidden - insufficient permissions
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type CancelConversationJobError = CancelConversationJobErrors[keyof CancelConversationJobErrors];
@@ -5593,11 +5378,11 @@ export type ListConversationsErrors = {
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type ListConversationsError = ListConversationsErrors[keyof ListConversationsErrors];
@@ -5627,15 +5412,15 @@ export type DeleteConversationErrors = {
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type DeleteConversationError = DeleteConversationErrors[keyof DeleteConversationErrors];
@@ -5665,23 +5450,23 @@ export type GetJobErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Forbidden - insufficient permissions
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type GetJobError = GetJobErrors[keyof GetJobErrors];
@@ -5711,19 +5496,19 @@ export type SendSandboxMessageErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type SendSandboxMessageError = SendSandboxMessageErrors[keyof SendSandboxMessageErrors];
@@ -5753,15 +5538,15 @@ export type AbortSandboxSessionErrors = {
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type AbortSandboxSessionError = AbortSandboxSessionErrors[keyof AbortSandboxSessionErrors];
@@ -5786,23 +5571,23 @@ export type SandboxChatErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Conflict - version mismatch or resource state conflict
      */
-    409: ErrorResponse;
+    409: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type SandboxChatError = SandboxChatErrors[keyof SandboxChatErrors];
@@ -5827,15 +5612,15 @@ export type SandboxAbortErrors = {
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type SandboxAbortError = SandboxAbortErrors[keyof SandboxAbortErrors];
@@ -5865,11 +5650,11 @@ export type ReceiveSandboxWebhookEventErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type ReceiveSandboxWebhookEventError = ReceiveSandboxWebhookEventErrors[keyof ReceiveSandboxWebhookEventErrors];
@@ -5899,11 +5684,11 @@ export type ReceiveSandboxWebhookCompleteErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type ReceiveSandboxWebhookCompleteError = ReceiveSandboxWebhookCompleteErrors[keyof ReceiveSandboxWebhookCompleteErrors];
@@ -5933,19 +5718,19 @@ export type FetchUiBundleErrors = {
     /**
      * Bad request - invalid input parameters
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Unauthorized - authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Resource not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Internal server error
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type FetchUiBundleError = FetchUiBundleErrors[keyof FetchUiBundleErrors];

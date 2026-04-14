@@ -3,7 +3,7 @@ import {
   useContext,
   useState,
   useEffect,
-  useRef,
+  useMemo,
   useSyncExternalStore,
 } from "react";
 import type { PluginStateSnapshot } from "../types/plugin-state.js";
@@ -44,7 +44,7 @@ function DefaultLoadingScreen() {
           }}
         />
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-        <p>Loading game state...</p>
+        <p>Loading game view...</p>
       </div>
     </div>
   );
@@ -64,7 +64,7 @@ export interface PluginStateProviderProps {
  * and provides the state to child components via context.
  *
  * In the new architecture:
- * - Host only renders plugin iframe when gameState !== null
+ * - Host only renders authored game UI after state-sync begins
  * - Plugin receives complete state in first state-sync message
  * - No buffering or waiting needed - state is immediately available
  *
@@ -135,7 +135,7 @@ export function PluginStateProvider({
  * ```typescript
  * function MyComponent() {
  *   const state = usePluginStateSnapshot();
- *   console.log('Current game state:', state.game?.currentState);
+ *   console.log('Current phase:', state.gameplay.currentPhase);
  * }
  * ```
  */
@@ -162,17 +162,10 @@ export function usePluginStateSnapshot(): PluginStateSnapshot {
  *
  * @example
  * ```typescript
- * // Only re-renders when game.currentState changes
+ * // Only re-renders when gameplay.currentPhase changes
  * function CurrentStateDisplay() {
- *   const currentState = usePluginState((s) => s.game?.currentState);
+ *   const currentState = usePluginState((s) => s.gameplay.currentPhase);
  *   return <div>State: {currentState}</div>;
- * }
- *
- * // Get the full game state
- * function GameUI() {
- *   const game = usePluginState((s) => s.game);
- *   if (!game) return <div>No game state</div>;
- *   return <div>Turn: {game.isMyTurn ? 'Your turn' : 'Waiting'}</div>;
  * }
  * ```
  */
@@ -181,24 +174,12 @@ export function usePluginState<T>(
 ): T {
   const runtime = useRuntimeContext() as PluginRuntimeAPI;
 
-  // Use refs to keep selector stable
-  const selectorRef = useRef(selector);
-  selectorRef.current = selector;
-
-  // Track the last selected value for change detection
-  const lastValueRef = useRef<T | undefined>(undefined);
-
   const subscribe = (onStoreChange: () => void) => {
     if (!runtime.subscribeToState) {
       return () => {};
     }
-    return runtime.subscribeToState((newState) => {
-      const newValue = selectorRef.current(newState);
-      // Only notify if value changed (reference equality)
-      if (newValue !== lastValueRef.current) {
-        lastValueRef.current = newValue;
-        onStoreChange();
-      }
+    return runtime.subscribeToState(() => {
+      onStoreChange();
     });
   };
 
@@ -210,12 +191,11 @@ export function usePluginState<T>(
           "Make sure you have wrapped your app with <PluginStateProvider>.",
       );
     }
-    const value = selectorRef.current(state);
-    lastValueRef.current = value;
-    return value;
+    return state;
   };
 
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  return useMemo(() => selector(state), [selector, state]);
 }
 
 /**
@@ -267,6 +247,11 @@ export function usePluginActions() {
      * Submit a player action.
      */
     submitAction: runtime.submitAction,
+
+    /**
+     * Submit a window action.
+     */
+    submitWindowAction: runtime.submitWindowAction,
   };
 }
 

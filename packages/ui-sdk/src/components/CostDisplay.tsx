@@ -1,60 +1,25 @@
-/**
- * CostDisplay component - Shows resource costs with affordability indication
- *
- * Design Philosophy: "Clear Cost Communication"
- * - Visual affordability feedback (green/red)
- * - Compact inline display for action buttons
- * - Flexible stacked layout for detailed views
- * - Accessible with proper labels
- *
- * @example Basic usage
- * ```tsx
- * <CostDisplay
- *   cost={{ gold: 3, wood: 2 }}
- *   currentResources={{ gold: 5, wood: 1 }}
- *   resourceDefs={resourceDefinitions}
- * />
- * ```
- */
+/** Shows resource costs with affordability indication (green/red). */
 
 import { clsx } from "clsx";
 import type { ComponentType } from "react";
 
 export interface ResourceDefinition {
-  /** Unique resource type identifier */
   type: string;
-  /** Human-readable label */
   label: string;
-  /** Icon component */
   icon?: ComponentType<{ className?: string }>;
-  /** Text color class */
   color?: string;
 }
 
 export interface CostDisplayProps {
   /** Cost requirements keyed by resource type */
   cost: Record<string, number>;
-  /** Current resources to check affordability (optional) */
+  /** Current resources to check affordability */
   currentResources?: Record<string, number>;
-  /** Resource definitions for icons/colors */
   resourceDefs: ResourceDefinition[];
-  /** Size variant */
   size?: "sm" | "md";
-  /** Layout orientation */
   layout?: "inline" | "stacked";
-  /** Additional class names */
   className?: string;
 }
-
-/**
- * CostDisplay component for showing resource costs
- *
- * Features:
- * - Visual affordability indication
- * - Inline or stacked layouts
- * - Icon support with fallback to text
- * - Accessible cost information
- */
 export function CostDisplay({
   cost,
   currentResources,

@@ -1,14 +1,5 @@
 /**
- * Card component - Mobile-first, accessible card display for game pieces
- *
- * Design Philosophy: "Digital Card Table" aesthetic
- * - Tactile depth with subtle shadows
- * - Smooth, natural animations
- * - Touch-optimized interactions
- * - Clear visual hierarchy
- *
- * This is a presentational component that receives card data as props.
- * For convenience, use ConnectedCard which fetches card data via hooks.
+ * Presentational card component. Feed from reducer views, not runtime state.
  */
 
 import { motion, type HTMLMotionProps } from "framer-motion";
@@ -16,28 +7,17 @@ import { clsx } from "clsx";
 import type { CardItem } from "../types/player-state.js";
 
 export interface CardProps extends Omit<HTMLMotionProps<"button">, "children"> {
-  /** Card data to display */
   card: CardItem;
-  /** Whether the card is selected */
   selected?: boolean;
-  /** Whether the card can be interacted with */
   disabled?: boolean;
-  /** Size variant */
   size?: "sm" | "md" | "lg";
-  /** Whether to show the card face-down */
   faceDown?: boolean;
-  /** Custom render function for card content */
   renderContent?: (card: CardItem) => React.ReactNode;
-  /** Click handler (called with card ID) */
   onCardClick?: (cardId: string) => void;
-  /** ARIA label for accessibility */
   "aria-label"?: string;
 }
 
-/**
- * Default card content renderer
- * Displays card info in a clean, readable format
- */
+/** Default card content renderer */
 function DefaultCardContent({ card }: { card: CardItem }) {
   const props = card.properties;
   const entries = Object.entries(props || {});
@@ -65,19 +45,9 @@ function DefaultCardContent({ card }: { card: CardItem }) {
 }
 
 /**
- * Card component with rich interactions and animations
- *
- * @example Basic usage
+ * @example
  * ```tsx
  * <Card card={cardItem} onCardClick={(id) => console.log(id)} />
- * ```
- *
- * @example With custom renderer
- * ```tsx
- * <Card
- *   card={cardItem}
- *   renderContent={(card) => <MyCustomCardFace card={card} />}
- * />
  * ```
  */
 export function Card({

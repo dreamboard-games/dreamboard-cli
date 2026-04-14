@@ -1,21 +1,19 @@
 import path from "node:path";
 import { defineCommand } from "citty";
 import consola from "consola";
-import {
-  createGame,
-  deleteGame,
-  scaffoldGameSourcesV3,
-} from "@dreamboard/api-client";
-import type { BoardManifest } from "@dreamboard/sdk-types";
+import { createGame, deleteGame } from "@dreamboard/api-client";
+import type { GameTopologyManifest } from "@dreamboard/sdk-types";
 import {
   resolveConfig,
   requireAuth,
   configureClient,
 } from "../config/resolve.js";
+import { IS_PUBLISHED_BUILD } from "../build-target.js";
+import { ENVIRONMENT_CONFIGS } from "../constants.js";
 import { parseNewCommandArgs } from "../flags.js";
 import { loadGlobalConfig } from "../config/global-config.js";
 import { normalizeSlug, titleFromSlug } from "../utils/strings.js";
-import { ensureDir, installSkillFile, writeTextFile } from "../utils/fs.js";
+import { ensureDir, writeTextFile } from "../utils/fs.js";
 import { CONFIG_FLAG_ARGS } from "../command-args.js";
 import {
   tryGetGameBySlug,
@@ -26,13 +24,14 @@ import {
   writeManifest,
   writeRule,
   writeSnapshot,
-  writeScaffoldFiles,
 } from "../services/project/local-files.js";
-import { validateDynamicScaffoldResponse } from "../services/project/dynamic-scaffold-response.js";
 import { updateProjectState } from "../config/project-config.js";
 import { scaffoldStaticWorkspace } from "../services/project/static-scaffold.js";
 import { updateProjectAuthoringState } from "../services/project/project-state.js";
-import { formatApiError } from "../utils/errors.js";
+import { isProblemType, toDreamboardApiError } from "../utils/errors.js";
+import { CLI_PROBLEM_TYPES } from "../utils/problem-types.js";
+import { applyWorkspaceCodegen } from "../services/project/workspace-codegen.js";
+import { installWorkspaceDependencies } from "../services/project/workspace-dependencies.js";
 
 export default defineCommand({
   meta: {
@@ -78,13 +77,21 @@ export default defineCommand({
         consola.warn(`Deleting existing game '${normalizedSlug}' (--force)...`);
         const { error: deleteError, response: deleteResponse } =
           await deleteGame({ path: { gameId: existing.id } });
-        if (deleteError && deleteResponse?.status !== 404) {
-          throw new Error(
-            formatApiError(
+        if (
+          deleteError &&
+          !isProblemType(
+            toDreamboardApiError(
               deleteError,
               deleteResponse,
               `Failed to delete existing game '${normalizedSlug}'`,
             ),
+            CLI_PROBLEM_TYPES.RESOURCE_NOT_FOUND,
+          )
+        ) {
+          throw toDreamboardApiError(
+            deleteError,
+            deleteResponse,
+            `Failed to delete existing game '${normalizedSlug}'`,
           );
         }
       }
@@ -103,46 +110,39 @@ export default defineCommand({
       },
     });
     if (createError || !game) {
-      if (createResponse?.status === 409) {
+      const apiError = toDreamboardApiError(
+        createError,
+        createResponse,
+        "Failed to create game",
+      );
+      if (isProblemType(apiError, CLI_PROBLEM_TYPES.GAME_SLUG_CONFLICT)) {
         throw new Error(
           `Game with slug '${normalizedSlug}' already exists. Use --force to delete and recreate it, or choose a different slug.`,
         );
       }
-      throw new Error(
-        formatApiError(createError, createResponse, "Failed to create game"),
-      );
+      throw apiError;
     }
 
     try {
       const ruleId = await getLatestRuleIdSdk(game.id);
 
-      const blankManifest: BoardManifest = {
-        cardSets: [],
-        decks: [],
-        dice: [],
-        playerHandDefinitions: [],
-        playerConfig: {
+      const blankManifest: GameTopologyManifest = {
+        players: {
           minPlayers: 2,
           maxPlayers: 4,
           optimalPlayers: 4,
         },
-        variableSchema: {
-          globalVariableSchema: { properties: {} },
-          playerVariableSchema: { properties: {} },
-        },
-        availableActions: [],
-        stateMachine: {
-          initialState: "setup",
-          states: [
-            {
-              name: "setup",
-              type: "AUTO",
-              description: "Initial setup phase",
-              transitions: [],
-              availableActions: [],
-            },
-          ],
-        },
+        cardSets: [],
+        zones: [],
+        boardTemplates: [],
+        boards: [],
+        pieceTypes: [],
+        pieceSeeds: [],
+        dieTypes: [],
+        dieSeeds: [],
+        resources: [],
+        setupOptions: [],
+        setupProfiles: [],
       };
 
       consola.start("Saving initial manifest...");
@@ -152,41 +152,24 @@ export default defineCommand({
         ruleId,
       );
 
-      consola.start("Scaffolding dynamic and static sources...");
-      const {
-        data: dynamicScaffold,
-        error: dynamicError,
-        response: dynamicResponse,
-      } = await scaffoldGameSourcesV3({
-        path: { gameId: game.id },
-        body: {
-          manifestId,
-          ruleId,
-          mode: "new",
-          seedMissingOnly: true,
-        },
-      });
-      if (dynamicError || !dynamicScaffold) {
-        throw new Error(
-          formatApiError(
-            dynamicError,
-            dynamicResponse,
-            "Failed to scaffold dynamic sources",
-          ),
-        );
-      }
+      consola.start("Scaffolding local workspace...");
 
       const targetDir = path.resolve(process.cwd(), normalizedSlug);
       await ensureDir(targetDir);
-
-      const scaffoldFiles =
-        validateDynamicScaffoldResponse(dynamicScaffold).allFiles;
-
-      await writeScaffoldFiles(targetDir, scaffoldFiles);
       await writeManifest(targetDir, blankManifest);
       await writeRule(targetDir, "");
 
-      await scaffoldStaticWorkspace(targetDir, "new", { updateSdk: true });
+      await scaffoldStaticWorkspace(targetDir, "new");
+      await applyWorkspaceCodegen({
+        projectRoot: targetDir,
+        manifest: blankManifest,
+      });
+      const localApiBaseUrl =
+        ENVIRONMENT_CONFIGS.local?.apiBaseUrl ?? "http://localhost:8080";
+      await installWorkspaceDependencies(targetDir, {
+        localSdkPackageFallback:
+          !IS_PUBLISHED_BUILD && config.apiBaseUrl === localApiBaseUrl,
+      });
 
       await updateProjectState(
         targetDir,
@@ -206,7 +189,6 @@ export default defineCommand({
       );
       await writeSnapshot(targetDir);
 
-      await installSkillFile(targetDir);
       await writeTextFile(path.join(targetDir, "feedback.md"), "");
 
       consola.success(`Created new game in ${targetDir}`);

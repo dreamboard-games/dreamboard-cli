@@ -9,24 +9,39 @@ const packageRoot = path.resolve(
 const repoRoot = path.resolve(packageRoot, "..", "..");
 const packageSkillRoot = path.join(packageRoot, "skills", "dreamboard");
 const repoSkillRoot = path.join(repoRoot, "skills", "dreamboard");
-const ALLOWED_PUBLIC_SKILL_SCRIPT_ENTRY_NAMES = new Set(["events-extract.mjs"]);
+const ALLOWED_PUBLIC_SKILL_SCRIPT_ENTRY_NAMES = new Set<string>();
 
 export const IGNORED_PUBLIC_SKILL_ENTRY_NAMES = new Set([
   ".DS_Store",
   "__pycache__",
 ]);
 
-export async function resolvePublicSkillRoot(): Promise<string> {
+export async function resolvePublicSkillRoot(): Promise<string | null> {
   try {
     await access(repoSkillRoot);
     return repoSkillRoot;
   } catch {
-    return packageSkillRoot;
+    try {
+      await access(packageSkillRoot);
+      return packageSkillRoot;
+    } catch {
+      return null;
+    }
   }
 }
 
-export async function assertPublicSkillScriptsArePublishable(rootDir: string) {
+export async function assertPublicSkillScriptsArePublishable(
+  rootDir: string | null,
+) {
+  if (!rootDir) {
+    return;
+  }
   const scriptsDir = path.join(rootDir, "scripts");
+  try {
+    await access(scriptsDir);
+  } catch {
+    return;
+  }
   const entries = await readdir(scriptsDir, { withFileTypes: true });
 
   for (const entry of entries) {

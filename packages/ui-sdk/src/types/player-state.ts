@@ -1,15 +1,8 @@
 import type {
   PlayerId,
   CardId,
-  HandId,
-  CardIdsByHandId,
   CardIdsByDeckId,
   CardProperties,
-  PlayerState,
-  GlobalState,
-  StateName,
-  TileId,
-  TileTypeId,
   EdgeTypeId,
   VertexTypeId,
   BoardId,
@@ -18,11 +11,13 @@ import type {
   SpaceId,
   SpaceTypeId,
   DieId,
-  TilePropertiesByBoardId,
-  EdgePropertiesByBoardId,
-  VertexPropertiesByBoardId,
-} from "@dreamboard/manifest";
-import type { AnyUIArgs } from "@dreamboard/ui-args";
+} from "../manifest-contract.js";
+
+type CardIdsByHandId = Record<string, CardId[]>;
+type StateName = string;
+type TilePropertiesByBoardId = Record<BoardId, Record<string, unknown>>;
+type EdgePropertiesByBoardId = Record<BoardId, Record<string, unknown>>;
+type VertexPropertiesByBoardId = Record<BoardId, Record<string, unknown>>;
 
 export interface Player {
   /** Player ID */
@@ -36,8 +31,8 @@ export interface Player {
 }
 
 /**
- * Card item for frontend use.
- * This is the parsed, typed version of CardInfo.
+ * Card item for reducer-native frontend use.
+ * This is the parsed, typed card payload delivered through reducer views.
  */
 export interface CardItem {
   /** Unique card instance identifier */
@@ -54,13 +49,13 @@ export interface CardItem {
 
 export interface HexTileState<B extends BoardId = BoardId> {
   /** Unique tile identifier */
-  id: TileId;
+  id: SpaceId;
   /** Axial coordinate Q */
   q: number;
   /** Axial coordinate R */
   r: number;
   /** Tile type identifier for rendering */
-  typeId?: TileTypeId;
+  typeId?: SpaceTypeId;
   /** Display label on the tile */
   label?: string;
   /** Player ID who owns this tile */
@@ -71,14 +66,14 @@ export interface HexTileState<B extends BoardId = BoardId> {
     : undefined;
 }
 
-/** State of an edge on a hex board (matches SimpleHexEdgeState) */
+/** State of an edge on a reducer-projected hex board. */
 export interface HexEdgeState<B extends BoardId = BoardId> {
   /** Unique edge identifier (serialized string, e.g., "tile1-tile2") */
   id: string;
   /** First hex tile ID this edge borders */
-  hex1: TileId;
+  hex1: SpaceId;
   /** Second hex tile ID this edge borders */
-  hex2: TileId;
+  hex2: SpaceId;
   /** Edge type identifier for rendering */
   typeId?: EdgeTypeId;
   /** Player ID who owns this edge */
@@ -89,12 +84,12 @@ export interface HexEdgeState<B extends BoardId = BoardId> {
     : undefined;
 }
 
-/** State of a vertex on a hex board (matches SimpleHexVertexState) */
+/** State of a vertex on a reducer-projected hex board. */
 export interface HexVertexState<B extends BoardId = BoardId> {
   /** Unique vertex identifier (serialized string, e.g., "tile1-tile2-tile3") */
   id: string;
   /** The three hex tile IDs this vertex touches */
-  hexes: [TileId, TileId, TileId];
+  hexes: [SpaceId, SpaceId, SpaceId];
   /** Vertex type identifier for rendering */
   typeId?: VertexTypeId;
   /** Player ID who owns this vertex */
@@ -105,7 +100,7 @@ export interface HexVertexState<B extends BoardId = BoardId> {
     : undefined;
 }
 
-/** Complete state of a hex board (matches SimpleHexBoardState) */
+/** Complete state of a reducer-projected hex board. */
 export interface HexBoardState<B extends BoardId = BoardId> {
   /** Unique board identifier */
   id: BoardId;
@@ -117,16 +112,16 @@ export interface HexBoardState<B extends BoardId = BoardId> {
   vertices: Array<HexVertexState<B>>;
 }
 
-/** State of a node in a network graph board (matches SimpleNetworkNodeState) */
+/** State of a node in a reducer-projected network board. */
 export interface NetworkNodeState {
   /** Unique node identifier */
-  id: TileId;
+  id: SpaceId;
   /** X coordinate position */
   x: number;
   /** Y coordinate position */
   y: number;
   /** Node type identifier for rendering */
-  typeId?: TileTypeId;
+  typeId?: SpaceTypeId;
   /** Display label on the node */
   label?: string;
   /** Player ID who owns this node */
@@ -135,14 +130,14 @@ export interface NetworkNodeState {
   properties?: string;
 }
 
-/** State of an edge connecting two nodes in a network graph (matches SimpleNetworkEdgeState) */
+/** State of an edge connecting two nodes in a reducer-projected network board. */
 export interface NetworkEdgeState {
   /** Unique edge identifier */
   id: string;
   /** Source node ID */
-  from: TileId;
+  from: SpaceId;
   /** Target node ID */
-  to: TileId;
+  to: SpaceId;
   /** Edge type identifier for rendering */
   typeId?: string;
   /** Display label on the edge */
@@ -153,12 +148,12 @@ export interface NetworkEdgeState {
   properties?: string;
 }
 
-/** State of a piece placed on a network node (matches SimpleNetworkPieceState) */
+/** State of a piece placed on a reducer-projected network node. */
 export interface NetworkPieceState {
   /** Unique piece identifier */
   id: PieceId;
   /** Node ID where this piece is placed */
-  nodeId: TileId;
+  nodeId: SpaceId;
   /** Piece type identifier for rendering */
   typeId?: PieceTypeId;
   /** Player ID who owns this piece */
@@ -167,7 +162,7 @@ export interface NetworkPieceState {
   properties?: string;
 }
 
-/** Complete state of a network board (matches SimpleNetworkBoardState) */
+/** Complete state of a reducer-projected network board. */
 export interface NetworkBoardState {
   /** Unique board identifier */
   id: BoardId;
@@ -179,21 +174,57 @@ export interface NetworkBoardState {
   pieces: NetworkPieceState[];
 }
 
-/** State of a cell on a square grid board (matches SimpleSquareCellState) */
+/** State of a cell on a reducer-projected square grid board. */
 export interface SquareCellState {
+  /** Unique cell identifier */
+  id: SpaceId;
   /** Row index (0-based) */
   row: number;
   /** Column index (0-based) */
   col: number;
   /** Cell type identifier for rendering */
-  typeId?: TileTypeId;
+  typeId?: SpaceTypeId;
+  /** Display label on the cell */
+  label?: string;
   /** Player ID who owns this cell */
   owner?: PlayerId;
   /** JSON-serialized custom properties */
   properties?: string;
 }
 
-/** State of a piece placed on a square grid cell (matches SimpleSquarePieceState) */
+/** State of an edge on a reducer-projected square grid board. */
+export interface SquareEdgeState {
+  /** Unique edge identifier */
+  id: string;
+  /** The cell IDs this edge borders */
+  spaceIds: SpaceId[];
+  /** Edge type identifier for rendering */
+  typeId?: EdgeTypeId;
+  /** Display label for setup or rendering */
+  label?: string;
+  /** Player ID who owns this edge */
+  owner?: PlayerId;
+  /** JSON-serialized custom properties */
+  properties?: string;
+}
+
+/** State of a vertex on a reducer-projected square grid board. */
+export interface SquareVertexState {
+  /** Unique vertex identifier */
+  id: string;
+  /** The cell IDs that touch this corner */
+  spaceIds: SpaceId[];
+  /** Vertex type identifier for rendering */
+  typeId?: VertexTypeId;
+  /** Display label for setup or rendering */
+  label?: string;
+  /** Player ID who owns this vertex */
+  owner?: PlayerId;
+  /** JSON-serialized custom properties */
+  properties?: string;
+}
+
+/** State of a piece placed on a reducer-projected square grid cell. */
 export interface SquarePieceState {
   /** Unique piece identifier */
   id: PieceId;
@@ -209,7 +240,7 @@ export interface SquarePieceState {
   properties?: string;
 }
 
-/** Complete state of a square grid board (matches SimpleSquareBoardState) */
+/** Complete state of a reducer-projected square grid board. */
 export interface SquareBoardState {
   /** Unique board identifier */
   id: BoardId;
@@ -217,13 +248,17 @@ export interface SquareBoardState {
   rows: number;
   /** Number of columns in the grid */
   cols: number;
-  /** All cells with non-default state */
+  /** All authored cells on the board */
   cells: SquareCellState[];
+  /** All edges on the board */
+  edges: SquareEdgeState[];
+  /** All vertices on the board */
+  vertices: SquareVertexState[];
   /** All pieces on the board */
   pieces: SquarePieceState[];
 }
 
-/** State of a space on a track board (matches SimpleTrackSpaceState) */
+/** State of a space on a reducer-projected track board. */
 export interface TrackSpaceState {
   /** Unique space identifier */
   id: SpaceId;
@@ -245,7 +280,7 @@ export interface TrackSpaceState {
   properties?: string;
 }
 
-/** State of a piece on a track board (matches SimpleTrackPieceState) */
+/** State of a piece on a reducer-projected track board. */
 export interface TrackPieceState {
   /** Unique piece identifier */
   id: PieceId;
@@ -259,7 +294,7 @@ export interface TrackPieceState {
   properties?: string;
 }
 
-/** Complete state of a track board (matches SimpleTrackBoardState) */
+/** Complete state of a reducer-projected track board. */
 export interface TrackBoardState {
   /** Unique board identifier */
   id: BoardId;
@@ -269,7 +304,7 @@ export interface TrackBoardState {
   pieces: TrackPieceState[];
 }
 
-/** State of a die component (matches SimpleDieState) */
+/** State of a reducer-projected die component. */
 export interface DieState {
   /** Unique die identifier */
   id: DieId;
@@ -283,7 +318,7 @@ export interface DieState {
 
 /**
  * Container for all board states organized by type.
- * This is the strongly-typed replacement for SimpleBoardStates.
+ * This is the strongly-typed board payload authored UIs consume from reducer views.
  * Maps board IDs to their board state. Empty object if no boards of that type.
  */
 export interface BoardStates {
@@ -304,7 +339,7 @@ export interface BoardStates {
 export type DiceStates = Record<DieId, DieState>;
 
 /**
- * CardInfo as received from the store (after transformation).
+ * Parsed card payload as received from the reducer-native store.
  * The store parses the JSON-serialized properties string from the backend
  * into a typed CardProperties object.
  */
@@ -318,28 +353,17 @@ export interface CardInfo {
   properties: CardProperties;
 }
 
-/** Public hand cards grouped by player ID for a single hand ID. */
-export type PublicHandsByPlayerId = Record<PlayerId, CardId[]>;
-
-/** Public hand cards grouped by hand ID, then player ID. */
-export type PublicHandsByHandId = Record<HandId, PublicHandsByPlayerId>;
-
 export interface GameState {
   /** All currently active players (supports MULTIPLE_ACTIVE_PLAYER states) */
   currentPlayerIds: PlayerId[];
   decks: CardIdsByDeckId;
   hands: CardIdsByHandId;
-  /** Public hands grouped by handId -> playerId -> card IDs */
-  publicHands: PublicHandsByHandId;
   /** Map of card IDs to their card info including type and properties */
   cards: Record<CardId, CardInfo>;
-  globalVariables: GlobalState;
-  playerVariables: Record<PlayerId, PlayerState>;
   /** Map of player IDs to their resource amounts (resourceId -> amount) */
   playerResources: Record<PlayerId, Record<string, number>>;
   currentState: StateName;
   isMyTurn: boolean;
-  uiArgs?: Record<PlayerId, AnyUIArgs>;
   boards: BoardStates;
   dice: DiceStates;
 }

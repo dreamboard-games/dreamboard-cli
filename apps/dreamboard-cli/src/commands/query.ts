@@ -8,7 +8,7 @@ import {
   resolveConfig,
 } from "../config/resolve.js";
 import { parseQueryCommandArgs } from "../flags.js";
-import { formatApiError } from "../utils/errors.js";
+import { toDreamboardApiError } from "../utils/errors.js";
 
 export default defineCommand({
   meta: {
@@ -36,12 +36,10 @@ export default defineCommand({
     });
 
     if (!data) {
-      throw new Error(
-        formatApiError(
-          error,
-          response,
-          `Failed to query rulebook for '${parsedArgs.title}'`,
-        ),
+      throw toDreamboardApiError(
+        error,
+        response,
+        `Failed to query rulebook for '${parsedArgs.title}'`,
       );
     }
 

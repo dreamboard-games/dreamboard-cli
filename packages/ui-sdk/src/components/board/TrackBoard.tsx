@@ -1,46 +1,6 @@
 /**
- * TrackBoard component - Linear/circular track visualization for racing games
- *
- * Design Philosophy: "Progressive Journey"
- * - SVG-based track/path rendering
- * - Support for linear, circular, and branching tracks
- * - Jump connections (snakes & ladders)
- * - Piece movement along track
- * - Required render functions for full customization
- *
- * Use cases: Monopoly, Game of Life, racing games, Snakes & Ladders
- *
- * @example Basic usage with helper components
- * ```tsx
- * <TrackBoard
- *   spaces={spaces}
- *   pieces={pieces}
- *   type="circular"
- *   width={560}
- *   height={560}
- *   renderSpace={(space, spacePieces) => (
- *     <DefaultTrackSpace
- *       space={space}
- *       size={45}
- *       onClick={() => handleSpaceClick(space.id)}
- *     >
- *       {spacePieces.map((piece, i) => (
- *         <DefaultTrackPiece
- *           key={piece.id}
- *           piece={piece}
- *           index={i}
- *           total={spacePieces.length}
- *           color={playerColors[piece.owner]}
- *           onClick={() => handlePieceClick(piece.id)}
- *         />
- *       ))}
- *     </DefaultTrackSpace>
- *   )}
- *   renderConnection={(from, to) => (
- *     <DefaultTrackConnection from={from} to={to} />
- *   )}
- * />
- * ```
+ * SVG-based track visualization for racing and path games
+ * (Monopoly, Game of Life, Snakes & Ladders). Supports linear, circular, and branching tracks.
  */
 
 import { useMemo, type ReactNode } from "react";
@@ -48,54 +8,37 @@ import { clsx } from "clsx";
 import { usePanZoom } from "../../hooks/usePanZoom.js";
 
 export interface TrackSpace {
-  /** Unique space identifier */
   id: string;
-  /** Position on track (0-indexed) */
   index: number;
-  /** Display name */
   name?: string;
-  /** Space type for rendering */
   type?: string;
   /** Override next spaces (for branching) */
   nextSpaces?: string[];
   /** Jump to another space (snakes/ladders) */
   jumpTo?: string;
-  /** Position for rendering */
   position: { x: number; y: number };
-  /** Additional data */
   data?: Record<string, unknown>;
 }
 
 export interface TrackPiece {
-  /** Unique piece identifier */
   id: string;
-  /** Space ID where piece is located */
   spaceId: string;
-  /** Owner player ID */
   owner: string;
-  /** Piece type for rendering */
   type?: string;
-  /** Additional data */
   data?: Record<string, unknown>;
 }
 
 export interface TrackBoardProps {
-  /** Track spaces */
   spaces: TrackSpace[];
-  /** Pieces on the track */
   pieces: TrackPiece[];
-  /** Track type (affects connection rendering for circular tracks) */
   type?: "linear" | "circular" | "branching";
-  /** Required space renderer - receives space data and pieces on that space */
   renderSpace: (space: TrackSpace, pieces: TrackPiece[]) => ReactNode;
-  /** Optional connection renderer - receives from/to positions */
   renderConnection?: (
     from: { x: number; y: number },
     to: { x: number; y: number },
     fromSpace: TrackSpace,
     toSpace: TrackSpace,
   ) => ReactNode;
-  /** Optional jump renderer - receives from/to positions and direction */
   renderJump?: (
     from: { x: number; y: number },
     to: { x: number; y: number },
@@ -103,19 +46,12 @@ export interface TrackBoardProps {
     toSpace: TrackSpace,
     isUp: boolean,
   ) => ReactNode;
-  /** Container width (use "100%" for responsive) */
   width?: number | string;
-  /** Container height (use "100%" for responsive) */
   height?: number | string;
-  /** Enable pan and zoom */
   enablePanZoom?: boolean;
-  /** Initial zoom level */
   initialZoom?: number;
-  /** Min zoom level */
   minZoom?: number;
-  /** Max zoom level */
   maxZoom?: number;
-  /** Additional class names */
   className?: string;
 }
 
@@ -124,35 +60,19 @@ export interface TrackBoardProps {
 // ============================================================================
 
 export interface DefaultTrackSpaceProps {
-  /** The space data */
   space: TrackSpace;
-  /** Size of the space (width and height) */
   size?: number;
-  /** Fill color */
   fill?: string;
-  /** Stroke color */
   stroke?: string;
-  /** Stroke width */
   strokeWidth?: number;
-  /** Whether the space is highlighted */
   isHighlighted?: boolean;
-  /** Whether the space is selected */
   isSelected?: boolean;
-  /** Whether to show jump indicator */
   showJumpIndicator?: boolean;
-  /** Click handler */
   onClick?: () => void;
-  /** Hover handler */
   onHover?: (hovering: boolean) => void;
-  /** Custom className */
   className?: string;
-  /** Children (pieces rendered on this space) */
   children?: ReactNode;
 }
-
-/**
- * Default track space renderer - renders a rounded rectangle with optional name/index
- */
 export function DefaultTrackSpace({
   space,
   size = 50,
@@ -244,25 +164,14 @@ export function DefaultTrackSpace({
 }
 
 export interface DefaultTrackPieceProps {
-  /** The piece data */
   piece: TrackPiece;
-  /** Piece index (for positioning multiple pieces) */
   index?: number;
-  /** Total pieces on this space (for positioning) */
   total?: number;
-  /** Piece radius */
   radius?: number;
-  /** Piece color */
   color?: string;
-  /** Click handler */
   onClick?: () => void;
-  /** Custom className */
   className?: string;
 }
-
-/**
- * Default track piece renderer - renders a colored circle
- */
 export function DefaultTrackPiece({
   piece,
   index = 0,
@@ -298,21 +207,12 @@ export function DefaultTrackPiece({
 }
 
 export interface DefaultTrackConnectionProps {
-  /** Start position */
   from: { x: number; y: number };
-  /** End position */
   to: { x: number; y: number };
-  /** Stroke color */
   stroke?: string;
-  /** Stroke width */
   strokeWidth?: number;
-  /** Custom className */
   className?: string;
 }
-
-/**
- * Default track connection renderer - renders a line between spaces
- */
 export function DefaultTrackConnection({
   from,
   to,
@@ -335,27 +235,16 @@ export function DefaultTrackConnection({
 }
 
 export interface DefaultTrackJumpProps {
-  /** Start position */
   from: { x: number; y: number };
-  /** End position */
   to: { x: number; y: number };
-  /** Whether the jump goes up (forward) or down (backward) */
+  /** Whether the jump goes forward or backward */
   isUp: boolean;
-  /** Space size for offset calculation */
   spaceSize?: number;
-  /** Custom up color */
   upColor?: string;
-  /** Custom down color */
   downColor?: string;
-  /** Stroke width */
   strokeWidth?: number;
-  /** Custom className */
   className?: string;
 }
-
-/**
- * Default track jump renderer - renders a dashed arrow for snakes/ladders
- */
 export function DefaultTrackJump({
   from,
   to,
@@ -416,15 +305,6 @@ export function DefaultTrackJump({
 // Main Component
 // ============================================================================
 
-/**
- * TrackBoard component for track-based and racing games
- *
- * Features:
- * - Multiple track types (linear, circular, branching)
- * - Required render functions for full customization
- * - Pan and zoom with @use-gesture
- * - Helper components for common rendering patterns
- */
 export function TrackBoard({
   spaces,
   pieces,

@@ -15,6 +15,20 @@ export type GlobalConfig = {
   refreshToken?: string;
 };
 
+export type ProjectPendingSyncPhase =
+  | "source_revision_created"
+  | "authoring_state_created";
+
+export type ProjectPendingAuthoringSync = {
+  phase: ProjectPendingSyncPhase;
+  authoringStateId?: string;
+  ruleId?: string;
+  manifestId?: string;
+  manifestContentHash?: string;
+  sourceRevisionId: string;
+  sourceTreeHash: string;
+};
+
 export type ProjectAuthoringState = {
   authoringStateId?: string;
   ruleId?: string;
@@ -22,6 +36,7 @@ export type ProjectAuthoringState = {
   manifestContentHash?: string;
   sourceRevisionId?: string;
   sourceTreeHash?: string;
+  pendingSync?: ProjectPendingAuthoringSync;
 };
 
 export type ProjectCompileAttempt = {
@@ -74,31 +89,13 @@ export type ResolvedConfig = {
   supabaseAnonKey?: string;
   authToken?: string;
   refreshToken?: string;
+  authTokenSource?: "global" | "env" | "flag" | "none";
+  refreshTokenSource?: "global" | "env" | "none";
 };
 
 export type ApiError = {
   message?: string;
   errors?: Record<string, string[]>;
-};
-
-export type UiStep = {
-  playerId: string;
-  buttons?: string[];
-  turns?: number;
-  mouse_x?: number;
-  mouse_y?: number;
-};
-
-export type ApiScenarioStep = {
-  playerId: string;
-  actionType: string;
-  parameters?: Record<string, unknown>;
-  turns?: number;
-};
-
-export type TurnTracker = {
-  waitForTurns: (turns: number) => Promise<void>;
-  close: () => void;
 };
 
 export type RenderState = {

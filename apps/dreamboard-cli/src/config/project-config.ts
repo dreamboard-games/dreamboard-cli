@@ -11,6 +11,7 @@ function normalizeProjectConfig(config: ProjectConfig): ProjectConfig {
     manifestContentHash: config.manifestContentHash,
     sourceRevisionId: config.sourceRevisionId,
     sourceTreeHash: config.sourceTreeHash,
+    pendingSync: undefined,
   };
   const compile = config.compile ?? {
     latestAttempt: config.resultId

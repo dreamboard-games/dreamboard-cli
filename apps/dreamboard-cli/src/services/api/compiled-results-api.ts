@@ -6,7 +6,7 @@ import {
   type CompiledResult,
   type JobDetailResponse,
 } from "@dreamboard/api-client";
-import { formatApiError } from "../../utils/errors.js";
+import { toDreamboardApiError } from "../../utils/errors.js";
 import { sleep } from "../../utils/strings.js";
 
 function firstNonEmpty(
@@ -23,7 +23,7 @@ function firstNonEmpty(
 function formatTerminalCompileJobMessage(
   job: Pick<
     JobDetailResponse,
-    "jobId" | "status" | "phase" | "message" | "errorMessage"
+    "createdAt" | "errorMessage" | "jobId" | "message" | "phase" | "status"
   >,
 ): string {
   const detail = firstNonEmpty(job.errorMessage, job.message);
@@ -32,6 +32,60 @@ function formatTerminalCompileJobMessage(
   return detail
     ? `${prefix}: ${detail}`
     : `${prefix}: job ${job.jobId} ended before a compiled result was created.`;
+}
+
+function compareCreatedAtDesc(
+  left: Pick<CompiledResult, "createdAt">,
+  right: Pick<CompiledResult, "createdAt">,
+): number {
+  const leftTime = Date.parse(left.createdAt);
+  const rightTime = Date.parse(right.createdAt);
+  if (Number.isFinite(leftTime) && Number.isFinite(rightTime)) {
+    return rightTime - leftTime;
+  }
+  if (Number.isFinite(rightTime)) {
+    return 1;
+  }
+  if (Number.isFinite(leftTime)) {
+    return -1;
+  }
+  return 0;
+}
+
+async function findFallbackCompiledResultForJob(options: {
+  gameId: string;
+  job: Pick<JobDetailResponse, "createdAt">;
+}): Promise<CompiledResult | null> {
+  const { gameId, job } = options;
+  const results = await listCompiledResults({
+    path: { gameId },
+    query: {
+      limit: 100,
+    },
+  });
+  if (results.error || !results.data) {
+    return null;
+  }
+  if (results.data.results.length === 0) {
+    return null;
+  }
+
+  const jobCreatedAtMs = Date.parse(job.createdAt);
+  const resultsCreatedAfterJob = Number.isFinite(jobCreatedAtMs)
+    ? results.data.results.filter((result) => {
+        const resultCreatedAtMs = Date.parse(result.createdAt);
+        return (
+          !Number.isFinite(resultCreatedAtMs) ||
+          resultCreatedAtMs >= jobCreatedAtMs
+        );
+      })
+    : results.data.results;
+  const candidateResults =
+    resultsCreatedAfterJob.length > 0
+      ? resultsCreatedAfterJob
+      : results.data.results;
+
+  return [...candidateResults].sort(compareCreatedAtDesc)[0] ?? null;
 }
 
 export async function findLatestSuccessfulCompiledResult(
@@ -57,8 +111,10 @@ export async function findCompiledResultsForAuthoringState(options: {
     },
   });
   if (error || !data) {
-    throw new Error(
-      formatApiError(error, response, "Failed to list compiled results"),
+    throw toDreamboardApiError(
+      error,
+      response,
+      "Failed to list compiled results",
     );
   }
   return data.results;
@@ -75,8 +131,10 @@ export async function getCompiledResultSdk(
     },
   });
   if (error || !data) {
-    throw new Error(
-      formatApiError(error, response, "Failed to fetch compiled result"),
+    throw toDreamboardApiError(
+      error,
+      response,
+      "Failed to fetch compiled result",
     );
   }
   return data;
@@ -102,7 +160,7 @@ export async function waitForCompiledResultJobSdk(options: {
       path: { jobId },
     });
     if (error || !job) {
-      throw new Error(formatApiError(error, response, "Failed to get job"));
+      throw toDreamboardApiError(error, response, "Failed to get job");
     }
 
     const transitionKey = `${job.status}:${job.phase ?? ""}`;
@@ -114,15 +172,23 @@ export async function waitForCompiledResultJobSdk(options: {
     if (job.status === "COMPLETED" || job.status === "FAILED") {
       const compiledResultId =
         job.createdCompiledResultId ?? job.createdAppScriptId;
-      if (!compiledResultId) {
-        throw new Error(formatTerminalCompileJobMessage(job));
+      if (compiledResultId) {
+        const compiledResult = await getCompiledResultSdk(
+          gameId,
+          compiledResultId,
+        );
+        return { job, compiledResult };
       }
 
-      const compiledResult = await getCompiledResultSdk(
+      const fallbackCompiledResult = await findFallbackCompiledResultForJob({
         gameId,
-        compiledResultId,
-      );
-      return { job, compiledResult };
+        job,
+      });
+      if (fallbackCompiledResult) {
+        return { job, compiledResult: fallbackCompiledResult };
+      }
+
+      throw new Error(formatTerminalCompileJobMessage(job));
     }
 
     if (job.status === "CANCELLED" || job.status === "INTERRUPTED") {

@@ -1,7 +1,7 @@
 {
   "name": "@dreamboard/ui-sdk",
   "version": "0.0.40",
-  "private": true,
+  "private": false,
   "description": "UI SDK for dreamboard plugin development",
   "type": "module",
   "//": "NOTE: main/types/exports point to SOURCE files (./src) NOT built files (./dist)",
@@ -14,13 +14,58 @@
       "types": "./src/index.ts",
       "import": "./src/index.ts"
     },
-    "./components": {
-      "types": "./src/components/index.ts",
-      "import": "./src/components/index.ts"
-    }
+    "./reducer": {
+      "types": "./src/reducer.ts",
+      "import": "./src/reducer.ts"
+    },
+    "./internal/runtime-context": {
+      "types": "./src/context/RuntimeContext.tsx",
+      "import": "./src/context/RuntimeContext.tsx"
+    },
+    "./internal/usePluginRuntime": {
+      "types": "./src/hooks/usePluginRuntime.ts",
+      "import": "./src/hooks/usePluginRuntime.ts"
+    },
+    "./internal/createPluginRuntimeAPI": {
+      "types": "./src/runtime/createPluginRuntimeAPI.ts",
+      "import": "./src/runtime/createPluginRuntimeAPI.ts"
+    },
+    "./internal/useHandLayout": {
+      "types": "./src/hooks/useHandLayout.ts",
+      "import": "./src/hooks/useHandLayout.ts"
+    },
+    "./internal/usePanZoom": {
+      "types": "./src/hooks/usePanZoom.ts",
+      "import": "./src/hooks/usePanZoom.ts"
+    },
+    "./internal/useIsMobile": {
+      "types": "./src/hooks/useIsMobile.ts",
+      "import": "./src/hooks/useIsMobile.ts"
+    },
+    "./internal/player-state": {
+      "types": "./src/types/player-state.ts",
+      "import": "./src/types/player-state.ts"
+    },
+    "./internal/plugin-state": {
+      "types": "./src/types/plugin-state.ts",
+      "import": "./src/types/plugin-state.ts"
+    },
+    "./types/runtime-api": {
+      "types": "./src/types/runtime-api.ts",
+      "import": "./src/types/runtime-api.ts"
+    },
+    "./plugin-styles.css": "./src/plugin-styles.css",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
-    "build": "tsc -b && rollup -c rollup.config.js",
+    "build": "rm -rf dist tsconfig.tsbuildinfo && tsc -b && rollup -c rollup.config.js",
     "postbuild": "echo '✅ Generated ui-sdk.d.ts'",
     "dev": "cosmos",
     "cosmos": "cosmos",
@@ -35,6 +80,7 @@
     "framer-motion": "^11.15.0",
     "lucide-react": "^0.562.0",
     "react": "^19.2.0",
+    "tailwindcss": "^4.1.5",
     "vaul": "^1.1.2",
     "zod": "^4.0.0"
   },
@@ -53,7 +99,6 @@
     "react-dom": "^19.2.0",
     "rollup": "^4.28.1",
     "rollup-plugin-dts": "^6.1.1",
-    "tailwindcss": "^4.1.5",
     "typescript": "5.7.3"
   },
   "peerDependencies": {

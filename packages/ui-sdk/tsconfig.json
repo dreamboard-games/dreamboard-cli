@@ -16,11 +16,17 @@
     "strict": true,
     "baseUrl": "./src",
     "paths": {
-      "@dreamboard/manifest": ["./manifest"],
-      "@dreamboard/ui-args": ["./ui-args"],
+      "@dreamboard/manifest-contract": ["./manifest-contract"],
+      "@dreamboard/ui-contract": ["./ui-contract-internal"],
       "@dreamboard/api-client": ["../../api-client/src/index"]
     }
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "src/**/__fixtures__/**"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/**/__fixtures__/**",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx"
+  ]
 }

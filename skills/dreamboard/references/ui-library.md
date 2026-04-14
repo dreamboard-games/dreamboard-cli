@@ -5,6 +5,23 @@
 
 Reference for using Dreamboard official UI Library for building board games.
 
+import CardPropsTable from "/snippets/props/card-props.mdx";
+import HandPropsTable from "/snippets/props/hand-props.mdx";
+import PlayAreaPropsTable from "/snippets/props/play-area-props.mdx";
+import ActionButtonPropsTable from "/snippets/props/action-button-props.mdx";
+import ActionPanelPropsTable from "/snippets/props/action-panel-props.mdx";
+import ActionGroupPropsTable from "/snippets/props/action-group-props.mdx";
+import PlayerInfoPropsTable from "/snippets/props/player-info-props.mdx";
+import DiceRollerPropsTable from "/snippets/props/dice-roller-props.mdx";
+import PhaseIndicatorPropsTable from "/snippets/props/phase-indicator-props.mdx";
+import GameEndDisplayPropsTable from "/snippets/props/game-end-display-props.mdx";
+import TrackBoardPropsTable from "/snippets/props/track-board-props.mdx";
+import SquareGridPropsTable from "/snippets/props/square-grid-props.mdx";
+import HexGridPropsTable from "/snippets/props/hex-grid-props.mdx";
+import NetworkGraphPropsTable from "/snippets/props/network-graph-props.mdx";
+import ZoneMapPropsTable from "/snippets/props/zone-map-props.mdx";
+import SlotSystemPropsTable from "/snippets/props/slot-system-props.mdx";
+
 `@dreamboard/ui-sdk` is Dreamboard's UI package. Use
 it to create UI for the game using projected game view, handle player actions and render prompts
 windows.
@@ -36,8 +53,11 @@ import {
   useGameplayWindows,
   useLobby,
   useMe,
+  useBoardTopology,
+  useHexBoard,
   usePlayerInfo,
   usePluginSession,
+  useSquareBoard,
 } from "@dreamboard/ui-sdk";
 ```
 
@@ -48,12 +68,12 @@ import {
 `PluginRuntime` waits for the first reducer-native state-sync snapshot and then
 provides runtime, session, and plugin-state context to authored hooks.
 
-| Prop | Required | Notes |
-| --- | --- | --- |
-| `children` | Yes | Rendered after runtime initialization succeeds |
-| `timeout` | No | Milliseconds to wait for first state-sync snapshot; defaults to `10000` |
-| `loadingComponent` | No | Replaces the default loading shell |
-| `errorComponent` | No | Receives the runtime boot error string |
+| Prop               | Required | Notes                                                                   |
+| ------------------ | -------- | ----------------------------------------------------------------------- |
+| `children`         | Yes      | Rendered after runtime initialization succeeds                          |
+| `timeout`          | No       | Milliseconds to wait for first state-sync snapshot; defaults to `10000` |
+| `loadingComponent` | No       | Replaces the default loading shell                                      |
+| `errorComponent`   | No       | Receives the runtime boot error string                                  |
 
 ```tsx
 import { PluginRuntime } from "@dreamboard/ui-sdk";
@@ -92,11 +112,7 @@ import { ToastProvider, useToast } from "@dreamboard/ui-sdk";
 function EndTurnButton() {
   const { success } = useToast();
 
-  return (
-    <button onClick={() => success("Turn submitted")}>
-      End turn
-    </button>
-  );
+  return <button onClick={() => success("Turn submitted")}>End turn</button>;
 }
 ```
 
@@ -115,11 +131,11 @@ function EndTurnButton() {
 Use `GameSkeleton` while the plugin session is still loading or when the UI
 needs a fallback shell.
 
-| Prop | Required | Notes |
-| --- | --- | --- |
-| `variant` | No | One of `default`, `cards`, `players`, or `minimal` |
-| `message` | No | Loading or placeholder text |
-| `className` | No | Additional container classes |
+| Prop        | Required | Notes                                              |
+| ----------- | -------- | -------------------------------------------------- |
+| `variant`   | No       | One of `default`, `cards`, `players`, or `minimal` |
+| `message`   | No       | Loading or placeholder text                        |
+| `className` | No       | Additional container classes                       |
 
 ```tsx
 import { GameSkeleton, usePluginSession } from "@dreamboard/ui-sdk";
@@ -172,13 +188,13 @@ Use selector hooks for:
 
 Returns runtime session metadata for the current plugin.
 
-| Field | Type | Notes |
-| --- | --- | --- |
-| `status` | `"loading" \| "ready"` | Session initialization status |
-| `sessionId` | `string \| null` | Current session ID |
-| `controllablePlayerIds` | `string[]` | Seats the user can control |
-| `controllingPlayerId` | `string \| null` | Currently selected seat |
-| `userId` | `string \| null` | Current user ID |
+| Field                   | Type                   | Notes                         |
+| ----------------------- | ---------------------- | ----------------------------- |
+| `status`                | `"loading" \| "ready"` | Session initialization status |
+| `sessionId`             | `string \| null`       | Current session ID            |
+| `controllablePlayerIds` | `string[]`             | Seats the user can control    |
+| `controllingPlayerId`   | `string \| null`       | Currently selected seat       |
+| `userId`                | `string \| null`       | Current user ID               |
 
 ```ts
 const { controllingPlayerId, controllablePlayerIds, status } =
@@ -228,16 +244,16 @@ colours, or host markers.
 
 `useActions()` is the typed reducer action surface for the current phase.
 
-| Field | Notes |
-| --- | --- |
-| `phase` | Current runtime phase |
-| `commands` | Typed reducer action factories for the current phase |
-| `availableActions` | `ReadonlySet` of currently available action names |
-| `can(name)` | Whether an action is currently available |
-| `dispatch(command)` | Submit one action |
-| `validate(command)` | Validate one action without submitting it |
-| `respondToPrompt(prompt, response)` | Submit a prompt response |
-| `submitWindowAction(window, command)` | Submit a gameplay-window action |
+| Field                                 | Notes                                                |
+| ------------------------------------- | ---------------------------------------------------- |
+| `phase`                               | Current runtime phase                                |
+| `commands`                            | Typed reducer action factories for the current phase |
+| `availableActions`                    | `ReadonlySet` of currently available action names    |
+| `can(name)`                           | Whether an action is currently available             |
+| `dispatch(command)`                   | Submit one action                                    |
+| `validate(command)`                   | Validate one action without submitting it            |
+| `respondToPrompt(prompt, response)`   | Submit a prompt response                             |
+| `submitWindowAction(window, command)` | Submit a gameplay-window action                      |
 
 ```ts
 const phase = useActions();
@@ -368,20 +384,20 @@ Import `windowCommands` from your workspace's generated
 These components are presentational. Feed them from reducer view data and
 explicit props.
 
-| Export | Use it for |
-| --- | --- |
-| `Card` | One authored card face |
-| `Hand` | Responsive hand layout with render props |
-| `PlayArea` | Shared played-card or centre-table region |
-| `PlayerInfo` | Player badges, scores, and active-seat markers |
-| `ActionButton` | One action with availability, loading, and cost state |
-| `ActionPanel` / `ActionGroup` | Grouped action regions |
-| `ResourceCounter` | Resource totals |
-| `CostDisplay` | Cost breakdowns |
-| `PhaseIndicator` | Current phase or step status |
-| `GameEndDisplay` | Final rankings and scores |
-| `DiceRoller` | Reducer-driven dice results |
-| `Drawer` and related exports | Mobile overflow or detail panels |
+| Export                        | Use it for                                            |
+| ----------------------------- | ----------------------------------------------------- |
+| `Card`                        | One authored card face                                |
+| `Hand`                        | Responsive hand layout with render props              |
+| `PlayArea`                    | Shared played-card or centre-table region             |
+| `PlayerInfo`                  | Player badges, scores, and active-seat markers        |
+| `ActionButton`                | One action with availability, loading, and cost state |
+| `ActionPanel` / `ActionGroup` | Grouped action regions                                |
+| `ResourceCounter`             | Resource totals                                       |
+| `CostDisplay`                 | Cost breakdowns                                       |
+| `PhaseIndicator`              | Current phase or step status                          |
+| `GameEndDisplay`              | Final rankings and scores                             |
+| `DiceRoller`                  | Reducer-driven dice results                           |
+| `Drawer` and related exports  | Mobile overflow or detail panels                      |
 
 `DiceRoller` is display-only. In reducer-native games, dice values are
 typically driven by authored die state updated through reducer runtime effects
@@ -401,13 +417,7 @@ enough.
 />
 ```
 
-| Prop | Type | Required | Description |
-| --- | --- | --- | --- |
-| `card` | `CardItem` | Yes | Card data to display |
-| `selected` | `boolean` | No | Whether the card is selected |
-| `disabled` | `boolean` | No | Whether the card can be interacted with |
-| `size` | `'sm' | 'md' | 'lg'` | No | Size variant |
-| `faceDown` | `boolean` | No | Whether to show the card face-down |
+<CardPropsTable />
 
 ### `Hand`
 
@@ -442,14 +452,7 @@ enough.
 
 Use `Hand` when you want SDK layout behaviour but game-specific card faces.
 
-| Prop | Type | Required | Description |
-| --- | --- | --- | --- |
-| `cards` | `CardItem[]` | Yes | Array of cards to display |
-| `selectedIds` | `string[]` | No | Selected card IDs |
-| `disabled` | `boolean` | No | Whether cards can be interacted with |
-| `cardSize` | `CardSize` | No | Card size |
-| `layout` | `HandLayout` | No | Layout style |
-| `className` | `string` | No | Additional class name for outer wrapper |
+<HandPropsTable />
 
 ### `PlayArea`
 
@@ -463,42 +466,28 @@ Use `Hand` when you want SDK layout behaviour but game-specific card faces.
 />
 ```
 
-| Prop | Type | Required | Description |
-| --- | --- | --- | --- |
-| `cards` | `CardItem[]` | Yes | Array of cards to display |
-| `cardSize` | `CardProps['size']` | No | Card size |
-| `renderCard` | `CardProps['renderContent']` | No | Custom card renderer |
-| `layout` | `'grid' | 'row'` | No | Layout style |
-| `interactive` | `boolean` | No | Whether cards are interactive |
-| `className` | `string` | No | `className` value |
+<PlayAreaPropsTable />
 
 ### `ActionButton`
 
 Use `ActionButton` for one reducer action. It can reflect availability,
-resource affordability, and loading state.
+resource affordability, and loading state. Prefer `children` for the visible
+label. Keep `label` when you need an explicit accessible name for non-text
+children.
 
 ```tsx
 <ActionButton
-  label="Build road"
   cost={{ brick: 1, lumber: 1 }}
   currentResources={view.resources}
   resourceDefs={resourceDefs}
   available={phase.can("buildRoad")}
   onClick={() => phase.dispatch(phase.commands.buildRoad())}
-/>
+>
+  Build road
+</ActionButton>
 ```
 
-| Prop | Type | Required | Description |
-| --- | --- | --- | --- |
-| `label` | `string` | Yes | Action label |
-| `description` | `string` | No | Action description |
-| `resourceDefs` | `ResourceDefinition[]` | No | Resource definitions for cost display |
-| `available` | `boolean` | No | Whether action is available |
-| `disabledReason` | `string` | No | Reason why disabled (shown as tooltip) |
-| `loading` | `boolean` | No | Whether action is loading |
-| `variant` | `'primary' | 'secondary' | 'danger' | 'success'` | No | Color variant |
-| `size` | `'sm' | 'md' | 'lg'` | No | Size variant |
-| `className` | `string` | No | Additional class names |
+<ActionButtonPropsTable />
 
 ### `ActionPanel` and `ActionGroup`
 
@@ -508,35 +497,22 @@ Use these to keep the action surface grouped by phase or intent.
 <ActionPanel title="Your turn" state={phase.phase}>
   <ActionGroup title="Build">
     <ActionButton
-      label="Build road"
       available={phase.can("buildRoad")}
       onClick={() => phase.dispatch(phase.commands.buildRoad())}
-    />
+    >
+      Build road
+    </ActionButton>
   </ActionGroup>
 </ActionPanel>
 ```
 
 **`ActionPanel` props**
 
-| Prop | Type | Required | Description |
-| --- | --- | --- | --- |
-| `title` | `string` | No | Panel title |
-| `state` | `string` | No | Current game state/phase for context display |
-| `collapsible` | `boolean` | No | Whether panel is collapsible |
-| `defaultExpanded` | `boolean` | No | Default expanded state |
-| `children` | `ReactNode` | Yes | Children (ActionGroups or ActionButtons) |
-| `className` | `string` | No | Additional class names |
+<ActionPanelPropsTable />
 
 **`ActionGroup` props**
 
-| Prop | Type | Required | Description |
-| --- | --- | --- | --- |
-| `title` | `string` | Yes | Group title |
-| `description` | `string` | No | Group description |
-| `visible` | `boolean` | No | Whether this group is visible |
-| `variant` | `'default' | 'warning' | 'danger' | 'success'` | No | Highlight style for special phases |
-| `children` | `ReactNode` | Yes | Children (ActionButtons) |
-| `className` | `string` | No | Additional class names |
+<ActionGroupPropsTable />
 
 ### `PlayerInfo`
 
@@ -554,19 +530,7 @@ records.
 />
 ```
 
-| Prop | Type | Required | Description |
-| --- | --- | --- | --- |
-| `playerId` | `PlayerId` | Yes | Player ID |
-| `name` | `string` | No | Player name or display text |
-| `isActive` | `boolean` | No | Whether this player is currently active |
-| `isCurrentPlayer` | `boolean` | No | Whether this is the current user |
-| `isHost` | `boolean` | No | Whether this is the host/dealer |
-| `color` | `string` | No | Player's assigned color (used for avatar background) |
-| `score` | `number` | No | Player score or points |
-| `size` | `'sm' | 'md' | 'lg'` | No | Size variant |
-| `orientation` | `'horizontal' | 'vertical'` | No | Layout orientation |
-| `avatar` | `React.ReactNode` | No | Custom avatar content |
-| `className` | `string` | No | `className` value |
+<PlayerInfoPropsTable />
 
 ### `DiceRoller`
 
@@ -575,20 +539,15 @@ view, then pass them in. The roll action itself is dispatched through the normal
 action surface.
 
 ```tsx
-const { values, sum } = useDice(['die-1']);
+const { values, sum } = useDice(["die-1"]);
 
 <DiceRoller
   values={values}
-  render={({ sum }) => (
-    <div className="text-4xl font-bold">{sum ?? '?'}</div>
-  )}
-/>
+  render={({ sum }) => <div className="text-4xl font-bold">{sum ?? "?"}</div>}
+/>;
 ```
 
-| Prop | Type | Required | Description |
-| --- | --- | --- | --- |
-| `diceCount` | `number` | No | Number of dice (used when values not provided) |
-| `className` | `string` | No | Additional class names |
+<DiceRollerPropsTable />
 
 ### `PhaseIndicator`
 
@@ -604,13 +563,7 @@ Pass `phaseLabels` to display human-readable names instead of raw phase keys.
 />
 ```
 
-| Prop | Type | Required | Description |
-| --- | --- | --- | --- |
-| `currentPhase` | `string` | Yes | Current phase/state name |
-| `isMyTurn` | `boolean` | No | Whether it's the current user's turn |
-| `activePlayerNames` | `string[]` | No | Active player name(s) |
-| `variant` | `'badge' | 'bar' | 'minimal'` | No | Variant style |
-| `className` | `string` | No | Additional class names |
+<PhaseIndicatorPropsTable />
 
 ### `GameEndDisplay`
 
@@ -630,27 +583,21 @@ Pass `phaseLabels` to display human-readable names instead of raw phase keys.
 />
 ```
 
-| Prop | Type | Required | Description |
-| --- | --- | --- | --- |
-| `isGameOver` | `boolean` | Yes | Whether game has ended |
-| `scores` | `PlayerScore[]` | Yes | Player scores sorted by rank |
-| `winnerMessage` | `string` | No | Custom winner message |
-| `showDetails` | `boolean` | No | Show score breakdown |
-| `className` | `string` | No | Additional class names |
+<GameEndDisplayPropsTable />
 
 ## Board primitives
 
 Use board primitives when the reducer view already contains render-ready board
 data.
 
-| Export | Use it for |
-| --- | --- |
-| `TrackBoard` | Linear, circular, or branching tracks |
-| `SquareGrid` | Chess-like or tile-grid boards |
-| `HexGrid` | Hex maps with tiles, edges, and vertices |
-| `NetworkGraph` | Nodes, connections, and route graphs |
-| `ZoneMap` | Region or area control boards |
-| `SlotSystem` | Worker-placement and slot occupancy layouts |
+| Export         | Use it for                                  |
+| -------------- | ------------------------------------------- |
+| `TrackBoard`   | Linear, circular, or branching tracks       |
+| `SquareGrid`   | Chess-like or tile-grid boards              |
+| `HexGrid`      | Hex maps with tiles, edges, and vertices    |
+| `NetworkGraph` | Nodes, connections, and route graphs        |
+| `ZoneMap`      | Region or area control boards               |
+| `SlotSystem`   | Worker-placement and slot occupancy layouts |
 
 ```tsx
 <TrackBoard
@@ -676,115 +623,98 @@ Board renderers are still UI code. The reducer should provide:
 - labels and annotations
 - grouped piece and card data in the shape the component expects
 
+### Board topology hooks
+
+Use the headless topology hooks when a component needs adjacency, distance, or
+edge and vertex lookups in UI code.
+
+| Hook                      | Use it for                                                                                                  |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `useBoardTopology(board)` | Shared hex and square queries such as adjacency, incidence, and occupancy lookups                           |
+| `useHexBoard(board)`      | Hex coordinate helpers such as `getTileAt(...)`, neighbors, and range checks                                |
+| `useSquareBoard(board)`   | Square coordinate helpers such as `getCellAt(...)`, orthogonal or diagonal neighbors, and distance variants |
+
+Reducer views should project board data plus legal or highlighted target IDs.
+The UI should then:
+
+- render `HexGrid` or `SquareGrid`
+- wire `interactiveEdges` and `interactiveVertices` to click handlers
+- use the topology hook for UI-local geometry questions
+
+```tsx
+import { SquareGrid, useSquareBoard } from "@dreamboard/ui-sdk";
+
+function ArenaBoard({ board, onEdgeClick, onVertexClick }) {
+  const topology = useSquareBoard(board);
+
+  return (
+    <SquareGrid
+      rows={board.rows}
+      cols={board.cols}
+      cells={board.cells}
+      edges={board.edges}
+      vertices={board.vertices}
+      pieces={board.pieces}
+      interactiveEdges={true}
+      interactiveVertices={true}
+      onInteractiveEdgeClick={(edge) => onEdgeClick(edge.id)}
+      onInteractiveVertexClick={(vertex) => onVertexClick(vertex.id)}
+      renderCell={(row, col) => {
+        const cell = topology.getCellAt(row, col);
+        return <Cell ownerId={cell?.ownerId ?? null} />;
+      }}
+      renderPiece={(piece) => <Piece piece={piece} />}
+    />
+  );
+}
+```
+
+The same interaction pattern works with `HexGrid` and `useHexBoard(...)`.
+
+`SquareGrid` supports the same edge and vertex interaction callbacks as
+`HexGrid`, including:
+
+- `interactiveEdges`
+- `interactiveVertices`
+- `onInteractiveEdgeClick`
+- `onInteractiveVertexClick`
+- matching enter, leave, and custom render callbacks
+
 ### `TrackBoard` props
 
-| Prop | Type | Required | Description |
-| --- | --- | --- | --- |
-| `spaces` | `TrackSpace[]` | Yes | Track spaces |
-| `pieces` | `TrackPiece[]` | Yes | Pieces on the track |
-| `type` | `'linear' | 'circular' | 'branching'` | No | Track type (affects connection rendering for circular tracks) |
-| `width` | `number | string` | No | Container width (use "100%" for responsive) |
-| `height` | `number | string` | No | Container height (use "100%" for responsive) |
-| `enablePanZoom` | `boolean` | No | Enable pan and zoom |
-| `initialZoom` | `number` | No | Initial zoom level |
-| `minZoom` | `number` | No | Min zoom level |
-| `maxZoom` | `number` | No | Max zoom level |
-| `className` | `string` | No | Additional class names |
+<TrackBoardPropsTable />
 
 ### `SquareGrid` props
 
-| Prop | Type | Required | Description |
-| --- | --- | --- | --- |
-| `rows` | `number` | Yes | Number of rows |
-| `cols` | `number` | Yes | Number of columns |
-| `pieces` | `GridPiece[]` | Yes | Pieces on the board - defaults to empty |
-| `cellSize` | `number` | No | Cell size in pixels |
-| `showCoordinates` | `boolean` | No | Show coordinate labels |
-| `coordinateStyle` | `'algebraic' | 'numeric' | 'none'` | No | Coordinate style |
-| `width` | `number | string` | No | Container width (use "100%" for responsive) |
-| `height` | `number | string` | No | Container height (use "100%" for responsive) |
-| `enablePanZoom` | `boolean` | No | Enable pan and zoom |
-| `initialZoom` | `number` | No | Initial zoom level |
-| `minZoom` | `number` | No | Min zoom level |
-| `maxZoom` | `number` | No | Max zoom level |
-| `className` | `string` | No | Additional class names |
+<SquareGridPropsTable />
 
 ### `HexGrid` props
 
-| Prop | Type | Required | Description |
-| --- | --- | --- | --- |
-| `tiles` | `HexTileState[]` | Yes | Tile definitions |
-| `edges` | `HexEdgeState[]` | Yes | Edge definitions (for Catan-style roads) - defaults to empty |
-| `vertices` | `HexVertexState[]` | Yes | Vertex definitions (for Catan-style settlements) - defaults to empty |
-| `orientation` | `HexOrientation` | No | Hex orientation |
-| `hexSize` | `number` | No | Hex size (radius in pixels) |
-| `width` | `number | string` | No | Container width (use "100%" for responsive) |
-| `height` | `number | string` | No | Container height (use "100%" for responsive) |
-| `enablePanZoom` | `boolean` | No | Enable pan and zoom |
-| `initialZoom` | `number` | No | Initial zoom level |
-| `minZoom` | `number` | No | Min zoom level |
-| `maxZoom` | `number` | No | Max zoom level |
-| `className` | `string` | No | Additional class names |
-| `interactiveVertices` | `boolean` | No | Enable interactive vertex overlay - auto-generates clickable points at all 6 corners of each tile (deduplicated where tiles meet) |
-| `interactiveEdges` | `boolean` | No | Enable interactive edge overlay - auto-generates clickable edges at all 6 sides of each tile (deduplicated where tiles meet) |
-| `interactiveVertexSize` | `number` | No | Size of interactive vertex touch targets (default: 12) |
-| `interactiveEdgeSize` | `number` | No | Size of interactive edge touch targets (default: 10) |
+<HexGridPropsTable />
 
 ### `NetworkGraph` props
 
-| Prop | Type | Required | Description |
-| --- | --- | --- | --- |
-| `nodes` | `NetworkNode[]` | Yes | Network nodes |
-| `edges` | `NetworkEdge[]` | Yes | Network edges - defaults to empty |
-| `pieces` | `NetworkPiece[]` | Yes | Pieces/tokens on nodes - defaults to empty |
-| `width` | `number | string` | No | Container width (use "100%" for responsive) |
-| `height` | `number | string` | No | Container height (use "100%" for responsive) |
-| `nodeRadius` | `number` | No | Node radius for bounds calculation |
-| `enablePanZoom` | `boolean` | No | Enable pan and zoom |
-| `initialZoom` | `number` | No | Initial zoom level |
-| `minZoom` | `number` | No | Min zoom level |
-| `maxZoom` | `number` | No | Max zoom level |
-| `padding` | `number` | No | Padding around content |
-| `className` | `string` | No | Additional class names |
+<NetworkGraphPropsTable />
 
 ### `ZoneMap` props
 
-| Prop | Type | Required | Description |
-| --- | --- | --- | --- |
-| `zones` | `ZoneDefinition[]` | Yes | Zone definitions |
-| `pieces` | `ZonePiece[]` | Yes | Pieces in zones |
-| `backgroundImage` | `string` | No | Background image URL |
-| `width` | `number | string` | No | Container width (use "100%" for responsive) |
-| `height` | `number | string` | No | Container height (use "100%" for responsive) |
-| `enablePanZoom` | `boolean` | No | Enable pan and zoom |
-| `initialZoom` | `number` | No | Initial zoom level |
-| `minZoom` | `number` | No | Min zoom level |
-| `maxZoom` | `number` | No | Max zoom level |
-| `className` | `string` | No | Additional class names |
+<ZoneMapPropsTable />
 
 ### `SlotSystem` props
 
-| Prop | Type | Required | Description |
-| --- | --- | --- | --- |
-| `slots` | `SlotDefinition[]` | Yes | Slot definitions |
-| `occupants` | `SlotOccupant[]` | Yes | Current slot occupants - defaults to empty |
-| `layout` | `'grid' | 'list' | 'grouped'` | No | Layout style |
-| `width` | `number | string` | No | Container width |
-| `height` | `number | string` | No | Container height |
-| `minSlotWidth` | `number` | No | Minimum slot width for responsive grid (default: 280px) |
-| `className` | `string` | No | Additional class names |
+<SlotSystemPropsTable />
 
 ## Exported types
 
 Use these root exports when the UI needs to type reducer-owned runtime data.
 
-| Type | Meaning |
-| --- | --- |
-| `PhaseActions<Phase>` | Current phase action API returned by `useActions()` |
-| `ActionDefinition` | One available action from gameplay state |
-| `GameplayPromptInstance` | One typed active prompt instance |
-| `GameplayWindowInstance` | One typed active window instance |
-| `GameplaySnapshot` | Transport state that sits alongside the projected view |
-| `PluginStateSnapshot` | Complete state-sync payload delivered to the plugin |
-| `LobbyState` | Current lobby seats and host metadata |
-| `Player` | Simplified player metadata from the lobby |
+| Type                     | Meaning                                                |
+| ------------------------ | ------------------------------------------------------ |
+| `PhaseActions<Phase>`    | Current phase action API returned by `useActions()`    |
+| `ActionDefinition`       | One available action from gameplay state               |
+| `GameplayPromptInstance` | One typed active prompt instance                       |
+| `GameplayWindowInstance` | One typed active window instance                       |
+| `GameplaySnapshot`       | Transport state that sits alongside the projected view |
+| `PluginStateSnapshot`    | Complete state-sync payload delivered to the plugin    |
+| `LobbyState`             | Current lobby seats and host metadata                  |
+| `Player`                 | Simplified player metadata from the lobby              |

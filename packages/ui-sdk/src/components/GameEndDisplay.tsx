@@ -1,66 +1,26 @@
-/**
- * GameEndDisplay component - End-of-game winner display and scoreboard
- *
- * Design Philosophy: "Celebratory Game Conclusion"
- * - Trophy animation for winner
- * - Ranked scoreboard
- * - Return to lobby option
- * - Full-screen overlay
- *
- * @example Basic usage
- * ```tsx
- * <GameEndDisplay
- *   isGameOver={true}
- *   scores={[
- *     { playerId: 'p1', name: 'Alice', score: 100, isWinner: true },
- *     { playerId: 'p2', name: 'Bob', score: 85 },
- *   ]}
- *   onReturnToLobby={() => navigate('/lobby')}
- * />
- * ```
- */
+/** End-of-game winner display and scoreboard overlay. */
 
 import { motion, AnimatePresence } from "framer-motion";
 import { clsx } from "clsx";
 import { Trophy, Home, Crown, Medal } from "lucide-react";
 
 export interface PlayerScore {
-  /** Player ID */
   playerId: string;
-  /** Player display name */
   name: string;
-  /** Final score */
   score: number;
-  /** Whether this player won */
   isWinner?: boolean;
-  /** Score breakdown details */
   details?: Record<string, number>;
 }
 
 export interface GameEndDisplayProps {
-  /** Whether game has ended */
   isGameOver: boolean;
-  /** Player scores sorted by rank */
+  /** Sorted by rank */
   scores: PlayerScore[];
-  /** Custom winner message */
   winnerMessage?: string;
-  /** Show score breakdown */
   showDetails?: boolean;
-  /** Callback to return to lobby */
   onReturnToLobby?: () => void;
-  /** Additional class names */
   className?: string;
 }
-
-/**
- * GameEndDisplay component for end-of-game screen
- *
- * Features:
- * - Animated winner reveal
- * - Full scoreboard
- * - Score breakdown (optional)
- * - Action buttons for rematch or lobby
- */
 export function GameEndDisplay({
   isGameOver,
   scores,

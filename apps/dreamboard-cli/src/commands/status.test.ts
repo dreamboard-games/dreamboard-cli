@@ -162,3 +162,41 @@ test("status reports that remote state is unavailable when there is no auth toke
     "Remote status unavailable (no auth token).",
   );
 });
+
+test("status reports a pending local finalize state after remote sync checkpointing", async () => {
+  const state = currentState();
+  state.projectConfig.authoring = {
+    ...state.projectConfig.authoring,
+    pendingSync: {
+      phase: "authoring_state_created",
+      authoringStateId: "authoring-2",
+      sourceRevisionId: "source-revision-2",
+      sourceTreeHash: "tree-hash-2",
+      manifestId: "manifest-1",
+      manifestContentHash: "content-hash-1",
+      ruleId: "rule-1",
+    },
+  };
+  state.getAuthoringHeadSdkResult = {
+    ...state.getAuthoringHeadSdkResult!,
+    authoringStateId: "authoring-2",
+    sourceRevisionId: "source-revision-2",
+    sourceTreeHash: "tree-hash-2",
+    manifestId: "manifest-1",
+    manifestContentHash: "content-hash-1",
+    ruleId: "rule-1",
+  };
+
+  await statusCommand.run({
+    args: {
+      env: "local",
+    },
+  });
+
+  expect(consoleMessages("info")).toContain(
+    "Authored state: pending_finalize (local=authoring-1, remote=authoring-2)",
+  );
+  expect(consoleMessages("warn")).toContain(
+    "Previous sync is still being finalized (authoring_state_created). Run 'dreamboard sync' again to finish updating local scaffold files.",
+  );
+});

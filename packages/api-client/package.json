@@ -14,9 +14,17 @@
       "types": "./src/client.gen.ts",
       "import": "./src/client.gen.ts"
     },
+    "./types.gen": {
+      "types": "./src/types.gen.ts",
+      "import": "./src/types.gen.ts"
+    },
     "./react-query": {
       "types": "./src/@tanstack/react-query.gen.ts",
       "import": "./src/@tanstack/react-query.gen.ts"
+    },
+    "./problem-types": {
+      "types": "./src/problem-types.ts",
+      "import": "./src/problem-types.ts"
     },
     "./storage-paths": {
       "types": "./src/storage-paths.ts",
@@ -25,12 +33,22 @@
     "./source-revisions": {
       "types": "./src/source-revisions.ts",
       "import": "./src/source-revisions.ts"
+    },
+    "./zod.gen": {
+      "types": "./src/zod.gen.ts",
+      "import": "./src/zod.gen.ts"
     }
   },
   "typesVersions": {
     "*": {
       "client.gen": [
         "./src/client.gen.ts"
+      ],
+      "types.gen": [
+        "./src/types.gen.ts"
+      ],
+      "problem-types": [
+        "./src/problem-types.ts"
       ],
       "react-query": [
         "./src/@tanstack/react-query.gen.ts"
@@ -40,6 +58,9 @@
       ],
       "source-revisions": [
         "./src/source-revisions.ts"
+      ],
+      "zod.gen": [
+        "./src/zod.gen.ts"
       ]
     }
   },
@@ -49,7 +70,8 @@
     "generate": "bun run scripts/generate.ts"
   },
   "dependencies": {
-    "@tanstack/react-query": "^5.90.16"
+    "@tanstack/react-query": "^5.90.16",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@dreamboard/typescript-config": "workspace:*",

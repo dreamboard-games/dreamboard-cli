@@ -5,7 +5,7 @@ import {
 } from "@dreamboard/api-client";
 import { sleep } from "../../utils/strings.js";
 import { streamJobProgress } from "../../ui/agent-progress.js";
-import { formatApiError } from "../../utils/errors.js";
+import { toDreamboardApiError } from "../../utils/errors.js";
 
 export async function waitForJob(
   jobId: string,
@@ -70,7 +70,7 @@ export async function waitForJob(
       path: { jobId },
     });
     if (error || !job) {
-      throw new Error(formatApiError(error, response, "Failed to get job"));
+      throw toDreamboardApiError(error, response, "Failed to get job");
     }
     if (job.status === "COMPLETED") return job;
     if (job.status === "FAILED" || job.status === "CANCELLED") {

@@ -7,8 +7,7 @@ import cmdSync from "./commands/sync.js";
 import cmdCompile from "./commands/compile.js";
 import cmdPull from "./commands/pull.js";
 import cmdStatus from "./commands/status.js";
-import cmdRun from "./commands/run.js";
-import cmdStart from "./commands/start.js";
+import cmdDev from "./commands/dev.js";
 import cmdQuery from "./commands/query.js";
 import cmdAuth from "./commands/auth.js";
 import cmdLogin from "./commands/login.js";
@@ -36,8 +35,7 @@ const subCommands = {
   compile: cmdCompile,
   pull: cmdPull,
   status: cmdStatus,
-  run: cmdRun,
-  start: cmdStart,
+  dev: cmdDev,
   test: cmdTest,
   login: cmdLogin,
   logout: cmdLogout,

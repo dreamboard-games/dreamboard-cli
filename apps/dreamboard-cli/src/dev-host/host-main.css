@@ -1,0 +1,190 @@
+@import "@dreamboard/tailwind-config";
+@import url("https://fonts.googleapis.com/css2?family=Kalam:wght@300;400;700&family=Patrick+Hand&display=swap");
+
+:root {
+  color-scheme: light;
+  --background: oklch(0.985 0.005 85);
+  --foreground: oklch(0.25 0 0);
+  --card: oklch(0.985 0.005 85);
+  --card-foreground: oklch(0.25 0 0);
+  --popover: oklch(0.985 0.005 85);
+  --popover-foreground: oklch(0.25 0 0);
+  --primary: oklch(0.6 0.2 25);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.92 0.01 85);
+  --secondary-foreground: oklch(0.25 0 0);
+  --muted: oklch(0.92 0.01 85);
+  --muted-foreground: oklch(0.5 0 0);
+  --accent: oklch(0.97 0.05 100);
+  --accent-foreground: oklch(0.25 0 0);
+  --destructive: oklch(0.6 0.2 25);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.25 0 0);
+  --input: oklch(0.25 0 0);
+  --ring: oklch(0.45 0.15 250);
+  --radius: 0.75rem;
+  --font-display: "Kalam", cursive;
+  --font-sans: "Patrick Hand", cursive;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  min-height: 100vh;
+  background-color: #f5f1e7;
+  background-image:
+    radial-gradient(
+      circle at top left,
+      rgba(255, 255, 255, 0.9),
+      transparent 40%
+    ),
+    radial-gradient(#dcd5c9 1px, transparent 1px);
+  background-size: 100% 100%, 24px 24px;
+  background-attachment: fixed, fixed;
+  color: #1f2937;
+  font-family: var(--font-sans);
+}
+
+#app {
+  display: block;
+}
+
+#app > * {
+  min-height: 100%;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+
+.wobbly-border {
+  border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
+}
+
+.wobbly-border-md {
+  border-radius: 25px 8px 25px 8px / 8px 25px 8px 25px;
+}
+
+.wobbly-border-lg {
+  border-radius: 45px 15px 45px 15px / 15px 45px 15px 45px;
+}
+
+.hard-shadow {
+  box-shadow: 4px 4px 0 0 #2d2d2d;
+}
+
+.hard-shadow-lg {
+  box-shadow: 8px 8px 0 0 #2d2d2d;
+}
+
+.dev-drawer-content {
+  background-color: rgba(247, 239, 220, 0.96);
+  color: #1f2937;
+}
+
+.dev-drawer-surface {
+  background-image:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0.08)),
+    radial-gradient(rgba(80, 58, 34, 0.09) 1px, transparent 1px);
+  background-size: 100% 100%, 18px 18px;
+  color: #1f2937;
+}
+
+.dev-drawer-header {
+  background-color: rgba(255, 252, 244, 0.96);
+  color: #1f2937;
+}
+
+.dev-drawer-tape {
+  background-color: #d8cab0;
+}
+
+.dev-drawer-highlight {
+  background-color: rgba(255, 243, 181, 0.7);
+}
+
+.dev-drawer-label {
+  background-color: #e5e0d8;
+  color: #6b5a45;
+}
+
+.dev-drawer-session-pill {
+  background-color: #fff3b5;
+  color: #1f2937;
+}
+
+.dev-drawer-session-dot {
+  background-color: #d97706;
+}
+
+.dev-drawer-close {
+  background-color: #fff;
+  color: #6b7280;
+}
+
+.dev-drawer-close:hover {
+  background-color: #e5e0d8;
+}
+
+.dev-drawer-note {
+  background-color: rgba(255, 255, 255, 0.72);
+  color: rgba(31, 41, 55, 0.8);
+}
+
+.dev-drawer-card {
+  background-color: #fffdf7;
+  color: #1f2937;
+}
+
+.dev-drawer-card-title {
+  color: #7a6956;
+}
+
+.dev-drawer-controls-card {
+  background-color: #fff3b5;
+  color: #1f2937;
+}
+
+.dev-drawer-feedback-card {
+  background-color: #fffaf0;
+  color: #1f2937;
+}
+
+.dev-drawer-input {
+  background-color: #fff;
+  color: #1f2937;
+}
+
+.dev-drawer-primary-button {
+  background-color: #1f2937;
+  color: #fff8e8;
+}
+
+.dev-drawer-primary-button:hover {
+  background-color: #111827;
+}
+
+.dev-drawer-danger-button {
+  background-color: #ff4d4d;
+  color: #fff;
+}
+
+.dev-drawer-danger-button:hover {
+  background-color: #e60000;
+}
+
+.dev-drawer-toolbar-shell {
+  background-color: rgba(255, 255, 255, 0.72);
+}

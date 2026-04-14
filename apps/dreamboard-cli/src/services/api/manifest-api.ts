@@ -3,12 +3,12 @@ import {
   getManifest,
   saveManifest,
 } from "@dreamboard/api-client";
-import type { BoardManifest } from "@dreamboard/sdk-types";
-import { formatApiError } from "../../utils/errors.js";
+import type { GameTopologyManifest } from "@dreamboard/sdk-types";
+import { toDreamboardApiError } from "../../utils/errors.js";
 
 export async function saveManifestSdk(
   gameId: string,
-  manifest: BoardManifest,
+  manifest: GameTopologyManifest,
   ruleId: string,
 ): Promise<{ manifestId: string; contentHash: string }> {
   const { data, error, response } = await saveManifest({
@@ -19,7 +19,7 @@ export async function saveManifestSdk(
     },
   });
   if (error || !data) {
-    throw new Error(formatApiError(error, response, "Failed to save manifest"));
+    throw toDreamboardApiError(error, response, "Failed to save manifest");
   }
   return { manifestId: data.manifestId, contentHash: data.contentHash };
 }
@@ -37,8 +37,10 @@ export async function getLatestManifestIdSdk(
     query: { ruleId, limit: 1 },
   });
   if (error || !data) {
-    throw new Error(
-      formatApiError(error, response, "Failed to get latest manifest"),
+    throw toDreamboardApiError(
+      error,
+      response,
+      "Failed to get latest manifest",
     );
   }
   return data.currentManifestId ?? null;
@@ -57,9 +59,7 @@ export async function getManifestSdk(
     path: { manifestId },
   });
   if (error) {
-    throw new Error(
-      formatApiError(error, response, "Failed to fetch manifest"),
-    );
+    throw toDreamboardApiError(error, response, "Failed to fetch manifest");
   }
   if (!data) return null;
   return { contentHash: data.contentHash };
