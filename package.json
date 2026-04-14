@@ -7,12 +7,16 @@
   },
   "scripts": {
     "build": "pnpm --dir apps/dreamboard-cli run build",
-    "docs:gen-props": "pnpm --dir apps/dreamboard-cli run gen:props-docs",
+    "docs:gen-props": "tsx scripts/generate-props-docs.ts",
     "docs:broken-links": "pnpm mint broken-links",
     "docs:dev": "pnpm mint dev",
-    "skills:sync-docs": "pnpm --dir apps/dreamboard-cli run sync:skill-docs",
+    "skills:sync-docs": "tsx scripts/sync-skill-docs.ts",
     "docs:validate": "pnpm mint validate",
     "stage:publish": "pnpm --dir apps/dreamboard-cli run stage:publish",
     "pack:publish": "pnpm --dir apps/dreamboard-cli run pack:publish"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.3"
   }
 }
