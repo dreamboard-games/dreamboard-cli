@@ -178,6 +178,38 @@ test("compile persists a failed attempt when the queued job errors before produc
   });
 });
 
+test("compile preserves actionable compiler terminal detail without appending a backend health hint", async () => {
+  const state = currentState();
+  state.getLocalDiffResult = {
+    modified: [],
+    added: [],
+    deleted: [],
+  };
+  state.findCompiledResultsForAuthoringStateResult = [];
+  state.waitForCompiledResultJobError = new Error(
+    "Compile failed [failed]: Compiler job job-9 ended without a result (status=COMPLETED, phase=completed, message=Compiler accepted the job but produced no result)",
+  );
+
+  await expect(
+    compileCommand.run({
+      args: {
+        env: "local",
+      },
+    }),
+  ).rejects.toThrow(
+    "Remote compile job compile-job-1 could not be completed. Compile failed [failed]: Compiler job job-9 ended without a result (status=COMPLETED, phase=completed, message=Compiler accepted the job but produced no result)",
+  );
+
+  expect(state.projectConfig.compile?.latestAttempt).toEqual({
+    resultId: undefined,
+    jobId: "compile-job-1",
+    authoringStateId: "authoring-1",
+    status: "failed",
+    diagnosticsSummary:
+      "Compile failed [failed]: Compiler job job-9 ended without a result (status=COMPLETED, phase=completed, message=Compiler accepted the job but produced no result)",
+  });
+});
+
 test("compile refuses to run while a previous sync is still finalizing locally", async () => {
   const state = currentState();
   state.getLocalDiffResult = {

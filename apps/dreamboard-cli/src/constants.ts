@@ -32,7 +32,10 @@ export const ENVIRONMENT_CONFIGS: Record<string, EnvironmentConfig> = {
 };
 export const PROJECT_CONFIG_FILE = "project.json";
 export const SNAPSHOT_FILE = "snapshot.json";
-export const MANIFEST_FILE = "manifest.json";
+export const MANIFEST_FILE = "manifest.ts";
+export const GENERATED_DIR_NAME = "generated";
+export const MATERIALIZED_MANIFEST_FILE = `${PROJECT_DIR_NAME}/${GENERATED_DIR_NAME}/manifest.json`;
+export const MANIFEST_TYPECHECK_CONFIG_FILE = "manifest.tsconfig.json";
 export const RULE_FILE = "rule.md";
 export const DEFAULT_LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
 export const DEFAULT_TURN_DELAY_MS = 250;

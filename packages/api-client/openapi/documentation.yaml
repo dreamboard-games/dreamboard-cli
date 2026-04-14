@@ -2165,7 +2165,11 @@ components:
       properties:
         id:
           type: string
-          description: Unique identifier for the card set
+          description: Unique local identifier for the authored card set
+          minLength: 1
+        presetId:
+          type: string
+          description: Built-in preset card-set selector
           minLength: 1
         name:
           type: string
@@ -2178,6 +2182,7 @@ components:
           description: Type of card set source
       required:
         - id
+        - presetId
         - name
         - type
     PropertySchema:
@@ -2356,6 +2361,39 @@ components:
         - type
         - boardId
         - ref
+    PieceSlotHostRef:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+            - piece
+        id:
+          type: string
+      required:
+        - kind
+        - id
+    DieSlotHostRef:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+            - die
+        id:
+          type: string
+      required:
+        - kind
+        - id
+    SlotHostRef:
+      oneOf:
+        - $ref: "#/components/schemas/PieceSlotHostRef"
+        - $ref: "#/components/schemas/DieSlotHostRef"
+      discriminator:
+        propertyName: kind
+        mapping:
+          piece: "#/components/schemas/PieceSlotHostRef"
+          die: "#/components/schemas/DieSlotHostRef"
     SlotHomeSpec:
       type: object
       properties:
@@ -2363,13 +2401,13 @@ components:
           type: string
           enum:
             - slot
-        hostComponentId:
-          type: string
+        host:
+          $ref: "#/components/schemas/SlotHostRef"
         slotId:
           type: string
       required:
         - type
-        - hostComponentId
+        - host
         - slotId
     ComponentHomeSpec:
       oneOf:
@@ -3261,6 +3299,18 @@ components:
           generic: "#/components/schemas/GenericBoardSpec"
           hex: "#/components/schemas/HexBoardSpec"
           square: "#/components/schemas/SquareBoardSpec"
+    ComponentSlotSpec:
+      type: object
+      description: Named authored slot exposed by a piece or die type
+      properties:
+        id:
+          type: string
+          pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
+        name:
+          type: string
+          nullable: true
+      required:
+        - id
     PieceTypeSpec:
       type: object
       description: Reusable authored piece type
@@ -3272,6 +3322,11 @@ components:
           type: string
         fieldsSchema:
           $ref: "#/components/schemas/ObjectSchema"
+          nullable: true
+        slots:
+          type: array
+          items:
+            $ref: "#/components/schemas/ComponentSlotSpec"
           nullable: true
       required:
         - id
@@ -3328,6 +3383,11 @@ components:
           default: 6
         fieldsSchema:
           $ref: "#/components/schemas/ObjectSchema"
+          nullable: true
+        slots:
+          type: array
+          items:
+            $ref: "#/components/schemas/ComponentSlotSpec"
           nullable: true
       required:
         - id

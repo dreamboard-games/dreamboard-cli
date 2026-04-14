@@ -44,7 +44,11 @@ const resolveProjectContext = mock(async () => ({
 }));
 const configureClient = mock(async () => undefined);
 const actualFlags = await import("../flags.js");
-const resolveSetupProfileIdForSession = mock(async () => null);
+const resolveSetupProfileSelectionForSession = mock(async () => ({
+  id: null,
+  name: null,
+  source: "none" as const,
+}));
 
 const parseDevCommandArgs = mock((args: Record<string, unknown>) => ({
   debug: false,
@@ -122,7 +126,7 @@ mock.module("../flags.js", () => ({
 }));
 
 mock.module("../services/workflows/resolve-setup-profile.js", () => ({
-  resolveSetupProfileIdForSession,
+  resolveSetupProfileSelectionForSession,
 }));
 
 mock.module("../utils/fs.js", () => ({
@@ -171,7 +175,7 @@ function resetMocks(): void {
   writeJsonFile.mockClear();
   resolvePlayerCount.mockClear();
   runDevPreflight.mockClear();
-  resolveSetupProfileIdForSession.mockClear();
+  resolveSetupProfileSelectionForSession.mockClear();
   openBrowser.mockClear();
   startDreamboardDevServer.mockClear();
   consolaWarn.mockClear();
@@ -246,7 +250,7 @@ test("dev creates a fresh session by default instead of reusing cached state", a
     "Created session fresh-code (fresh-session).",
   );
   expect(consolaInfo).toHaveBeenCalledWith("Backend session id: fresh-session");
-  expect(resolveSetupProfileIdForSession).toHaveBeenCalledWith({
+  expect(resolveSetupProfileSelectionForSession).toHaveBeenCalledWith({
     projectRoot: "/tmp/dreamboard-project",
     requestedSetupProfileId: undefined,
   });
@@ -395,7 +399,11 @@ test("dev refuses to resume a cached session when the selected setup profile cha
     controllablePlayerIds: [],
     yourTurnCount: 0,
   }));
-  resolveSetupProfileIdForSession.mockResolvedValueOnce("draft-profile");
+  resolveSetupProfileSelectionForSession.mockResolvedValueOnce({
+    id: "draft-profile",
+    name: "Draft Profile",
+    source: "explicit",
+  });
 
   await runWithAutoTermination({
     env: "local",

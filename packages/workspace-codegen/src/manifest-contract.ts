@@ -17,6 +17,7 @@ import type {
   HexSpaceSpec,
   HexVertexRef,
   HexVertexSpec,
+  DieSeedSpec,
   ManualCardSetDefinition,
   ObjectSchema,
   PieceSeedSpec,
@@ -160,24 +161,41 @@ interface ManifestAnalysis {
   dieTypeIds: string[];
   dieIds: string[];
   dieTypeIdByDieId: Map<string, string>;
+  strictSlotHosts: Array<{
+    kind: "piece" | "die";
+    id: string;
+    slotIds: string[];
+  }>;
+  boardTemplateIds: string[];
   boardBaseIds: string[];
   boardIds: string[];
   boardContainerIds: string[];
   boardTypeIds: string[];
   boardLayoutById: Map<string, string>;
+  boardIdsByLayout: Map<string, string[]>;
+  boardBaseIdsByLayout: Map<string, string[]>;
   boardIdsByBaseId: Map<string, string[]>;
+  boardBaseIdsByTemplateId: Map<string, string[]>;
+  boardTemplateLayoutById: Map<string, string>;
   boardIdsByTypeId: Map<string, string[]>;
   spaceIdsByBoardId: Map<string, string[]>;
+  spaceTypeIdByBoardId: Map<string, Record<string, string | null>>;
   spaceIdsByTypeId: Map<string, string[]>;
   containerIdsByBoardId: Map<string, string[]>;
+  containerHostByBoardId: Map<
+    string,
+    Record<string, { type: "board" } | { type: "space"; spaceId: string }>
+  >;
   relationTypeIds: string[];
   relationTypeIdsByBoardId: Map<string, string[]>;
   edgeIds: string[];
   edgeTypeIds: string[];
   edgeIdsByTypeId: Map<string, string[]>;
+  edgeIdsByBoardIdAndTypeId: Map<string, Record<string, string[]>>;
   vertexIds: string[];
   vertexTypeIds: string[];
   vertexIdsByTypeId: Map<string, string[]>;
+  vertexIdsByBoardIdAndTypeId: Map<string, Record<string, string[]>>;
   spaceIds: string[];
   spaceTypeIds: string[];
   analyzedBoards: AnalyzedBoard[];
@@ -241,6 +259,14 @@ function renderReadonlyArrayRecord(
 
 function renderJsonConst(value: unknown): string {
   return `${JSON.stringify(value, null, 2)} as const`;
+}
+
+function sortedObject<Value>(
+  entries: Iterable<readonly [string, Value]>,
+): Record<string, Value> {
+  return Object.fromEntries(
+    Array.from(entries).sort(([left], [right]) => left.localeCompare(right)),
+  );
 }
 
 function renderCardInstanceIds(card: BoardCard): string[] {
@@ -516,14 +542,7 @@ function geometryKeyFromEdgeRef(
   ref: HexEdgeRef,
   spacesById: ReadonlyMap<string, HexSpaceSpec>,
 ): string {
-  const sortedSpaceIds = [...ref.spaces].sort((a, b) => a.localeCompare(b));
-  if (sortedSpaceIds.length !== 2) {
-    throw new Error(
-      `Hex edge ref must reference exactly two spaces. Received: ${ref.spaces.join(", ")}.`,
-    );
-  }
-  const leftId = sortedSpaceIds[0]!;
-  const rightId = sortedSpaceIds[1]!;
+  const [leftId, rightId] = [...ref.spaces].sort((a, b) => a.localeCompare(b));
   const leftSpace = spacesById.get(leftId);
   const rightSpace = spacesById.get(rightId);
   if (!leftSpace || !rightSpace) {
@@ -1307,6 +1326,48 @@ function analyzeBoards(manifest: GameTopologyManifest, playerIds: string[]) {
   });
 }
 
+function isSingletonExplicitSeed(seed: {
+  id?: string | null;
+  count?: number | null;
+}): seed is typeof seed & { id: string } {
+  return (
+    typeof seed.id === "string" && seed.id.length > 0 && (seed.count ?? 1) === 1
+  );
+}
+
+function renderStrictSlotLocationSchema(
+  hosts: ReadonlyArray<{
+    kind: "piece" | "die";
+    id: string;
+    slotIds: readonly string[];
+  }>,
+): string {
+  const branches = hosts.flatMap((host) =>
+    host.slotIds.map(
+      (slotId) => `z.object({
+        type: z.literal("InSlot"),
+        host: z.object({
+          kind: z.literal(${quote(host.kind)}),
+          id: z.literal(${quote(host.id)}),
+        }),
+        slotId: z.literal(${quote(slotId)}),
+        position: z.number().int().nullable().optional(),
+      })`,
+    ),
+  );
+
+  if (branches.length === 0) {
+    return `z.object({
+      type: z.literal("InSlot"),
+      host: z.never(),
+      slotId: z.never(),
+      position: z.number().int().nullable().optional(),
+    })`;
+  }
+
+  return branches.join(",\n      ");
+}
+
 function analyzeManifest(
   inputManifest: GameTopologyManifest,
 ): ManifestAnalysis {
@@ -1432,6 +1493,12 @@ function analyzeManifest(
       pieceType.fieldsSchema,
     ]),
   );
+  const pieceTypeSlotIdsById = new Map(
+    (manifest.pieceTypes ?? []).map((pieceType) => [
+      pieceType.id,
+      dedupeSorted((pieceType.slots ?? []).map((slot) => slot.id)),
+    ]),
+  );
   const pieceTypeIdByPieceId = new Map<string, string>();
   for (const seed of manifest.pieceSeeds ?? []) {
     for (const pieceId of expandSeedIds([seed])) {
@@ -1448,6 +1515,12 @@ function analyzeManifest(
       dieType.fieldsSchema,
     ]),
   );
+  const dieTypeSlotIdsById = new Map(
+    (manifest.dieTypes ?? []).map((dieType) => [
+      dieType.id,
+      dedupeSorted((dieType.slots ?? []).map((slot) => slot.id)),
+    ]),
+  );
   const dieTypeIdByDieId = new Map<string, string>();
   for (const seed of manifest.dieSeeds ?? []) {
     for (const dieId of expandSeedIds([seed])) {
@@ -1455,7 +1528,45 @@ function analyzeManifest(
     }
   }
   const dieIds = dedupeSorted(dieTypeIdByDieId.keys());
+  const strictSlotHosts = [
+    ...(manifest.pieceSeeds ?? []).flatMap((seed) => {
+      if (!isSingletonExplicitSeed(seed)) {
+        return [];
+      }
+      const slotIds = pieceTypeSlotIdsById.get(seed.typeId) ?? [];
+      return slotIds.length > 0
+        ? [
+            {
+              kind: "piece" as const,
+              id: seed.id,
+              slotIds,
+            },
+          ]
+        : [];
+    }),
+    ...(manifest.dieSeeds ?? []).flatMap((seed) => {
+      if (!isSingletonExplicitSeed(seed)) {
+        return [];
+      }
+      const slotIds = dieTypeSlotIdsById.get(seed.typeId) ?? [];
+      return slotIds.length > 0
+        ? [
+            {
+              kind: "die" as const,
+              id: seed.id,
+              slotIds,
+            },
+          ]
+        : [];
+    }),
+  ].sort(
+    (left, right) =>
+      left.kind.localeCompare(right.kind) || left.id.localeCompare(right.id),
+  );
   const analyzedBoards = analyzeBoards(manifest, playerIds);
+  const boardTemplateIds = dedupeSorted(
+    (manifest.boardTemplates ?? []).map((boardTemplate) => boardTemplate.id),
+  );
   const boardBaseIds = dedupeSorted(
     analyzedBoards.map(({ board }) => board.id),
   );
@@ -1468,21 +1579,85 @@ function analyzeManifest(
       .filter((typeId): typeId is string => typeof typeId === "string"),
   );
   const boardLayoutById = new Map<string, string>();
+  const boardIdsByLayout = new Map<string, string[]>();
+  const boardBaseIdsByLayout = new Map<string, string[]>();
   const boardIdsByBaseId = new Map<string, string[]>();
+  const boardBaseIdsByTemplateId = new Map<string, string[]>();
+  const boardTemplateLayoutById = new Map<string, string>();
   const boardIdsByTypeId = new Map<string, string[]>();
   const spaceIdsByBoardId = new Map<string, string[]>();
+  const spaceTypeIdByBoardId = new Map<string, Record<string, string | null>>();
   const spaceIdsByTypeId = new Map<string, string[]>();
   const containerIdsByBoardId = new Map<string, string[]>();
+  const containerHostByBoardId = new Map<
+    string,
+    Record<string, { type: "board" } | { type: "space"; spaceId: string }>
+  >();
   const relationTypeIdsByBoardId = new Map<string, string[]>();
   const edgeIdsByTypeId = new Map<string, string[]>();
+  const edgeIdsByBoardIdAndTypeId = new Map<string, Record<string, string[]>>();
   const vertexIdsByTypeId = new Map<string, string[]>();
+  const vertexIdsByBoardIdAndTypeId = new Map<
+    string,
+    Record<string, string[]>
+  >();
+  for (const boardTemplate of manifest.boardTemplates ?? []) {
+    boardTemplateLayoutById.set(boardTemplate.id, boardTemplate.layout);
+    boardBaseIdsByLayout.set(
+      boardTemplate.layout,
+      dedupeSorted([...(boardBaseIdsByLayout.get(boardTemplate.layout) ?? [])]),
+    );
+  }
   for (const analyzedBoard of analyzedBoards) {
     boardIdsByBaseId.set(analyzedBoard.board.id, analyzedBoard.runtimeBoardIds);
+    boardIdsByLayout.set(
+      analyzedBoard.board.layout,
+      dedupeSorted([
+        ...(boardIdsByLayout.get(analyzedBoard.board.layout) ?? []),
+        ...analyzedBoard.runtimeBoardIds,
+      ]),
+    );
+    boardBaseIdsByLayout.set(
+      analyzedBoard.board.layout,
+      dedupeSorted([
+        ...(boardBaseIdsByLayout.get(analyzedBoard.board.layout) ?? []),
+        analyzedBoard.board.id,
+      ]),
+    );
+    if (analyzedBoard.board.templateId) {
+      boardBaseIdsByTemplateId.set(
+        analyzedBoard.board.templateId,
+        dedupeSorted([
+          ...(boardBaseIdsByTemplateId.get(analyzedBoard.board.templateId) ??
+            []),
+          analyzedBoard.board.id,
+        ]),
+      );
+    }
     const runtimeSpaceIds = analyzedBoard.spaces.map((space) => space.id);
+    const runtimeSpaceTypeIds: Record<string, string | null> = sortedObject(
+      analyzedBoard.spaces.map(
+        (space) => [space.id, space.typeId ?? null] as const,
+      ),
+    );
     const runtimeContainerIds =
       analyzedBoard.layout === "hex"
         ? []
         : analyzedBoard.containers.map((container) => container.id);
+    const runtimeContainerHosts: Record<
+      string,
+      { type: "board" } | { type: "space"; spaceId: string }
+    > =
+      analyzedBoard.layout === "hex"
+        ? {}
+        : sortedObject(
+            analyzedBoard.containers.map((container) => [
+              container.id,
+              container.host.type === "space"
+                ? { type: "space" as const, spaceId: container.host.spaceId }
+                : { type: "board" as const },
+            ]),
+          );
     const runtimeRelationTypeIds =
       analyzedBoard.layout === "hex"
         ? ["adjacent"]
@@ -1497,7 +1672,9 @@ function analyzeManifest(
     for (const runtimeBoardId of analyzedBoard.runtimeBoardIds) {
       boardLayoutById.set(runtimeBoardId, analyzedBoard.board.layout);
       spaceIdsByBoardId.set(runtimeBoardId, runtimeSpaceIds);
+      spaceTypeIdByBoardId.set(runtimeBoardId, runtimeSpaceTypeIds);
       containerIdsByBoardId.set(runtimeBoardId, runtimeContainerIds);
+      containerHostByBoardId.set(runtimeBoardId, runtimeContainerHosts);
       relationTypeIdsByBoardId.set(runtimeBoardId, runtimeRelationTypeIds);
     }
     if (analyzedBoard.boardTypeId) {
@@ -1519,6 +1696,7 @@ function analyzeManifest(
       );
     }
     if (analyzedBoard.layout !== "generic") {
+      const edgeIdsForBoardByType: Record<string, string[]> = {};
       for (const edge of analyzedBoard.edges) {
         if (!edge.typeId) {
           continue;
@@ -1527,7 +1705,12 @@ function analyzeManifest(
           edge.typeId,
           dedupeSorted([...(edgeIdsByTypeId.get(edge.typeId) ?? []), edge.id]),
         );
+        edgeIdsForBoardByType[edge.typeId] = dedupeSorted([
+          ...(edgeIdsForBoardByType[edge.typeId] ?? []),
+          edge.id,
+        ]);
       }
+      const vertexIdsForBoardByType: Record<string, string[]> = {};
       for (const vertex of analyzedBoard.vertices) {
         if (!vertex.typeId) {
           continue;
@@ -1538,6 +1721,17 @@ function analyzeManifest(
             ...(vertexIdsByTypeId.get(vertex.typeId) ?? []),
             vertex.id,
           ]),
+        );
+        vertexIdsForBoardByType[vertex.typeId] = dedupeSorted([
+          ...(vertexIdsForBoardByType[vertex.typeId] ?? []),
+          vertex.id,
+        ]);
+      }
+      for (const runtimeBoardId of analyzedBoard.runtimeBoardIds) {
+        edgeIdsByBoardIdAndTypeId.set(runtimeBoardId, edgeIdsForBoardByType);
+        vertexIdsByBoardIdAndTypeId.set(
+          runtimeBoardId,
+          vertexIdsForBoardByType,
         );
       }
     }
@@ -1605,29 +1799,771 @@ function analyzeManifest(
     dieTypeIds,
     dieIds,
     dieTypeIdByDieId,
+    strictSlotHosts,
+    boardTemplateIds,
     boardBaseIds,
     boardIds,
     boardContainerIds,
     boardTypeIds,
     boardLayoutById,
+    boardIdsByLayout,
+    boardBaseIdsByLayout,
     boardIdsByBaseId,
+    boardBaseIdsByTemplateId,
+    boardTemplateLayoutById,
     boardIdsByTypeId,
     spaceIdsByBoardId,
+    spaceTypeIdByBoardId,
     spaceIdsByTypeId,
     containerIdsByBoardId,
+    containerHostByBoardId,
     relationTypeIds,
     relationTypeIdsByBoardId,
     edgeIds,
     edgeTypeIds,
     edgeIdsByTypeId,
+    edgeIdsByBoardIdAndTypeId,
     vertexIds,
     vertexTypeIds,
     vertexIdsByTypeId,
+    vertexIdsByBoardIdAndTypeId,
     spaceIds,
     spaceTypeIds,
     analyzedBoards,
     pieceTypeSchemasById,
     dieTypeSchemasById,
+  };
+}
+
+function cloneJson<Value>(value: Value): Value {
+  return JSON.parse(JSON.stringify(value)) as Value;
+}
+
+function boardSpaceRefKey(spaceIds: readonly string[]): string {
+  return [...spaceIds]
+    .sort((left, right) => left.localeCompare(right))
+    .join("$$");
+}
+
+function materializePropertySchemaDefault(
+  property: PropertySchema,
+  analysis: ManifestAnalysis,
+  runtimeBoardId?: string,
+): unknown {
+  if (property.optional) {
+    return undefined;
+  }
+  if (property.nullable) {
+    return null;
+  }
+
+  switch (property.type) {
+    case "string":
+      return "";
+    case "integer":
+    case "number":
+      return 0;
+    case "boolean":
+      return false;
+    case "enum":
+      return property.enums?.[0] ?? "";
+    case "array":
+      return [];
+    case "object":
+      return materializeObjectSchemaDefaults(
+        property.properties ? { properties: property.properties } : undefined,
+        analysis,
+        runtimeBoardId,
+      );
+    case "record":
+      return {};
+    case "zoneId":
+      return analysis.zoneIds[0] ?? "";
+    case "cardId":
+      return analysis.cardIds[0] ?? "";
+    case "playerId":
+      return analysis.playerIds[0] ?? "";
+    case "boardId":
+      return runtimeBoardId ?? analysis.boardIds[0] ?? "";
+    case "edgeId":
+      return analysis.edgeIds[0] ?? "";
+    case "vertexId":
+      return analysis.vertexIds[0] ?? "";
+    case "spaceId":
+      return (
+        (runtimeBoardId
+          ? analysis.spaceIdsByBoardId.get(runtimeBoardId)?.[0]
+          : undefined) ??
+        analysis.spaceIds[0] ??
+        ""
+      );
+    case "pieceId":
+      return analysis.pieceIds[0] ?? "";
+    case "dieId":
+      return analysis.dieIds[0] ?? "";
+    case "resourceId":
+      return analysis.resourceIds[0] ?? "";
+  }
+}
+
+function materializeObjectSchemaDefaults(
+  schema: ObjectSchema | null | undefined,
+  analysis: ManifestAnalysis,
+  runtimeBoardId?: string,
+): Record<string, unknown> {
+  if (!schema?.properties) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(schema.properties).flatMap(([key, property]) => {
+      const value = materializePropertySchemaDefault(
+        property,
+        analysis,
+        runtimeBoardId,
+      );
+      return value === undefined ? [] : [[key, value]];
+    }),
+  );
+}
+
+export function materializeManifestTable(options: {
+  manifest: GameTopologyManifest;
+  playerIds: readonly string[];
+  shuffleItems: <Value>(values: readonly Value[]) => Value[];
+}): Record<string, unknown> {
+  const analysis = analyzeManifest(options.manifest);
+  const manifest = analysis.manifest;
+  const playerIds = [...options.playerIds];
+
+  const cards: Record<string, Record<string, unknown>> = {};
+  const pieces: Record<string, Record<string, unknown>> = {};
+  const dice: Record<string, Record<string, unknown>> = {};
+  const componentLocations: Record<string, Record<string, unknown>> = {};
+  const locationOrder = new Map<string, number>();
+  const cardIdsByCardSetId = new Map<string, string[]>();
+
+  const boardAnalysisByBaseId = new Map(
+    analysis.analyzedBoards.map((board) => [board.board.id, board] as const),
+  );
+  const edgeIdByBoardBaseIdAndSpaces = new Map<string, Map<string, string>>();
+  const vertexIdByBoardBaseIdAndSpaces = new Map<string, Map<string, string>>();
+
+  for (const analyzedBoard of analysis.analyzedBoards) {
+    if (analyzedBoard.layout === "generic") {
+      continue;
+    }
+    edgeIdByBoardBaseIdAndSpaces.set(
+      analyzedBoard.board.id,
+      new Map(
+        analyzedBoard.edges.map((edge) => [
+          boardSpaceRefKey(edge.spaceIds),
+          edge.id,
+        ]),
+      ),
+    );
+    vertexIdByBoardBaseIdAndSpaces.set(
+      analyzedBoard.board.id,
+      new Map(
+        analyzedBoard.vertices.map((vertex) => [
+          boardSpaceRefKey(vertex.spaceIds),
+          vertex.id,
+        ]),
+      ),
+    );
+  }
+
+  const nextLocationPosition = (location: Record<string, unknown>): number => {
+    const key = JSON.stringify(location);
+    const position = locationOrder.get(key) ?? 0;
+    locationOrder.set(key, position + 1);
+    return position;
+  };
+  const zoneScopeById = new Map<string, "shared" | "perPlayer">([
+    ...analysis.sharedZones.map((zone) => [zone.id, "shared"] as const),
+    ...analysis.playerZones.map((zone) => [zone.id, "perPlayer"] as const),
+  ]);
+
+  const resolveRuntimeBoardId = (
+    boardBaseId: string,
+    ownerId: string | null | undefined,
+    context?: string,
+  ) => {
+    const analyzedBoard = boardAnalysisByBaseId.get(boardBaseId);
+    if (analyzedBoard?.board.scope === "perPlayer") {
+      if (!ownerId) {
+        throw new Error(
+          `${context ?? `Home on board '${boardBaseId}'`} requires ownerId because board '${boardBaseId}' has scope 'perPlayer'. Add ownerId to resolve the player-scoped destination.`,
+        );
+      }
+      return `${boardBaseId}:${ownerId}`;
+    }
+    return boardBaseId;
+  };
+
+  const resolveBoardEdgeId = (
+    boardBaseId: string,
+    spaceIds: readonly string[],
+  ) =>
+    edgeIdByBoardBaseIdAndSpaces
+      .get(boardBaseId)
+      ?.get(boardSpaceRefKey(spaceIds)) ?? boardSpaceRefKey(spaceIds);
+
+  const resolveBoardVertexId = (
+    boardBaseId: string,
+    spaceIds: readonly string[],
+  ) =>
+    vertexIdByBoardBaseIdAndSpaces
+      .get(boardBaseId)
+      ?.get(boardSpaceRefKey(spaceIds)) ?? boardSpaceRefKey(spaceIds);
+
+  for (const cardSet of manifest.cardSets) {
+    const materializedCardSet = materializeCardSet(cardSet);
+    const cardIds: string[] = [];
+    for (const card of materializedCardSet.cards) {
+      for (const cardId of renderCardInstanceIds(card)) {
+        cardIds.push(cardId);
+        cards[cardId] = {
+          id: cardId,
+          cardSetId: materializedCardSet.id,
+          cardType: card.type,
+          cardName: card.name,
+          description: card.text,
+          properties: card.properties ?? {},
+        };
+      }
+    }
+    cardIdsByCardSetId.set(materializedCardSet.id, cardIds);
+  }
+
+  for (const zone of analysis.sharedZones) {
+    const primaryCardSetId = zone.allowedCardSetIds?.[0];
+    if (!primaryCardSetId) {
+      continue;
+    }
+    const shuffled = options.shuffleItems(
+      (cardIdsByCardSetId.get(primaryCardSetId) ?? []).filter(
+        (cardId) => componentLocations[cardId] === undefined,
+      ),
+    );
+    shuffled.forEach((cardId, index) => {
+      componentLocations[cardId] = {
+        type: "InDeck",
+        deckId: zone.id,
+        playedBy: null,
+        position: index,
+      };
+    });
+  }
+
+  const pieceTypesById = new Map(
+    (manifest.pieceTypes ?? []).map((pieceType) => [pieceType.id, pieceType]),
+  );
+  const dieTypesById = new Map(
+    (manifest.dieTypes ?? []).map((dieType) => [dieType.id, dieType]),
+  );
+
+  const assignSeedLocation = (
+    componentId: string,
+    ownerId: string | null | undefined,
+    home: PieceSeedSpec["home"] | DieSeedSpec["home"] | undefined,
+    context: {
+      path: string;
+      label: string;
+    },
+  ) => {
+    if (!home) {
+      componentLocations[componentId] = { type: "Detached" };
+      return;
+    }
+
+    if (home.type === "slot") {
+      componentLocations[componentId] = {
+        type: "InSlot",
+        host: home.host,
+        slotId: home.slotId,
+        position: nextLocationPosition({
+          type: "InSlot",
+          host: home.host,
+          slotId: home.slotId,
+        }),
+      };
+      return;
+    }
+
+    if (home.type === "zone") {
+      if (zoneScopeById.get(home.zoneId) === "perPlayer") {
+        if (!ownerId) {
+          throw new Error(
+            `${context.path}.zoneId: ${context.label} requires ownerId because zone '${home.zoneId}' has scope 'perPlayer'. Add ownerId to resolve the player-scoped destination.`,
+          );
+        }
+        componentLocations[componentId] = {
+          type: "InHand",
+          handId: home.zoneId,
+          playerId: ownerId,
+          position: nextLocationPosition({
+            type: "InHand",
+            handId: home.zoneId,
+            playerId: ownerId,
+          }),
+        };
+        return;
+      }
+
+      componentLocations[componentId] = {
+        type: "InZone",
+        zoneId: home.zoneId,
+        playedBy: null,
+        position: nextLocationPosition({
+          type: "InZone",
+          zoneId: home.zoneId,
+        }),
+      };
+      return;
+    }
+
+    if (home.type === "space") {
+      const boardId = resolveRuntimeBoardId(
+        home.boardId,
+        ownerId,
+        `${context.path}.boardId: ${context.label}`,
+      );
+      componentLocations[componentId] = {
+        type: "OnSpace",
+        boardId,
+        spaceId: home.spaceId,
+        position: nextLocationPosition({
+          type: "OnSpace",
+          boardId,
+          spaceId: home.spaceId,
+        }),
+      };
+      return;
+    }
+
+    if (home.type === "container") {
+      const boardId = resolveRuntimeBoardId(
+        home.boardId,
+        ownerId,
+        `${context.path}.boardId: ${context.label}`,
+      );
+      componentLocations[componentId] = {
+        type: "InContainer",
+        boardId,
+        containerId: home.containerId,
+        position: nextLocationPosition({
+          type: "InContainer",
+          boardId,
+          containerId: home.containerId,
+        }),
+      };
+      return;
+    }
+
+    if (home.type === "edge") {
+      const boardId = resolveRuntimeBoardId(
+        home.boardId,
+        ownerId,
+        `${context.path}.boardId: ${context.label}`,
+      );
+      const edgeId = resolveBoardEdgeId(home.boardId, home.ref.spaces);
+      componentLocations[componentId] = {
+        type: "OnEdge",
+        boardId,
+        edgeId,
+        position: nextLocationPosition({
+          type: "OnEdge",
+          boardId,
+          edgeId,
+        }),
+      };
+      return;
+    }
+
+    if (home.type === "vertex") {
+      const boardId = resolveRuntimeBoardId(
+        home.boardId,
+        ownerId,
+        `${context.path}.boardId: ${context.label}`,
+      );
+      const vertexId = resolveBoardVertexId(home.boardId, home.ref.spaces);
+      componentLocations[componentId] = {
+        type: "OnVertex",
+        boardId,
+        vertexId,
+        position: nextLocationPosition({
+          type: "OnVertex",
+          boardId,
+          vertexId,
+        }),
+      };
+      return;
+    }
+
+    componentLocations[componentId] = { type: "Detached" };
+  };
+
+  for (const [seedIndex, seed] of (manifest.pieceSeeds ?? []).entries()) {
+    const pieceType = pieceTypesById.get(seed.typeId);
+    for (const componentId of expandSeedIds([seed])) {
+      pieces[componentId] = {
+        componentType: "piece",
+        id: componentId,
+        pieceTypeId: seed.typeId,
+        pieceName: pieceType?.name ?? seed.typeId,
+        ownerId: seed.ownerId ?? null,
+        properties: seed.fields ?? {},
+      };
+      assignSeedLocation(componentId, seed.ownerId, seed.home, {
+        path: `manifest.pieceSeeds[${seedIndex}].home`,
+        label: `Piece seed '${seed.id ?? seed.typeId}'`,
+      });
+    }
+  }
+
+  for (const [seedIndex, seed] of (manifest.dieSeeds ?? []).entries()) {
+    const dieType = dieTypesById.get(seed.typeId);
+    for (const componentId of expandSeedIds([seed])) {
+      dice[componentId] = {
+        componentType: "die",
+        id: componentId,
+        dieTypeId: seed.typeId,
+        dieName: dieType?.name ?? seed.typeId,
+        ownerId: seed.ownerId ?? null,
+        sides: dieType?.sides ?? 6,
+        value: null,
+        properties: seed.fields ?? {},
+      };
+      assignSeedLocation(componentId, seed.ownerId, seed.home, {
+        path: `manifest.dieSeeds[${seedIndex}].home`,
+        label: `Die seed '${seed.id ?? seed.typeId}'`,
+      });
+    }
+  }
+
+  const boardStatesById: Record<string, Record<string, unknown>> = {};
+  const hexBoardStatesById: Record<string, Record<string, unknown>> = {};
+  const squareBoardStatesById: Record<string, Record<string, unknown>> = {};
+
+  for (const analyzedBoard of analysis.analyzedBoards) {
+    const sharedBoardState = {
+      baseId: analyzedBoard.board.id,
+      layout: analyzedBoard.layout,
+      typeId: analyzedBoard.boardTypeId ?? null,
+      scope: analyzedBoard.board.scope,
+      templateId: analyzedBoard.board.templateId ?? null,
+      fields: {
+        ...materializeObjectSchemaDefaults(
+          analyzedBoard.boardFieldsSchema,
+          analysis,
+        ),
+        ...(analyzedBoard.board.fields ?? {}),
+      },
+    };
+
+    const buildSpaces = () =>
+      Object.fromEntries(
+        analysis.spaceIds.map((spaceId) => {
+          const space = analyzedBoard.spaces.find(
+            (entry) => entry.id === spaceId,
+          );
+          const baseSpaceState = {
+            id: spaceId,
+            name: space && "name" in space ? (space.name ?? null) : null,
+            typeId: space?.typeId ?? null,
+            fields: {
+              ...materializeObjectSchemaDefaults(
+                analyzedBoard.spaceFieldsSchema,
+                analysis,
+              ),
+              ...(space?.fields ?? {}),
+            },
+            zoneId: space && "zoneId" in space ? (space.zoneId ?? null) : null,
+          };
+
+          if (analyzedBoard.layout === "hex") {
+            const hexSpace = space as HexSpaceSpec | undefined;
+            return [
+              spaceId,
+              {
+                ...baseSpaceState,
+                q: hexSpace?.q ?? 0,
+                r: hexSpace?.r ?? 0,
+              },
+            ];
+          }
+
+          if (analyzedBoard.layout === "square") {
+            const squareSpace = space as SquareSpaceSpec | undefined;
+            return [
+              spaceId,
+              {
+                ...baseSpaceState,
+                row: squareSpace?.row ?? 0,
+                col: squareSpace?.col ?? 0,
+              },
+            ];
+          }
+
+          return [spaceId, baseSpaceState];
+        }),
+      );
+
+    const relations =
+      analyzedBoard.layout === "hex"
+        ? []
+        : analyzedBoard.relations.map((relation) => ({
+            id: relation.id ?? null,
+            typeId: relation.typeId,
+            fromSpaceId: relation.fromSpaceId,
+            toSpaceId: relation.toSpaceId,
+            directed: relation.directed ?? false,
+            fields: {
+              ...materializeObjectSchemaDefaults(
+                analyzedBoard.relationFieldsSchema,
+                analysis,
+              ),
+              ...(relation.fields ?? {}),
+            },
+          }));
+
+    const buildContainers = (runtimeBoardId: string) =>
+      analyzedBoard.layout === "hex"
+        ? {}
+        : Object.fromEntries(
+            analysis.boardContainerIds.map((containerId) => {
+              const container = analyzedBoard.containers.find(
+                (entry) => entry.id === containerId,
+              );
+              return [
+                containerId,
+                {
+                  id: containerId,
+                  name: container?.name ?? containerId,
+                  host:
+                    container?.host.type === "space"
+                      ? { type: "space", spaceId: container.host.spaceId }
+                      : { type: "board" },
+                  allowedCardSetIds: container?.allowedCardSetIds,
+                  zoneId: `board:${runtimeBoardId}:container:${containerId}`,
+                  fields: {
+                    ...materializeObjectSchemaDefaults(
+                      analyzedBoard.containerFieldsSchema,
+                      analysis,
+                      runtimeBoardId,
+                    ),
+                    ...(container?.fields ?? {}),
+                  },
+                },
+              ];
+            }),
+          );
+
+    const edges =
+      analyzedBoard.layout === "generic"
+        ? []
+        : analyzedBoard.edges.map((edge) => ({
+            id: edge.id,
+            spaceIds: [...edge.spaceIds],
+            typeId: edge.typeId ?? null,
+            label: edge.label ?? null,
+            ownerId: null,
+            fields: {
+              ...materializeObjectSchemaDefaults(
+                analyzedBoard.edgeFieldsSchema,
+                analysis,
+              ),
+              ...(edge.fields ?? {}),
+            },
+          }));
+
+    const vertices =
+      analyzedBoard.layout === "generic"
+        ? []
+        : analyzedBoard.vertices.map((vertex) => ({
+            id: vertex.id,
+            spaceIds: [...vertex.spaceIds],
+            typeId: vertex.typeId ?? null,
+            label: vertex.label ?? null,
+            ownerId: null,
+            fields: {
+              ...materializeObjectSchemaDefaults(
+                analyzedBoard.vertexFieldsSchema,
+                analysis,
+              ),
+              ...(vertex.fields ?? {}),
+            },
+          }));
+
+    for (const runtimeBoardId of analyzedBoard.runtimeBoardIds) {
+      const playerId =
+        analyzedBoard.board.scope === "perPlayer"
+          ? runtimeBoardId.slice(analyzedBoard.board.id.length + 1)
+          : null;
+      const boardState = {
+        id: runtimeBoardId,
+        ...sharedBoardState,
+        playerId,
+        spaces: cloneJson(buildSpaces()),
+        relations: cloneJson(relations),
+        containers: cloneJson(buildContainers(runtimeBoardId)),
+        ...(analyzedBoard.layout === "hex"
+          ? {
+              orientation: analyzedBoard.board.orientation ?? "pointy-top",
+              edges: cloneJson(edges),
+              vertices: cloneJson(vertices),
+            }
+          : analyzedBoard.layout === "square"
+            ? {
+                edges: cloneJson(edges),
+                vertices: cloneJson(vertices),
+              }
+            : {}),
+      };
+
+      boardStatesById[runtimeBoardId] = boardState;
+      if (analyzedBoard.layout === "hex") {
+        hexBoardStatesById[runtimeBoardId] = boardState;
+      }
+      if (analyzedBoard.layout === "square") {
+        squareBoardStatesById[runtimeBoardId] = boardState;
+      }
+    }
+  }
+
+  const sharedZones = Object.fromEntries(
+    analysis.sharedZones.map((zone) => [zone.id, [] as string[]]),
+  );
+  const perPlayerZones = Object.fromEntries(
+    analysis.playerZones.map((zone) => [
+      zone.id,
+      Object.fromEntries(
+        playerIds.map((playerId) => [playerId, [] as string[]]),
+      ),
+    ]),
+  );
+  const zoneVisibility = Object.fromEntries(
+    (manifest.zones ?? []).map((zone) => [
+      zone.id,
+      zone.visibility ?? "public",
+    ]),
+  );
+  const zoneCardSetIdsByZoneId = Object.fromEntries(
+    Array.from(analysis.zoneCardSetIdsById.entries()).sort(([left], [right]) =>
+      left.localeCompare(right),
+    ),
+  );
+  const handVisibility = Object.fromEntries(
+    analysis.playerZones.map((zone) => [
+      zone.id,
+      zone.visibility ?? "ownerOnly",
+    ]),
+  );
+  const componentSortPosition = (position: unknown) =>
+    typeof position === "number" ? position : Number.MAX_SAFE_INTEGER;
+  const pushSharedComponent = (
+    zoneId: string,
+    componentId: string,
+    position: unknown,
+  ) => {
+    const zone = sharedZones[zoneId];
+    if (!zone) {
+      return;
+    }
+    zone.push(componentId);
+    zone.sort(
+      (left, right) =>
+        componentSortPosition(componentLocations[left]?.position) -
+        componentSortPosition(componentLocations[right]?.position),
+    );
+  };
+  const pushPlayerComponent = (
+    zoneId: string,
+    playerId: string,
+    componentId: string,
+    position: unknown,
+  ) => {
+    const zone = perPlayerZones[zoneId]?.[playerId];
+    if (!zone) {
+      return;
+    }
+    zone.push(componentId);
+    zone.sort(
+      (left, right) =>
+        componentSortPosition(componentLocations[left]?.position) -
+        componentSortPosition(componentLocations[right]?.position),
+    );
+  };
+
+  for (const [componentId, location] of Object.entries(componentLocations)) {
+    switch (location.type) {
+      case "InDeck":
+        pushSharedComponent(
+          location.deckId as string,
+          componentId,
+          location.position,
+        );
+        break;
+      case "InHand":
+        pushPlayerComponent(
+          location.handId as string,
+          location.playerId as string,
+          componentId,
+          location.position,
+        );
+        break;
+      case "InZone":
+        pushSharedComponent(
+          location.zoneId as string,
+          componentId,
+          location.position,
+        );
+        break;
+      default:
+        break;
+    }
+  }
+  const ownerOfCard = Object.fromEntries(
+    Object.keys(cards).map((cardId) => [cardId, null]),
+  );
+  const visibility = Object.fromEntries(
+    Object.keys(cards).map((cardId) => [cardId, { faceUp: true }]),
+  );
+  const resources = Object.fromEntries(
+    playerIds.map((playerId) => [
+      playerId,
+      Object.fromEntries(
+        analysis.resourceIds.map((resourceId) => [resourceId, 0]),
+      ),
+    ]),
+  );
+
+  return {
+    playerOrder: playerIds,
+    zones: {
+      shared: sharedZones,
+      perPlayer: perPlayerZones,
+      visibility: zoneVisibility,
+      cardSetIdsByZoneId: zoneCardSetIdsByZoneId,
+    },
+    decks: cloneJson(sharedZones),
+    hands: cloneJson(perPlayerZones),
+    handVisibility,
+    cards,
+    pieces,
+    componentLocations,
+    ownerOfCard,
+    visibility,
+    resources,
+    boards: {
+      byId: boardStatesById,
+      hex: hexBoardStatesById,
+      square: squareBoardStatesById,
+      network: {},
+      track: {},
+    },
+    dice,
   };
 }
 
@@ -2492,27 +3428,235 @@ function renderSquareBoardStateSchemaById(analysis: ManifestAnalysis): string {
 }
 
 function renderBoardLiteralHelpers(analysis: ManifestAnalysis): string {
+  const boardIdsByLayout = renderReadonlyArrayRecord(analysis.boardIdsByLayout);
+  const boardBaseIdsByLayout = renderReadonlyArrayRecord(
+    analysis.boardBaseIdsByLayout,
+  );
   const boardIdsByBaseId = renderReadonlyArrayRecord(analysis.boardIdsByBaseId);
-
-  return `export const boardHelpers = {
-  boardIdsByBaseId: ${boardIdsByBaseId},
-  boardLayoutById: ${renderStringRecord(analysis.boardLayoutById)},
-  boardIdsByTypeId: ${renderReadonlyArrayRecord(analysis.boardIdsByTypeId)},
-  spaceIdsByBoardId: ${renderReadonlyArrayRecord(analysis.spaceIdsByBoardId)},
-  spaceIdsByTypeId: ${renderReadonlyArrayRecord(analysis.spaceIdsByTypeId)},
-  containerIdsByBoardId: ${renderReadonlyArrayRecord(
+  const boardBaseIdsByTemplateId = renderReadonlyArrayRecord(
+    analysis.boardBaseIdsByTemplateId,
+  );
+  const boardLayoutById = renderStringRecord(analysis.boardLayoutById);
+  const boardTemplateLayoutById = renderStringRecord(
+    analysis.boardTemplateLayoutById,
+  );
+  const boardIdsByTypeId = renderReadonlyArrayRecord(analysis.boardIdsByTypeId);
+  const spaceIdsByBoardId = renderReadonlyArrayRecord(
+    analysis.spaceIdsByBoardId,
+  );
+  const spaceTypeIdByBoardId = renderJsonConst(
+    sortedObject(analysis.spaceTypeIdByBoardId),
+  );
+  const spaceIdsByTypeId = renderReadonlyArrayRecord(analysis.spaceIdsByTypeId);
+  const containerIdsByBoardId = renderReadonlyArrayRecord(
     analysis.containerIdsByBoardId,
-  )},
-  relationTypeIdsByBoardId: ${renderReadonlyArrayRecord(
+  );
+  const containerHostByBoardId = renderJsonConst(
+    sortedObject(analysis.containerHostByBoardId),
+  );
+  const relationTypeIdsByBoardId = renderReadonlyArrayRecord(
     analysis.relationTypeIdsByBoardId,
-  )},
-  edgeIdsByTypeId: ${renderReadonlyArrayRecord(analysis.edgeIdsByTypeId)},
-  vertexIdsByTypeId: ${renderReadonlyArrayRecord(analysis.vertexIdsByTypeId)},
+  );
+  const edgeIdsByTypeId = renderReadonlyArrayRecord(analysis.edgeIdsByTypeId);
+  const edgeIdsByBoardIdAndTypeId = renderJsonConst(
+    sortedObject(analysis.edgeIdsByBoardIdAndTypeId),
+  );
+  const vertexIdsByTypeId = renderReadonlyArrayRecord(
+    analysis.vertexIdsByTypeId,
+  );
+  const vertexIdsByBoardIdAndTypeId = renderJsonConst(
+    sortedObject(analysis.vertexIdsByBoardIdAndTypeId),
+  );
+  const perPlayerBoardIdsByBaseIdAndPlayerId = renderJsonConst(
+    sortedObject(
+      analysis.analyzedBoards
+        .filter((board) => board.board.scope === "perPlayer")
+        .map((board) => [
+          board.board.id,
+          Object.fromEntries(
+            analysis.playerIds.map((playerId, index) => [
+              playerId,
+              board.runtimeBoardIds[index] ?? `${board.board.id}:${playerId}`,
+            ]),
+          ),
+        ]),
+    ),
+  );
+
+  return `const boardIdsByLayoutLookup = ${boardIdsByLayout};
+const boardBaseIdsByLayoutLookup = ${boardBaseIdsByLayout};
+const boardIdsByBaseIdLookup = ${boardIdsByBaseId};
+const boardBaseIdsByTemplateIdLookup = ${boardBaseIdsByTemplateId};
+const boardLayoutByIdLookup = ${boardLayoutById};
+const boardTemplateLayoutByIdLookup = ${boardTemplateLayoutById};
+const boardIdsByTypeIdLookup = ${boardIdsByTypeId};
+const spaceIdsByBoardIdLookup = ${spaceIdsByBoardId};
+const spaceTypeIdByBoardIdLookup = ${spaceTypeIdByBoardId};
+const spaceIdsByTypeIdLookup = ${spaceIdsByTypeId};
+const containerIdsByBoardIdLookup = ${containerIdsByBoardId};
+const containerHostByBoardIdLookup = ${containerHostByBoardId};
+const relationTypeIdsByBoardIdLookup = ${relationTypeIdsByBoardId};
+const edgeIdsByTypeIdLookup = ${edgeIdsByTypeId};
+const edgeIdsByBoardIdAndTypeIdLookup = ${edgeIdsByBoardIdAndTypeId};
+const vertexIdsByTypeIdLookup = ${vertexIdsByTypeId};
+const vertexIdsByBoardIdAndTypeIdLookup = ${vertexIdsByBoardIdAndTypeId};
+const perPlayerBoardIdsByBaseIdAndPlayerIdLookup = ${perPlayerBoardIdsByBaseIdAndPlayerId};
+
+export const boardHelpers = {
+  boardIdsForLayout<
+    LayoutValue extends keyof typeof boardIdsByLayoutLookup,
+  >(layout: LayoutValue): (typeof boardIdsByLayoutLookup)[LayoutValue] {
+    return boardIdsByLayoutLookup[layout];
+  },
+  boardBaseIdsForLayout<
+    LayoutValue extends keyof typeof boardBaseIdsByLayoutLookup,
+  >(layout: LayoutValue): (typeof boardBaseIdsByLayoutLookup)[LayoutValue] {
+    return boardBaseIdsByLayoutLookup[layout];
+  },
+  boardIdsForBase<
+    BoardBaseIdValue extends keyof typeof boardIdsByBaseIdLookup,
+  >(
+    boardBaseId: BoardBaseIdValue,
+  ): (typeof boardIdsByBaseIdLookup)[BoardBaseIdValue] {
+    return boardIdsByBaseIdLookup[boardBaseId];
+  },
+  boardBaseIdsForTemplate<
+    TemplateIdValue extends keyof typeof boardBaseIdsByTemplateIdLookup,
+  >(
+    templateId: TemplateIdValue,
+  ): (typeof boardBaseIdsByTemplateIdLookup)[TemplateIdValue] {
+    return boardBaseIdsByTemplateIdLookup[templateId];
+  },
+  boardIdsForType<TypeIdValue extends keyof typeof boardIdsByTypeIdLookup>(
+    typeId: TypeIdValue,
+  ): (typeof boardIdsByTypeIdLookup)[TypeIdValue] {
+    return boardIdsByTypeIdLookup[typeId];
+  },
+  boardLayout<BoardIdValue extends keyof typeof boardLayoutByIdLookup>(
+    boardId: BoardIdValue,
+  ): (typeof boardLayoutByIdLookup)[BoardIdValue] {
+    return boardLayoutByIdLookup[boardId];
+  },
+  boardTemplateLayout<
+    TemplateIdValue extends keyof typeof boardTemplateLayoutByIdLookup,
+  >(
+    templateId: TemplateIdValue,
+  ): (typeof boardTemplateLayoutByIdLookup)[TemplateIdValue] {
+    return boardTemplateLayoutByIdLookup[templateId];
+  },
+  spaceIds<BoardIdValue extends keyof typeof spaceIdsByBoardIdLookup>(
+    boardId: BoardIdValue,
+  ): (typeof spaceIdsByBoardIdLookup)[BoardIdValue] {
+    return spaceIdsByBoardIdLookup[boardId];
+  },
+  spaceKinds<BoardIdValue extends keyof typeof spaceTypeIdByBoardIdLookup>(
+    boardId: BoardIdValue,
+  ): (typeof spaceTypeIdByBoardIdLookup)[BoardIdValue] {
+    return spaceTypeIdByBoardIdLookup[boardId];
+  },
+  spaceIdsForType<TypeIdValue extends keyof typeof spaceIdsByTypeIdLookup>(
+    typeId: TypeIdValue,
+  ): (typeof spaceIdsByTypeIdLookup)[TypeIdValue] {
+    return spaceIdsByTypeIdLookup[typeId];
+  },
+  containerIds<BoardIdValue extends keyof typeof containerIdsByBoardIdLookup>(
+    boardId: BoardIdValue,
+  ): (typeof containerIdsByBoardIdLookup)[BoardIdValue] {
+    return containerIdsByBoardIdLookup[boardId];
+  },
+  containerHost<
+    BoardIdValue extends keyof typeof containerHostByBoardIdLookup,
+    ContainerIdValue extends keyof (typeof containerHostByBoardIdLookup)[BoardIdValue],
+  >(
+    boardId: BoardIdValue,
+    containerId: ContainerIdValue,
+  ): (typeof containerHostByBoardIdLookup)[BoardIdValue][ContainerIdValue] {
+    const containers = containerHostByBoardIdLookup[boardId];
+    const containerHost = containers?.[containerId];
+    if (!containerHost) {
+      throw new Error(
+        \`Unknown container '\${String(containerId)}' on board '\${String(boardId)}'.\`,
+      );
+    }
+    return containerHost as (typeof containerHostByBoardIdLookup)[BoardIdValue][ContainerIdValue];
+  },
+  relationTypeIds<
+    BoardIdValue extends keyof typeof relationTypeIdsByBoardIdLookup,
+  >(
+    boardId: BoardIdValue,
+  ): (typeof relationTypeIdsByBoardIdLookup)[BoardIdValue] {
+    return relationTypeIdsByBoardIdLookup[boardId];
+  },
+  edgeIdsForType<TypeIdValue extends keyof typeof edgeIdsByTypeIdLookup>(
+    typeId: TypeIdValue,
+  ): (typeof edgeIdsByTypeIdLookup)[TypeIdValue] {
+    return edgeIdsByTypeIdLookup[typeId];
+  },
+  edgeIds<
+    BoardIdValue extends keyof typeof edgeIdsByBoardIdAndTypeIdLookup,
+    TypeIdValue extends keyof (typeof edgeIdsByBoardIdAndTypeIdLookup)[BoardIdValue],
+  >(
+    boardId: BoardIdValue,
+    typeId: TypeIdValue,
+  ): (typeof edgeIdsByBoardIdAndTypeIdLookup)[BoardIdValue][TypeIdValue] {
+    const boardEdges = edgeIdsByBoardIdAndTypeIdLookup[boardId];
+    const edgeIds = boardEdges?.[typeId];
+    if (!edgeIds) {
+      throw new Error(
+        \`Unknown edge type '\${String(typeId)}' on board '\${String(boardId)}'.\`,
+      );
+    }
+    return edgeIds as (typeof edgeIdsByBoardIdAndTypeIdLookup)[BoardIdValue][TypeIdValue];
+  },
+  vertexIdsForType<TypeIdValue extends keyof typeof vertexIdsByTypeIdLookup>(
+    typeId: TypeIdValue,
+  ): (typeof vertexIdsByTypeIdLookup)[TypeIdValue] {
+    return vertexIdsByTypeIdLookup[typeId];
+  },
+  vertexIds<
+    BoardIdValue extends keyof typeof vertexIdsByBoardIdAndTypeIdLookup,
+    TypeIdValue extends keyof (typeof vertexIdsByBoardIdAndTypeIdLookup)[BoardIdValue],
+  >(
+    boardId: BoardIdValue,
+    typeId: TypeIdValue,
+  ): (typeof vertexIdsByBoardIdAndTypeIdLookup)[BoardIdValue][TypeIdValue] {
+    const boardVertices = vertexIdsByBoardIdAndTypeIdLookup[boardId];
+    const vertexIds = boardVertices?.[typeId];
+    if (!vertexIds) {
+      throw new Error(
+        \`Unknown vertex type '\${String(typeId)}' on board '\${String(boardId)}'.\`,
+      );
+    }
+    return vertexIds as (typeof vertexIdsByBoardIdAndTypeIdLookup)[BoardIdValue][TypeIdValue];
+  },
+  boardIdForPlayer<
+    BoardBaseIdValue extends keyof typeof perPlayerBoardIdsByBaseIdAndPlayerIdLookup,
+    PlayerIdValue extends keyof (typeof perPlayerBoardIdsByBaseIdAndPlayerIdLookup)[BoardBaseIdValue],
+  >(
+    boardBaseId: BoardBaseIdValue,
+    playerId: PlayerIdValue,
+  ): (typeof perPlayerBoardIdsByBaseIdAndPlayerIdLookup)[BoardBaseIdValue][PlayerIdValue] {
+    const boardIdsByPlayerId = perPlayerBoardIdsByBaseIdAndPlayerIdLookup[
+      boardBaseId
+    ] as Record<string, string> | undefined;
+    const boardId = boardIdsByPlayerId?.[String(playerId)];
+    if (!boardId) {
+      throw new Error(
+        \`Unknown per-player board '\${String(boardBaseId)}' for player '\${String(playerId)}'.\`,
+      );
+    }
+    return boardId as (typeof perPlayerBoardIdsByBaseIdAndPlayerIdLookup)[BoardBaseIdValue][PlayerIdValue];
+  },
 } as const;`;
 }
 
 function renderManifestContractSource(manifest: GameTopologyManifest): string {
   const analysis = analyzeManifest(manifest);
+  const initialTableTemplate = materializeManifestTable({
+    manifest,
+    playerIds: analysis.playerIds,
+    shuffleItems: <Value>(values: readonly Value[]) => [...values],
+  });
   const sharedZoneIds = analysis.sharedZones.map((zone) => zone.id).sort();
   const playerZoneIds = analysis.playerZones.map((zone) => zone.id).sort();
   const zoneVisibilityById = Object.fromEntries(
@@ -2611,10 +3755,10 @@ function renderManifestContractSource(manifest: GameTopologyManifest): string {
     .filter((board): board is AnalyzedHexBoard => board.layout === "hex")
     .flatMap((board) =>
       board.runtimeBoardIds.map(
-        (runtimeBoardId) => `  ${quote(runtimeBoardId)}: Extract<
-    BoardStateById[${quote(runtimeBoardId)}],
-    HexBoardStateRecord
-  >;`,
+        (runtimeBoardId) =>
+          `  ${quote(runtimeBoardId)}: BoardStateById[${quote(
+            runtimeBoardId,
+          )}];`,
       ),
     )
     .join("\n");
@@ -2622,10 +3766,10 @@ function renderManifestContractSource(manifest: GameTopologyManifest): string {
     .filter((board): board is AnalyzedSquareBoard => board.layout === "square")
     .flatMap((board) =>
       board.runtimeBoardIds.map(
-        (runtimeBoardId) => `  ${quote(runtimeBoardId)}: Extract<
-    BoardStateById[${quote(runtimeBoardId)}],
-    SquareBoardStateRecord
-  >;`,
+        (runtimeBoardId) =>
+          `  ${quote(runtimeBoardId)}: BoardStateById[${quote(
+            runtimeBoardId,
+          )}];`,
       ),
     )
     .join("\n");
@@ -2643,8 +3787,16 @@ import {
   createManifestRuntimeSchema,
   createManifestStringLiteralSchema,
   resolveManifestPlayerIds,
-} from "@dreamboard/app-sdk/reducer";
+  type SetupBootstrapContainerRef,
+  type SetupBootstrapDestinationRef,
+  type SetupBootstrapPerPlayerContainerTemplateRef,
+  type SetupBootstrapStep,
+  type SetupProfileDefinition,
+} from "@dreamboard/app-sdk/reducer/model";
 import type {
+  CardIdOfManifest,
+  DieIdOfManifest,
+  PieceIdOfManifest,
   ReducerManifestContract,
   RuntimeCardData,
   RuntimeCardVisibility,
@@ -2654,7 +3806,14 @@ import type {
   RuntimePieceData,
   RuntimeRecord,
   RuntimeTableRecord,
-} from "@dreamboard/app-sdk/reducer";
+} from "@dreamboard/app-sdk/reducer/model";
+import {
+  dealToPlayerBoardContainer as createDealToPlayerBoardContainerStep,
+  dealToPlayerZone as createDealToPlayerZoneStep,
+  seedSharedBoardContainer as createSeedSharedBoardContainerStep,
+  seedSharedBoardSpace as createSeedSharedBoardSpaceStep,
+  shuffle as createShuffleStep,
+} from "@dreamboard/app-sdk/reducer/setup-bootstrap-helpers";
 
 const unknownRecordSchema = assumeManifestSchema<RuntimeRecord>(
   z.record(z.string(), z.unknown()),
@@ -2685,6 +3844,7 @@ export const literals = {
   pieceIds: ${renderConstArray(analysis.pieceIds)},
   dieTypeIds: ${renderConstArray(analysis.dieTypeIds)},
   dieIds: ${renderConstArray(analysis.dieIds)},
+  boardTemplateIds: ${renderConstArray(analysis.boardTemplateIds)},
   boardTypeIds: ${renderConstArray(analysis.boardTypeIds)},
   boardBaseIds: ${renderConstArray(analysis.boardBaseIds)},
   boardIds: ${renderConstArray(analysis.boardIds)},
@@ -3127,6 +4287,144 @@ export type SquareBoardStateById = ${
       : "Record<string, never>"
   };
 
+type ManifestRecordValue<T> = T[keyof T];
+type ManifestArrayElement<T> =
+  T extends readonly (infer Item)[]
+    ? Item
+    : T extends (infer Item)[]
+      ? Item
+      : never;
+
+export type BoardState<BoardIdValue extends BoardId = BoardId> =
+  BoardIdValue extends keyof BoardStateById ? BoardStateById[BoardIdValue] : never;
+
+export type BoardFields<BoardIdValue extends BoardId = BoardId> =
+  BoardState<BoardIdValue> extends { fields: infer Fields } ? Fields : never;
+
+export type BoardSpaceStateByBoardId = {
+  [BoardIdValue in keyof BoardStateById]: ManifestRecordValue<
+    BoardStateById[BoardIdValue]["spaces"]
+  >;
+};
+
+export type BoardSpaceState<BoardIdValue extends BoardId = BoardId> =
+  BoardIdValue extends keyof BoardSpaceStateByBoardId
+    ? BoardSpaceStateByBoardId[BoardIdValue]
+    : never;
+
+export type BoardSpaceFields<BoardIdValue extends BoardId = BoardId> =
+  BoardSpaceState<BoardIdValue> extends { fields: infer Fields }
+    ? Fields
+    : never;
+
+export type BoardRelationStateByBoardId = {
+  [BoardIdValue in keyof BoardStateById]: ManifestArrayElement<
+    BoardStateById[BoardIdValue]["relations"]
+  >;
+};
+
+export type BoardRelationState<BoardIdValue extends BoardId = BoardId> =
+  BoardIdValue extends keyof BoardRelationStateByBoardId
+    ? BoardRelationStateByBoardId[BoardIdValue]
+    : never;
+
+export type BoardRelationFields<BoardIdValue extends BoardId = BoardId> =
+  BoardRelationState<BoardIdValue> extends { fields: infer Fields }
+    ? Fields
+    : never;
+
+export type BoardContainerStateByBoardId = {
+  [BoardIdValue in keyof BoardStateById]: ManifestRecordValue<
+    BoardStateById[BoardIdValue]["containers"]
+  >;
+};
+
+export type BoardContainerState<BoardIdValue extends BoardId = BoardId> =
+  BoardIdValue extends keyof BoardContainerStateByBoardId
+    ? BoardContainerStateByBoardId[BoardIdValue]
+    : never;
+
+export type BoardContainerFields<BoardIdValue extends BoardId = BoardId> =
+  BoardContainerState<BoardIdValue> extends { fields: infer Fields }
+    ? Fields
+    : never;
+
+export type HexEdgeState<
+  BoardIdValue extends keyof HexBoardStateById = keyof HexBoardStateById,
+> = BoardIdValue extends keyof HexBoardStateById
+  ? ManifestArrayElement<HexBoardStateById[BoardIdValue]["edges"]>
+  : never;
+
+export type HexEdgeFields<
+  BoardIdValue extends keyof HexBoardStateById = keyof HexBoardStateById,
+> = HexEdgeState<BoardIdValue> extends { fields: infer Fields }
+  ? Fields
+  : never;
+
+export type HexVertexState<
+  BoardIdValue extends keyof HexBoardStateById = keyof HexBoardStateById,
+> = BoardIdValue extends keyof HexBoardStateById
+  ? ManifestArrayElement<HexBoardStateById[BoardIdValue]["vertices"]>
+  : never;
+
+export type HexVertexFields<
+  BoardIdValue extends keyof HexBoardStateById = keyof HexBoardStateById,
+> = HexVertexState<BoardIdValue> extends { fields: infer Fields }
+  ? Fields
+  : never;
+
+export type SquareEdgeState<
+  BoardIdValue extends keyof SquareBoardStateById = keyof SquareBoardStateById,
+> = BoardIdValue extends keyof SquareBoardStateById
+  ? ManifestArrayElement<SquareBoardStateById[BoardIdValue]["edges"]>
+  : never;
+
+export type SquareEdgeFields<
+  BoardIdValue extends keyof SquareBoardStateById = keyof SquareBoardStateById,
+> = SquareEdgeState<BoardIdValue> extends { fields: infer Fields }
+  ? Fields
+  : never;
+
+export type SquareVertexState<
+  BoardIdValue extends keyof SquareBoardStateById = keyof SquareBoardStateById,
+> = BoardIdValue extends keyof SquareBoardStateById
+  ? ManifestArrayElement<SquareBoardStateById[BoardIdValue]["vertices"]>
+  : never;
+
+export type SquareVertexFields<
+  BoardIdValue extends keyof SquareBoardStateById = keyof SquareBoardStateById,
+> = SquareVertexState<BoardIdValue> extends { fields: infer Fields }
+  ? Fields
+  : never;
+
+export type TiledBoardId = keyof HexBoardStateById | keyof SquareBoardStateById;
+
+export type TiledEdgeState<BoardIdValue extends TiledBoardId = TiledBoardId> =
+  BoardIdValue extends keyof HexBoardStateById
+    ? HexEdgeState<BoardIdValue>
+    : BoardIdValue extends keyof SquareBoardStateById
+      ? SquareEdgeState<BoardIdValue>
+      : never;
+
+export type TiledEdgeFields<BoardIdValue extends TiledBoardId = TiledBoardId> =
+  TiledEdgeState<BoardIdValue> extends { fields: infer Fields }
+    ? Fields
+    : never;
+
+export type TiledVertexState<
+  BoardIdValue extends TiledBoardId = TiledBoardId,
+> = BoardIdValue extends keyof HexBoardStateById
+  ? HexVertexState<BoardIdValue>
+  : BoardIdValue extends keyof SquareBoardStateById
+    ? SquareVertexState<BoardIdValue>
+    : never;
+
+export type TiledVertexFields<
+  BoardIdValue extends TiledBoardId = TiledBoardId,
+> = TiledVertexState<BoardIdValue> extends { fields: infer Fields }
+  ? Fields
+  : never;
+
 export type BoardStateRecord = ${
     analysis.boardIds.length > 0 ? "BoardStateById[BoardId]" : "never"
   };
@@ -3148,10 +4446,12 @@ export interface TableState extends RuntimeTableRecord {
   ownerOfCard: Record<CardId, PlayerId | null>;
   visibility: Record<CardId, RuntimeCardVisibility>;
   resources: PlayerRecord<Record<ResourceId, number>>;
-  boards: Omit<RuntimeTableRecord["boards"], "byId" | "hex" | "square"> & {
+  boards: {
     byId: BoardStateById;
     hex: HexBoardStateById;
     square: SquareBoardStateById;
+    network: RuntimeTableRecord["boards"]["network"];
+    track: RuntimeTableRecord["boards"]["track"];
   };
   dice: DieStateById;
 }
@@ -3292,7 +4592,7 @@ const rawTableSchema = z.object({
   pieces: pieceStateByIdSchema,
   componentLocations: z.record(
     z.string(),
-    z.discriminatedUnion("type", [
+    z.union([
       z.object({ type: z.literal("Detached") }),
       z.object({
         type: z.literal("InDeck"),
@@ -3336,12 +4636,7 @@ const rawTableSchema = z.object({
         vertexId: ids.vertexId,
         position: z.number().int().nullable().optional(),
       }),
-      z.object({
-        type: z.literal("InSlot"),
-        hostComponentId: z.string(),
-        slotId: z.string(),
-        position: z.number().int().nullable().optional(),
-      }),
+      ${renderStrictSlotLocationSchema(analysis.strictSlotHosts)},
     ]),
   ),
   ownerOfCard: z.record(ids.cardId, ids.playerId.nullable()),
@@ -3432,6 +4727,59 @@ export const defaults = {
     buildPlayerResources(resolveDefaultPlayerIds(playerIds)) as TableState["resources"],
 } as const;
 
+const baseInitialTable = ${renderJsonConst(initialTableTemplate)} as unknown as TableState;
+const baseDeckCardsByZoneId: Record<SharedZoneId, readonly CardId[]> = ${renderJsonConst(
+    Object.fromEntries(
+      sharedZoneIds.map((zoneId) => [
+        zoneId,
+        (
+          initialTableTemplate as {
+            decks: Record<string, readonly string[]>;
+          }
+        ).decks[zoneId] ?? [],
+      ]),
+    ),
+  )};
+
+export function createInitialTable(options: {
+  playerIds?: readonly string[];
+  shuffleItems?: <Value>(values: readonly Value[]) => Value[];
+} = {}): TableState {
+  const resolvedPlayerIds = resolveDefaultPlayerIds(options.playerIds);
+  const shuffleItems =
+    options.shuffleItems ?? (<Value>(values: readonly Value[]) => [...values]);
+  const table = cloneManifestDefault(baseInitialTable) as TableState;
+  table.playerOrder = [...resolvedPlayerIds];
+  table.zones = defaults.zones(resolvedPlayerIds);
+  table.decks = defaults.decks();
+  table.hands = defaults.hands(resolvedPlayerIds);
+  table.resources = defaults.resources(resolvedPlayerIds);
+  const componentLocations = cloneManifestDefault(
+    baseInitialTable.componentLocations,
+  ) as TableState["componentLocations"];
+
+  for (const [zoneId, baseDeckCardIds] of Object.entries(
+    baseDeckCardsByZoneId,
+  ) as Array<[SharedZoneId, readonly CardId[]]>) {
+    const shuffled = shuffleItems(baseDeckCardIds);
+    (table.decks as Record<string, CardId[]>)[zoneId] = [...shuffled];
+    (table.zones.shared as Record<string, CardId[]>)[zoneId] = [...shuffled];
+    shuffled.forEach((componentId, position) => {
+      const location = componentLocations[componentId];
+      if (!location || location.type !== "InDeck") {
+        return;
+      }
+      componentLocations[componentId] = {
+        ...location,
+        position,
+      };
+    });
+  }
+
+  table.componentLocations = componentLocations;
+  return tableSchema.parse(table);
+}
+
 export const schemas = {
   table: tableSchema,
   runtime: runtimeSchema,
@@ -3488,6 +4836,97 @@ export const manifestContract = {
 >;
 
 ${renderBoardLiteralHelpers(analysis)}
+
+export type SetupProfilesDefinition = Record<
+  SetupProfileId,
+  SetupProfileDefinition<string, typeof manifestContract>
+>;
+
+export function setupProfiles<const Profiles extends SetupProfilesDefinition>(
+  profiles: Profiles,
+): Profiles {
+  return profiles;
+}
+
+export function shuffle(
+  container: SetupBootstrapContainerRef<typeof manifestContract>,
+): SetupBootstrapStep<typeof manifestContract> {
+  return createShuffleStep<typeof manifestContract>(container);
+}
+
+export function dealToPlayerZone(options: {
+  from: Extract<
+    SetupBootstrapContainerRef<typeof manifestContract>,
+    { type: "sharedZone" | "sharedBoardContainer" }
+  >;
+  zoneId: Extract<
+    SetupBootstrapPerPlayerContainerTemplateRef<typeof manifestContract>,
+    { type: "playerZone" }
+  >["zoneId"];
+  count: number;
+  playerIds?: readonly PlayerId[];
+}): SetupBootstrapStep<typeof manifestContract> {
+  return createDealToPlayerZoneStep<typeof manifestContract>(options);
+}
+
+export function dealToPlayerBoardContainer(options: {
+  from: Extract<
+    SetupBootstrapContainerRef<typeof manifestContract>,
+    { type: "sharedZone" | "sharedBoardContainer" }
+  >;
+  boardId: Extract<
+    SetupBootstrapPerPlayerContainerTemplateRef<typeof manifestContract>,
+    { type: "playerBoardContainer" }
+  >["boardId"];
+  containerId: Extract<
+    SetupBootstrapPerPlayerContainerTemplateRef<typeof manifestContract>,
+    { type: "playerBoardContainer" }
+  >["containerId"];
+  count: number;
+  playerIds?: readonly PlayerId[];
+}): SetupBootstrapStep<typeof manifestContract> {
+  return createDealToPlayerBoardContainerStep<typeof manifestContract>(options);
+}
+
+export function seedSharedBoardContainer(options: {
+  from: SetupBootstrapContainerRef<typeof manifestContract>;
+  boardId: Extract<
+    SetupBootstrapDestinationRef<typeof manifestContract>,
+    { type: "sharedBoardContainer" }
+  >["boardId"];
+  containerId: Extract<
+    SetupBootstrapDestinationRef<typeof manifestContract>,
+    { type: "sharedBoardContainer" }
+  >["containerId"];
+  count?: number;
+  componentIds?: readonly (
+    | CardIdOfManifest<typeof manifestContract>
+    | PieceIdOfManifest<typeof manifestContract>
+    | DieIdOfManifest<typeof manifestContract>
+  )[];
+}): SetupBootstrapStep<typeof manifestContract> {
+  return createSeedSharedBoardContainerStep<typeof manifestContract>(options);
+}
+
+export function seedSharedBoardSpace(options: {
+  from: SetupBootstrapContainerRef<typeof manifestContract>;
+  boardId: Extract<
+    SetupBootstrapDestinationRef<typeof manifestContract>,
+    { type: "sharedBoardSpace" }
+  >["boardId"];
+  spaceId: Extract<
+    SetupBootstrapDestinationRef<typeof manifestContract>,
+    { type: "sharedBoardSpace" }
+  >["spaceId"];
+  count?: number;
+  componentIds?: readonly (
+    | CardIdOfManifest<typeof manifestContract>
+    | PieceIdOfManifest<typeof manifestContract>
+    | DieIdOfManifest<typeof manifestContract>
+  )[];
+}): SetupBootstrapStep<typeof manifestContract> {
+  return createSeedSharedBoardSpaceStep<typeof manifestContract>(options);
+}
 
 export default manifestContract;
 `;

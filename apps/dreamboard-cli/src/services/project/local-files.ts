@@ -1,9 +1,6 @@
 import { readdir, unlink } from "node:fs/promises";
 import path from "node:path";
-import { zGameTopologyManifest } from "@dreamboard/api-client";
 import type { GameTopologyManifest } from "@dreamboard/sdk-types";
-import { validateManifestAuthoring } from "@dreamboard/workspace-codegen";
-import type { ZodError } from "zod";
 import {
   PROJECT_DIR_NAME,
   MANIFEST_FILE,
@@ -20,6 +17,10 @@ import {
   writeTextFile,
 } from "../../utils/fs.js";
 import { hashContent } from "../../utils/crypto.js";
+import {
+  materializeManifest,
+  writeManifestSource,
+} from "./manifest-authoring.js";
 import {
   isAllowedGamePath as isAllowedPathFromOwnership,
   isDynamicGeneratedPath,
@@ -159,8 +160,7 @@ export async function writeManifest(
   rootDir: string,
   manifest: GameTopologyManifest,
 ): Promise<void> {
-  const filePath = path.join(rootDir, MANIFEST_FILE);
-  await writeTextFile(filePath, `${JSON.stringify(manifest, null, 2)}\n`);
+  await writeManifestSource(rootDir, manifest);
 }
 
 export async function writeRule(
@@ -171,59 +171,10 @@ export async function writeRule(
   await writeTextFile(filePath, ruleText);
 }
 
-function formatIssuePath(pathSegments: ReadonlyArray<string | number>): string {
-  if (pathSegments.length === 0) {
-    return "manifest";
-  }
-
-  return `manifest${pathSegments
-    .map((segment) =>
-      typeof segment === "number" ? `[${segment}]` : `.${segment}`,
-    )
-    .join("")}`;
-}
-
-function formatManifestValidationError(error: ZodError): string {
-  const lines = error.issues.map((issue) => {
-    const issuePath = formatIssuePath(
-      issue.path.filter(
-        (segment): segment is string | number =>
-          typeof segment === "string" || typeof segment === "number",
-      ),
-    );
-    return `${issuePath}: ${issue.message}`;
-  });
-
-  return `Invalid manifest:\n- ${lines.join("\n- ")}`;
-}
-
 export async function loadManifest(
   rootDir: string,
 ): Promise<GameTopologyManifest> {
-  const filePath = path.join(rootDir, MANIFEST_FILE);
-  let manifestJson: unknown;
-  try {
-    manifestJson = await readJsonFile<unknown>(filePath);
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      throw new Error(`Invalid manifest.json: ${error.message}`);
-    }
-    throw error;
-  }
-
-  const parsedManifest = zGameTopologyManifest.strict().safeParse(manifestJson);
-  if (!parsedManifest.success) {
-    throw new Error(formatManifestValidationError(parsedManifest.error));
-  }
-
-  const setupIssues = validateManifestAuthoring(
-    parsedManifest.data as GameTopologyManifest,
-  );
-  if (setupIssues.length > 0) {
-    throw new Error(`Invalid manifest:\n- ${setupIssues.join("\n- ")}`);
-  }
-
-  return parsedManifest.data as GameTopologyManifest;
+  return materializeManifest(rootDir);
 }
 
 export async function loadRule(rootDir: string): Promise<string> {

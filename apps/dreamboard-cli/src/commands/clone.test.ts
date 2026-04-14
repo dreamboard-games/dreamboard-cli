@@ -24,6 +24,9 @@ const applyWorkspaceCodegen = mock(async () => ({
   skipped: [],
   merged: [],
 }));
+const installWorkspaceDependencies = mock(async () => undefined);
+const ensureLocalMaintainerSnapshot = mock(async () => null);
+const readWorkspaceLocalMaintainerRegistry = mock(async () => null);
 const actualApiClient = await import("@dreamboard/api-client");
 const actualFlags = await import("../flags.js");
 const actualFs = await import("../utils/fs.js");
@@ -220,7 +223,18 @@ mock.module("../services/project/sync.js", () => ({
 }));
 
 mock.module("../services/project/static-scaffold.js", () => ({
+  assertCliStaticScaffoldComplete: async () => undefined,
   scaffoldStaticWorkspace: async () => undefined,
+}));
+
+mock.module("../services/project/workspace-dependencies.js", () => ({
+  installWorkspaceDependencies,
+}));
+
+mock.module("../services/project/local-maintainer-registry.js", () => ({
+  ensureLocalMaintainerSnapshot,
+  didLocalMaintainerSnapshotChange: () => false,
+  readWorkspaceLocalMaintainerRegistry,
 }));
 
 mock.module("../utils/errors.js", () => ({
@@ -233,6 +247,9 @@ const cloneCommand = (await import("./clone.ts")).default;
 test("clone generates local workspace files from manifest when no authored state exists", async () => {
   authoringHeadData = null;
   applyWorkspaceCodegen.mockClear();
+  installWorkspaceDependencies.mockClear();
+  ensureLocalMaintainerSnapshot.mockClear();
+  readWorkspaceLocalMaintainerRegistry.mockClear();
 
   await cloneCommand.run({
     args: {
@@ -256,6 +273,9 @@ test("clone uses the compiled-result sync path when the project already has a re
     ruleId: "rule-1",
   };
   applyWorkspaceCodegen.mockClear();
+  installWorkspaceDependencies.mockClear();
+  ensureLocalMaintainerSnapshot.mockClear();
+  readWorkspaceLocalMaintainerRegistry.mockClear();
   pullIntoDirectory.mockImplementation(async () => ({
     gameId: "game-1",
     slug: "test-game",
@@ -292,4 +312,5 @@ test("clone uses the compiled-result sync path when the project already has a re
     },
   );
   expect(applyWorkspaceCodegen).not.toHaveBeenCalled();
+  expect(installWorkspaceDependencies).not.toHaveBeenCalled();
 });

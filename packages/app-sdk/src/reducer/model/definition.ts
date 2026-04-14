@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import type {
   AnySchema,
+  RuntimeParams,
   RuntimeTableRecord,
   SchemaLike,
   SelectorFn,
@@ -316,12 +317,12 @@ export type ActionParamsOfDefinition<
   Definition,
   ActionName extends ActionNamesOfDefinition<Definition>,
 > =
-  ActionSpecByName<Definition, ActionName> extends ActionSpec<
-    infer ParamsSchema,
-    infer _State,
-    infer _Manifest
-  >
-    ? z.infer<ParamsSchema>
+  ActionSpecByName<Definition, ActionName> extends {
+    params: infer ParamsSchema;
+  }
+    ? ParamsSchema extends SchemaLike<RuntimeParams>
+      ? z.infer<ParamsSchema>
+      : never
     : never;
 
 type ActionRegistryOfDefinitionPhase<
@@ -364,12 +365,12 @@ export type ActionParamsOfDefinitionPhase<
   PhaseName extends PhaseNamesOfDefinition<Definition>,
   ActionName extends ActionNamesOfDefinitionPhase<Definition, PhaseName>,
 > =
-  ActionSpecByNameOfDefinitionPhase<
-    Definition,
-    PhaseName,
-    ActionName
-  > extends ActionSpec<infer ParamsSchema, infer _State, infer _Manifest>
-    ? z.infer<ParamsSchema>
+  ActionSpecByNameOfDefinitionPhase<Definition, PhaseName, ActionName> extends {
+    params: infer ParamsSchema;
+  }
+    ? ParamsSchema extends SchemaLike<RuntimeParams>
+      ? z.infer<ParamsSchema>
+      : never
     : never;
 
 type PromptRegistriesOfDefinition<Definition> =

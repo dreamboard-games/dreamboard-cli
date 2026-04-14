@@ -4,36 +4,12 @@ import { PROJECT_DIR_NAME, PROJECT_CONFIG_FILE } from "../constants.js";
 import { ensureDir, exists, readJsonFile, writeJsonFile } from "../utils/fs.js";
 
 function normalizeProjectConfig(config: ProjectConfig): ProjectConfig {
-  const authoring = config.authoring ?? {
-    authoringStateId: undefined,
-    ruleId: config.ruleId,
-    manifestId: config.manifestId,
-    manifestContentHash: config.manifestContentHash,
-    sourceRevisionId: config.sourceRevisionId,
-    sourceTreeHash: config.sourceTreeHash,
-    pendingSync: undefined,
-  };
-  const compile = config.compile ?? {
-    latestAttempt: config.resultId
-      ? {
-          resultId: config.resultId,
-          authoringStateId: authoring.authoringStateId ?? "",
-          status: "successful",
-        }
-      : undefined,
-    latestSuccessful: config.resultId
-      ? {
-          resultId: config.resultId,
-          authoringStateId: authoring.authoringStateId ?? "",
-        }
-      : undefined,
-  };
-
   return {
     gameId: config.gameId,
     slug: config.slug,
-    authoring,
-    compile,
+    authoring: config.authoring,
+    compile: config.compile,
+    localMaintainerRegistry: config.localMaintainerRegistry,
     apiBaseUrl: config.apiBaseUrl,
     webBaseUrl: config.webBaseUrl,
   };

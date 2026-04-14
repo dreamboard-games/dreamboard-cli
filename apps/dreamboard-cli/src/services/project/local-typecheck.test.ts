@@ -1,16 +1,41 @@
-import { lstat, mkdtemp, mkdir, rm } from "node:fs/promises";
+import { lstat, mkdtemp, mkdir, rm, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { expect, test } from "bun:test";
 import type { GameTopologyManifest } from "@dreamboard/sdk-types";
 import { generateDynamicGeneratedFiles } from "@dreamboard/workspace-codegen";
-import { runLocalTypecheck } from "./local-typecheck.js";
-import { scaffoldStaticWorkspace } from "./static-scaffold.js";
 
 const TYPECHECK_FIXTURE_ROOT = path.resolve(
   import.meta.dir,
   "__fixtures__/static-typecheck",
 );
+const WORKSPACE_NODE_MODULES = path.join(
+  path.resolve(import.meta.dir, "../../.."),
+  "node_modules",
+);
+const UI_SDK_NODE_MODULES = path.join(
+  path.resolve(import.meta.dir, "../../../../../packages/ui-sdk"),
+  "node_modules",
+);
+
+async function loadLocalTypecheck() {
+  return import(`./local-typecheck.ts?test=${Math.random()}`);
+}
+
+async function loadStaticScaffold() {
+  return import(`./static-scaffold.ts?test=${Math.random()}`);
+}
+
+function renderManifestSource(manifest: GameTopologyManifest): string {
+  return [
+    'import { defineTopologyManifest } from "@dreamboard/sdk-types";',
+    "",
+    "export default defineTopologyManifest(",
+    `${JSON.stringify(manifest, null, 2)}`,
+    ");",
+    "",
+  ].join("\n");
+}
 
 const FULL_TYPECHECK_MANIFEST: GameTopologyManifest = {
   players: {
@@ -475,15 +500,23 @@ async function seedDynamicFilesForTypecheck(
 async function createTypecheckWorkspace(
   manifest: GameTopologyManifest,
 ): Promise<string> {
+  const { scaffoldStaticWorkspace } = await loadStaticScaffold();
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "db-local-typecheck-"));
+  await Bun.write(
+    path.join(tempRoot, "manifest.ts"),
+    renderManifestSource(manifest),
+  );
   await scaffoldStaticWorkspace(tempRoot, "new");
   await seedDynamicFilesForTypecheck(tempRoot, manifest);
+  await symlink(WORKSPACE_NODE_MODULES, path.join(tempRoot, "node_modules"));
+  await symlink(UI_SDK_NODE_MODULES, path.join(tempRoot, "ui", "node_modules"));
   return tempRoot;
 }
 
 async function expectGeneratedWorkspaceTypechecks(
   manifest: GameTopologyManifest,
 ): Promise<void> {
+  const { runLocalTypecheck } = await loadLocalTypecheck();
   const tempRoot = await createTypecheckWorkspace(manifest);
 
   try {
@@ -503,6 +536,7 @@ for (const { name, manifest } of MANIFEST_TYPECHECK_CASES) {
 }
 
 test("runLocalTypecheck does not require Bun on PATH", async () => {
+  const { runLocalTypecheck } = await loadLocalTypecheck();
   const tempRoot = await createTypecheckWorkspace(FULL_TYPECHECK_MANIFEST);
   const originalPath = process.env.PATH;
 
@@ -520,6 +554,7 @@ test("runLocalTypecheck does not require Bun on PATH", async () => {
 }, 60_000);
 
 test("runLocalTypecheck prefers project-local TypeScript without workspace symlinks", async () => {
+  const { runLocalTypecheck } = await loadLocalTypecheck();
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "db-local-typecheck-"));
   const localTscPath = path.join(
     tempRoot,

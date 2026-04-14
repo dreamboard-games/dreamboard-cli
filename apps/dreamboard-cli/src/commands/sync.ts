@@ -40,17 +40,23 @@ import {
   clearProjectPendingAuthoringSync,
   finalizeProjectPendingAuthoringSync,
   getProjectAuthoringState,
+  getProjectLocalMaintainerRegistry,
   getProjectPendingAuthoringSync,
   setProjectPendingAuthoringSync,
   updateProjectAuthoringState,
+  updateProjectLocalMaintainerRegistry,
 } from "../services/project/project-state.js";
 import type { ProjectConfig, ProjectPendingAuthoringSync } from "../types.js";
 import { isDynamicGeneratedPath } from "../services/project/scaffold-ownership.js";
 import { applyWorkspaceCodegen } from "../services/project/workspace-codegen.js";
+import {
+  didLocalMaintainerSnapshotChange,
+  ensureLocalMaintainerSnapshot,
+} from "../services/project/local-maintainer-registry.js";
+import { reconcileWorkspaceDependencies } from "../services/project/workspace-dependencies.js";
 
 function isSourceRevisionPath(filePath: string): boolean {
   return (
-    filePath !== MANIFEST_FILE &&
     filePath !== RULE_FILE &&
     isAllowedGamePath(filePath) &&
     !isDynamicGeneratedPath(filePath)
@@ -93,18 +99,6 @@ function buildSourceChanges(options: {
   return Array.from(changesByPath.values()).sort((left, right) =>
     left.path.localeCompare(right.path),
   );
-}
-
-function assertPackageLockPresent(localFiles: Record<string, string>): void {
-  if (
-    localFiles["package.json"] &&
-    !localFiles["pnpm-lock.yaml"] &&
-    !localFiles["package-lock.json"]
-  ) {
-    throw new Error(
-      "A lockfile is required for package-based workspaces. Run `pnpm install --lockfile-only` or `npm install --package-lock-only` before syncing.",
-    );
-  }
 }
 
 function isFirstSyncSourceRevisionConflict(error: unknown): boolean {
@@ -231,7 +225,9 @@ async function finalizeLocalSync(options: {
   projectConfig: ProjectConfig;
 }): Promise<ProjectConfig> {
   const { projectRoot, projectConfig } = options;
-  await scaffoldStaticWorkspace(projectRoot, "update");
+  await scaffoldStaticWorkspace(projectRoot, "update", {
+    localMaintainerRegistry: getProjectLocalMaintainerRegistry(projectConfig),
+  });
   await applyWorkspaceCodegen({
     projectRoot,
     manifest: await loadManifest(projectRoot),
@@ -267,15 +263,39 @@ export default defineCommand({
   },
   async run({ args }) {
     const parsedArgs = parseSyncCommandArgs(args);
-    const { projectRoot, projectConfig } =
+    const { projectRoot, projectConfig, config } =
       await resolveProjectContext(parsedArgs);
     let nextProjectConfig = projectConfig;
+    const localMaintainerRegistry = await ensureLocalMaintainerSnapshot(
+      config.apiBaseUrl,
+    );
+    const localMaintainerSnapshotChanged = didLocalMaintainerSnapshotChange(
+      getProjectLocalMaintainerRegistry(projectConfig),
+      localMaintainerRegistry,
+    );
+    if (localMaintainerRegistry) {
+      nextProjectConfig = updateProjectLocalMaintainerRegistry(
+        nextProjectConfig,
+        localMaintainerRegistry,
+      );
+    }
 
-    await scaffoldStaticWorkspace(projectRoot, "update");
+    await scaffoldStaticWorkspace(projectRoot, "update", {
+      localMaintainerRegistry,
+    });
     await applyWorkspaceCodegen({
       projectRoot,
       manifest: await loadManifest(projectRoot),
     });
+    const dependencyState = await reconcileWorkspaceDependencies(projectRoot);
+    if (
+      dependencyState.packageManagerNormalized ||
+      dependencyState.lockfileGenerated ||
+      dependencyState.installed ||
+      localMaintainerSnapshotChanged
+    ) {
+      consola.info("Workspace dependencies reconciled.");
+    }
 
     const localDiff = await getLocalDiff(projectRoot);
     await assertCliStaticScaffoldComplete(projectRoot, localDiff.deleted);
@@ -475,7 +495,6 @@ export default defineCommand({
     }
 
     const localFiles = await collectLocalFiles(projectRoot);
-    assertPackageLockPresent(localFiles);
     const mode: SourceChangeMode =
       parsedArgs.force || !sourceRevisionId ? "replace" : "incremental";
     const sourceChanges = buildSourceChanges({

@@ -32,10 +32,16 @@ import { scaffoldStaticWorkspace } from "../services/project/static-scaffold.js"
 import { pullIntoDirectory } from "../services/project/sync.js";
 import {
   setLatestCompileAttempt,
+  updateProjectLocalMaintainerRegistry,
   updateProjectAuthoringState,
 } from "../services/project/project-state.js";
 import { toDreamboardApiError } from "../utils/errors.js";
 import { applyWorkspaceCodegen } from "../services/project/workspace-codegen.js";
+import {
+  ensureLocalMaintainerSnapshot,
+  readWorkspaceLocalMaintainerRegistry,
+} from "../services/project/local-maintainer-registry.js";
+import { installWorkspaceDependencies } from "../services/project/workspace-dependencies.js";
 
 export default defineCommand({
   meta: { name: "clone", description: "Clone an existing game by slug" },
@@ -55,6 +61,9 @@ export default defineCommand({
     const config = resolveConfig(await loadGlobalConfig(), parsedArgs);
     requireAuth(config);
     await configureClient(config);
+    const localMaintainerRegistry = await ensureLocalMaintainerSnapshot(
+      config.apiBaseUrl,
+    );
 
     const {
       data: game,
@@ -109,25 +118,31 @@ export default defineCommand({
 
       await writeManifest(targetDir, manifestResponse.manifest);
       await writeRule(targetDir, latestRuleResponse.ruleText);
-      await scaffoldStaticWorkspace(targetDir, "update");
+      await scaffoldStaticWorkspace(targetDir, "update", {
+        localMaintainerRegistry,
+      });
       await applyWorkspaceCodegen({
         projectRoot: targetDir,
         manifest: manifestResponse.manifest,
       });
+      await installWorkspaceDependencies(targetDir);
       await updateProjectState(
         targetDir,
-        updateProjectAuthoringState(
-          {
-            gameId: game.id,
-            slug: normalizedSlug,
-            apiBaseUrl: config.apiBaseUrl,
-            webBaseUrl: config.webBaseUrl,
-          },
-          {
-            ruleId,
-            manifestId,
-            manifestContentHash: manifestResponse.contentHash,
-          },
+        updateProjectLocalMaintainerRegistry(
+          updateProjectAuthoringState(
+            {
+              gameId: game.id,
+              slug: normalizedSlug,
+              apiBaseUrl: config.apiBaseUrl,
+              webBaseUrl: config.webBaseUrl,
+            },
+            {
+              ruleId,
+              manifestId,
+              manifestContentHash: manifestResponse.contentHash,
+            },
+          ),
+          localMaintainerRegistry ?? undefined,
         ),
       );
       await writeSnapshot(targetDir);
@@ -138,7 +153,26 @@ export default defineCommand({
         apiBaseUrl: config.apiBaseUrl,
         webBaseUrl: config.webBaseUrl,
       });
-      await scaffoldStaticWorkspace(targetDir, "update");
+      const fallbackRegistryUrl = localMaintainerRegistry?.registryUrl;
+      const workspaceLocalMaintainerRegistry =
+        localMaintainerRegistry ??
+        (await readWorkspaceLocalMaintainerRegistry(
+          targetDir,
+          fallbackRegistryUrl,
+        ));
+      await scaffoldStaticWorkspace(targetDir, "update", {
+        localMaintainerRegistry: workspaceLocalMaintainerRegistry,
+      });
+      if (workspaceLocalMaintainerRegistry) {
+        await installWorkspaceDependencies(targetDir);
+      }
+      await updateProjectState(
+        targetDir,
+        updateProjectLocalMaintainerRegistry(
+          pulledProjectConfig,
+          workspaceLocalMaintainerRegistry ?? undefined,
+        ),
+      );
 
       const remoteResults = await findCompiledResultsForAuthoringState({
         gameId: game.id,
@@ -148,13 +182,20 @@ export default defineCommand({
         (result: { success: boolean }) => result.success,
       );
       if (latestSuccess) {
-        await updateProjectState(
-          targetDir,
-          setLatestCompileAttempt(pulledProjectConfig, {
+        const configWithLatestCompileAttempt = setLatestCompileAttempt(
+          pulledProjectConfig,
+          {
             resultId: latestSuccess.id,
             authoringStateId: latestSuccess.authoringStateId,
             status: "successful",
-          }),
+          },
+        );
+        await updateProjectState(
+          targetDir,
+          updateProjectLocalMaintainerRegistry(
+            configWithLatestCompileAttempt,
+            workspaceLocalMaintainerRegistry ?? undefined,
+          ),
         );
       }
     }

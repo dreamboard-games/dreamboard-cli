@@ -8,8 +8,6 @@ import {
   requireAuth,
   configureClient,
 } from "../config/resolve.js";
-import { IS_PUBLISHED_BUILD } from "../build-target.js";
-import { ENVIRONMENT_CONFIGS } from "../constants.js";
 import { parseNewCommandArgs } from "../flags.js";
 import { loadGlobalConfig } from "../config/global-config.js";
 import { normalizeSlug, titleFromSlug } from "../utils/strings.js";
@@ -32,6 +30,8 @@ import { isProblemType, toDreamboardApiError } from "../utils/errors.js";
 import { CLI_PROBLEM_TYPES } from "../utils/problem-types.js";
 import { applyWorkspaceCodegen } from "../services/project/workspace-codegen.js";
 import { installWorkspaceDependencies } from "../services/project/workspace-dependencies.js";
+import { ensureLocalMaintainerSnapshot } from "../services/project/local-maintainer-registry.js";
+import { updateProjectLocalMaintainerRegistry } from "../services/project/project-state.js";
 
 export default defineCommand({
   meta: {
@@ -68,6 +68,9 @@ export default defineCommand({
     const config = resolveConfig(await loadGlobalConfig(), parsedArgs);
     requireAuth(config);
     await configureClient(config);
+    const localMaintainerRegistry = await ensureLocalMaintainerSnapshot(
+      config.apiBaseUrl,
+    );
 
     if (parsedArgs.force) {
       const existing = await tryGetGameBySlug(normalizedSlug, {
@@ -159,32 +162,32 @@ export default defineCommand({
       await writeManifest(targetDir, blankManifest);
       await writeRule(targetDir, "");
 
-      await scaffoldStaticWorkspace(targetDir, "new");
+      await scaffoldStaticWorkspace(targetDir, "new", {
+        localMaintainerRegistry,
+      });
       await applyWorkspaceCodegen({
         projectRoot: targetDir,
         manifest: blankManifest,
       });
-      const localApiBaseUrl =
-        ENVIRONMENT_CONFIGS.local?.apiBaseUrl ?? "http://localhost:8080";
-      await installWorkspaceDependencies(targetDir, {
-        localSdkPackageFallback:
-          !IS_PUBLISHED_BUILD && config.apiBaseUrl === localApiBaseUrl,
-      });
+      await installWorkspaceDependencies(targetDir);
 
       await updateProjectState(
         targetDir,
-        updateProjectAuthoringState(
-          {
-            gameId: game.id,
-            slug: normalizedSlug,
-            apiBaseUrl: config.apiBaseUrl,
-            webBaseUrl: config.webBaseUrl,
-          },
-          {
-            ruleId,
-            manifestId,
-            manifestContentHash: contentHash,
-          },
+        updateProjectLocalMaintainerRegistry(
+          updateProjectAuthoringState(
+            {
+              gameId: game.id,
+              slug: normalizedSlug,
+              apiBaseUrl: config.apiBaseUrl,
+              webBaseUrl: config.webBaseUrl,
+            },
+            {
+              ruleId,
+              manifestId,
+              manifestContentHash: contentHash,
+            },
+          ),
+          localMaintainerRegistry ?? undefined,
         ),
       );
       await writeSnapshot(targetDir);

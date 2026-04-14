@@ -1,5 +1,24 @@
 export type Environment = "local" | "dev" | "prod";
 
+export type LocalMaintainerSdkPackageName =
+  | "@dreamboard/api-client"
+  | "@dreamboard/app-sdk"
+  | "@dreamboard/sdk-types"
+  | "@dreamboard/ui-sdk";
+
+export type LocalMaintainerRegistryPackages = Record<
+  LocalMaintainerSdkPackageName,
+  string
+>;
+
+export type LocalMaintainerRegistryConfig = {
+  registryUrl: string;
+  snapshotId: string;
+  fingerprint: string;
+  publishedAt: string;
+  packages: LocalMaintainerRegistryPackages;
+};
+
 export type EnvironmentConfig = {
   apiBaseUrl: string;
   webBaseUrl: string;
@@ -60,14 +79,9 @@ export type ProjectConfig = {
   slug: string;
   authoring?: ProjectAuthoringState;
   compile?: ProjectCompileState;
+  localMaintainerRegistry?: LocalMaintainerRegistryConfig;
   apiBaseUrl?: string;
   webBaseUrl?: string;
-  ruleId?: string;
-  manifestId?: string;
-  manifestContentHash?: string;
-  resultId?: string;
-  sourceRevisionId?: string;
-  sourceTreeHash?: string;
 };
 
 export type Snapshot = {

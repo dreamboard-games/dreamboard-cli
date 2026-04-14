@@ -16,6 +16,7 @@ import type {
   PieceIdOfManifest,
   PlayerIdOfManifest,
   PlayerIdOfTable,
+  SetupSelectionInputOfManifest,
   PlayerZoneIdOfManifest,
   SetupSelectionOfManifest,
   SharedZoneIdOfManifest,
@@ -47,6 +48,7 @@ export type ManifestLiterals<
   pieceIds: readonly string[];
   dieTypeIds: readonly string[];
   dieIds: readonly string[];
+  boardTemplateIds: readonly string[];
   boardTypeIds: readonly string[];
   boardBaseIds: readonly string[];
   boardIds: readonly string[];
@@ -293,7 +295,7 @@ export function createManifestRuntimeSchema<
     setup: z
       .object({
         profileId: setupProfileIdSchema,
-        optionValues: z.record(z.string(), z.string()).default({}),
+        optionValues: z.record(z.string(), z.string().nullable()).default({}),
       })
       .nullable()
       .default(null),
@@ -394,6 +396,17 @@ export type InitContext<
   rngSeed?: number | null;
   setup: SetupSelectionOfManifest<Manifest> | null;
 };
+
+export type InitSetupSelectionInput<
+  Manifest extends ReducerManifestContract<
+    RuntimeTableRecord,
+    string,
+    string,
+    string,
+    string,
+    string
+  > = GeneratedManifestContractLike,
+> = SetupSelectionInputOfManifest<Manifest>;
 
 // --- Setup Bootstrap Types ---
 

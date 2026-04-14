@@ -115,6 +115,38 @@ export function mapUpsertBlobContentsByContentHash(
   return uploadBlobs;
 }
 
+class SourceBlobUploadError extends Error {
+  readonly status: number;
+  readonly details: string;
+
+  constructor(status: number, details: string) {
+    const suffix = details.trim().length > 0 ? `: ${details.trim()}` : "";
+    super(`Failed to upload source blob (HTTP ${status}${suffix})`);
+    this.name = "SourceBlobUploadError";
+    this.status = status;
+    this.details = details;
+  }
+}
+
+function isDuplicateDirectUploadError(
+  error: unknown,
+): error is SourceBlobUploadError {
+  if (!(error instanceof SourceBlobUploadError)) {
+    return false;
+  }
+
+  if (error.status === 409) {
+    return true;
+  }
+
+  const normalizedDetails = error.details.toLowerCase();
+  return (
+    normalizedDetails.includes("duplicate") ||
+    normalizedDetails.includes("already exists") ||
+    normalizedDetails.includes("resource already exists")
+  );
+}
+
 async function uploadSourceBlob(
   uploadTarget: SourceBlobUploadTarget,
   content: string,
@@ -130,10 +162,7 @@ async function uploadSourceBlob(
   }
 
   const details = await response.text().catch(() => "");
-  const suffix = details.trim().length > 0 ? `: ${details.trim()}` : "";
-  throw new Error(
-    `Failed to upload source blob (HTTP ${response.status}${suffix})`,
-  );
+  throw new SourceBlobUploadError(response.status, details);
 }
 
 export class SourceBlobSessionRequestError extends Error {
@@ -150,6 +179,34 @@ export class SourceBlobSessionRequestError extends Error {
     this.apiError = apiError;
     this.response = response;
   }
+}
+
+async function confirmSourceBlobAlreadyExists(options: {
+  gameId: string;
+  blob: SourceBlobUploadInput;
+}): Promise<boolean> {
+  const { gameId, blob } = options;
+  const { data, error, response } = await createSourceBlobUploadSession({
+    path: { gameId },
+    body: {
+      blobs: [
+        {
+          contentHash: blob.contentHash,
+          byteSize: blob.byteSize,
+        },
+      ],
+    },
+  });
+
+  if (error || !data) {
+    throw new SourceBlobSessionRequestError(
+      "Failed to create source blob upload session",
+      error,
+      response,
+    );
+  }
+
+  return data.uploads[0]?.status === "exists";
 }
 
 export async function uploadGameSourceBlobs(options: {
@@ -211,6 +268,16 @@ export async function uploadGameSourceBlobs(options: {
       );
     }
 
-    await uploadSourceBlob(upload.uploadTarget, blob.content);
+    try {
+      await uploadSourceBlob(upload.uploadTarget, blob.content);
+    } catch (error) {
+      if (
+        isDuplicateDirectUploadError(error) &&
+        (await confirmSourceBlobAlreadyExists({ gameId, blob }))
+      ) {
+        continue;
+      }
+      throw error;
+    }
   }
 }

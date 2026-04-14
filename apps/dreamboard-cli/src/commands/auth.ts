@@ -11,7 +11,10 @@ import {
 } from "../config/global-config.js";
 import {
   formatStoredSessionInvalidMessage,
+  getAuthTokenExpiry,
   isInvalidRefreshTokenMessage,
+  refreshResolvedAuthSession,
+  resolveConfig,
 } from "../config/resolve.js";
 import { parseAuthCommandArgs } from "../flags.js";
 import { IS_PUBLISHED_BUILD, PUBLISHED_ENVIRONMENT } from "../build-target.js";
@@ -50,7 +53,7 @@ export default defineCommand({
       type: "positional",
       description: IS_PUBLISHED_BUILD
         ? "Action: clear | login"
-        : "Action: set | clear | login | env",
+        : "Action: set | clear | login | env | status",
       required: true,
     },
     ...(IS_PUBLISHED_BUILD
@@ -230,10 +233,68 @@ export default defineCommand({
       return;
     }
 
+    if (action === "status") {
+      const resolvedConfig = resolveConfig(config, {
+        env: parsedArgs.env,
+      });
+      const environment = parsedArgs.env || config.environment || "dev";
+      const authTokenExpiry = getAuthTokenExpiry(resolvedConfig.authToken);
+
+      consola.log(`Environment: ${environment}`);
+      consola.log(`Auth token source: ${resolvedConfig.authTokenSource}`);
+      consola.log(`Refresh token source: ${resolvedConfig.refreshTokenSource}`);
+      consola.log(`Config path: ${getGlobalConfigPath()}`);
+
+      if (!resolvedConfig.authToken) {
+        consola.warn("No Dreamboard session found.");
+        return;
+      }
+
+      if (authTokenExpiry) {
+        const isExpired = authTokenExpiry.getTime() <= Date.now();
+        consola.log(
+          `Access token expires at: ${authTokenExpiry.toISOString()} (${isExpired ? "expired" : "active"})`,
+        );
+
+        if (isExpired) {
+          if (!resolvedConfig.refreshToken) {
+            consola.warn(
+              "Access token is expired and no refresh token is available. Run `dreamboard login` to authenticate again.",
+            );
+            return;
+          }
+
+          const refreshedSession =
+            await refreshResolvedAuthSession(resolvedConfig);
+
+          if (!refreshedSession?.authToken) {
+            consola.warn(
+              "Access token is expired and refresh did not return a new session.",
+            );
+            return;
+          }
+
+          const refreshedExpiry = getAuthTokenExpiry(resolvedConfig.authToken);
+          consola.success("Access token was expired and has been refreshed.");
+          if (refreshedExpiry) {
+            consola.log(
+              `Refreshed access token expires at: ${refreshedExpiry.toISOString()}`,
+            );
+          }
+          return;
+        }
+      } else {
+        consola.log("Access token expiry: unavailable");
+      }
+
+      consola.success("Dreamboard session is active.");
+      return;
+    }
+
     throw new Error(
       IS_PUBLISHED_BUILD
         ? "Usage:\n  dreamboard auth clear\n  dreamboard auth login"
-        : "Usage:\n  dreamboard auth clear\n  dreamboard auth login [--env <local|dev|prod>] [--jwt]\n  dreamboard auth set <token>\n  dreamboard auth env <local|dev|prod>",
+        : "Usage:\n  dreamboard auth clear\n  dreamboard auth login [--env <local|dev|prod>] [--jwt]\n  dreamboard auth set <token>\n  dreamboard auth env <local|dev|prod>\n  dreamboard auth status [--env <local|dev|prod>]",
     );
   },
 });

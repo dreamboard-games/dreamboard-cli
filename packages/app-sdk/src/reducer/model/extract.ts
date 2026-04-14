@@ -442,14 +442,26 @@ export type SetupProfileIdOfManifest<Manifest> = Manifest extends {
 }
   ? Extract<SetupProfileId, string>
   : string;
+export type SetupSelectionInputOfManifest<Manifest> = {
+  profileId: SetupProfileIdOfManifest<Manifest>;
+  optionValues?: Partial<Record<SetupOptionIdOfManifest<Manifest>, string>>;
+};
 export type SetupSelectionOfManifest<Manifest> = {
   profileId: SetupProfileIdOfManifest<Manifest>;
-  optionValues: Partial<Record<SetupOptionIdOfManifest<Manifest>, string>>;
+  optionValues: Record<SetupOptionIdOfManifest<Manifest>, string | null>;
 };
+export type RuntimeSetupSelectionInput<
+  Manifest extends
+    GeneratedManifestContractLike = GeneratedManifestContractLike,
+> = SetupSelectionInputOfManifest<Manifest>;
 export type RuntimeSetupSelection<
   Manifest extends
     GeneratedManifestContractLike = GeneratedManifestContractLike,
 > = SetupSelectionOfManifest<Manifest>;
+export type RuntimeSetupSelectionOverride<
+  Manifest extends
+    GeneratedManifestContractLike = GeneratedManifestContractLike,
+> = SetupSelectionInputOfManifest<Manifest>;
 export type StateDefinitionOfContract<Contract> = Contract extends {
   state: infer StateDefinitionValue;
 }

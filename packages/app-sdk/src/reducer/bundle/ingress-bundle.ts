@@ -8,7 +8,7 @@ import type {
   ReducerGameDefinition,
   ReducerReject,
   ReducerRuntimeEffectForState,
-  RuntimeSetupSelection,
+  RuntimeSetupSelectionInput,
   ViewMapOf,
 } from "../model";
 import type {
@@ -66,7 +66,7 @@ export function createIngressReducerBundle<
       table: UntrustedRuntimeTable;
       playerIds: string[];
       rngSeed?: number | null;
-      setup?: RuntimeSetupSelection<Manifest> | null;
+      setup?: RuntimeSetupSelectionInput<Manifest> | null;
     }) {
       const {
         rawTableTemplate,

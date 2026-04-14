@@ -54,7 +54,7 @@ export function createStandard52CardDeck(): ManualCardSetDefinition {
         imageUrl: `/cards/${suit.toLowerCase()}_${rank.toLowerCase()}.png`,
         text: `A playing card: ${rank} of ${suit}. Value: ${getBigTwoCardValue(rank)}, Suit value: ${getSuitValue(suit)}`,
         count: 1,
-        cardType: STANDARD_DECK_ID,
+        cardType: `${suit}_${rank}`,
         properties: {
           suit,
           rank,
@@ -86,8 +86,12 @@ export function addStandardDecksIfNeeded(
   return {
     ...manifest,
     cardSets: manifest.cardSets.map((cardSet) =>
-      cardSet.type === "preset" && cardSet.id === STANDARD_DECK_ID
-        ? createStandard52CardDeck()
+      cardSet.type === "preset" && cardSet.presetId === STANDARD_DECK_ID
+        ? {
+            ...createStandard52CardDeck(),
+            id: cardSet.id,
+            name: cardSet.name,
+          }
         : cardSet,
     ),
   };
@@ -96,8 +100,8 @@ export function addStandardDecksIfNeeded(
 export function materializePresetCardSet(
   presetCardSet: PresetCardSetDefinition,
 ): ManualCardSetDefinition {
-  if (presetCardSet.id !== STANDARD_DECK_ID) {
-    throw new Error(`Unsupported preset deck: ${presetCardSet.id}`);
+  if (presetCardSet.presetId !== STANDARD_DECK_ID) {
+    throw new Error(`Unsupported preset deck: ${presetCardSet.presetId}`);
   }
 
   const standardDeck = createStandard52CardDeck();

@@ -176,7 +176,7 @@ test("sync excludes framework-owned generated files from incremental source revi
   ]);
 });
 
-test("sync requires a lockfile when package.json is present", async () => {
+test("sync reconciles dependencies before uploading package-based workspace changes", async () => {
   const state = currentState();
   state.getLocalDiffResult = {
     modified: ["app/phases/setup.ts"],
@@ -193,40 +193,29 @@ test("sync requires a lockfile when package.json is present", async () => {
       },
     }),
   };
-
-  await expect(
-    syncCommand.run({
-      args: {
-        env: "local",
-        force: false,
-        yes: false,
-      },
-    }),
-  ).rejects.toThrow("A lockfile is required");
-
-  expect(state.calls.createSourceRevisionSdk).toHaveLength(0);
-});
-
-test("sync accepts package-lock.json when package.json is present", async () => {
-  const state = currentState();
-  state.getLocalDiffResult = {
-    modified: ["app/phases/setup.ts"],
-    added: [],
-    deleted: [],
+  state.installWorkspaceDependenciesResult = {
+    required: true,
+    installed: true,
+    lockfileGenerated: true,
+    packageManagerNormalized: true,
+    fingerprint: "deps-fingerprint-1",
   };
-  state.collectLocalFilesResult = {
+  state.installWorkspaceDependenciesNextCollectLocalFilesResult = {
     "app/phases/setup.ts": "export const updatedPhase = true;\n",
     "package.json": JSON.stringify({
       name: "test-game",
+      packageManager: "pnpm@10.4.1",
       dependencies: {
         "@dreamboard/app-sdk": "0.0.40",
         "@dreamboard/ui-sdk": "0.0.40",
       },
     }),
-    "package-lock.json": JSON.stringify({
-      lockfileVersion: 3,
-      packages: {},
-    }),
+    "pnpm-lock.yaml": "lockfileVersion: '9.0'\n",
+  };
+  state.installWorkspaceDependenciesNextLocalDiffResult = {
+    modified: ["app/phases/setup.ts", "package.json"],
+    added: ["pnpm-lock.yaml"],
+    deleted: [],
   };
 
   await syncCommand.run({
@@ -237,13 +226,73 @@ test("sync accepts package-lock.json when package.json is present", async () => 
     },
   });
 
+  expect(state.calls.installWorkspaceDependencies).toEqual([
+    "/tmp/dreamboard-project",
+  ]);
   expect(state.calls.createSourceRevisionSdk).toHaveLength(1);
+  expect(state.calls.createSourceRevisionSdk[0]?.request.changes).toEqual([
+    {
+      kind: "upsert",
+      path: "app/phases/setup.ts",
+      contentHash: expect.any(String),
+      byteSize: expect.any(Number),
+    },
+    {
+      kind: "upsert",
+      path: "package.json",
+      contentHash: expect.any(String),
+      byteSize: expect.any(Number),
+    },
+    {
+      kind: "upsert",
+      path: "pnpm-lock.yaml",
+      contentHash: expect.any(String),
+      byteSize: expect.any(Number),
+    },
+  ]);
+});
+
+test("sync aborts before upload when dependency reconciliation fails", async () => {
+  const state = currentState();
+  state.getLocalDiffResult = {
+    modified: ["package.json"],
+    added: [],
+    deleted: [],
+  };
+  state.collectLocalFilesResult = {
+    "package.json": JSON.stringify({
+      name: "test-game",
+      dependencies: {
+        "broken-package": "999.0.0",
+      },
+    }),
+  };
+  state.installWorkspaceDependenciesError = new Error(
+    "Dreamboard could not finish preparing workspace dependencies during `dreamboard sync`.",
+  );
+
+  await expect(
+    syncCommand.run({
+      args: {
+        env: "local",
+        force: false,
+        yes: false,
+      },
+    }),
+  ).rejects.toThrow(
+    "Dreamboard could not finish preparing workspace dependencies during `dreamboard sync`.",
+  );
+
+  expect(state.calls.installWorkspaceDependencies).toEqual([
+    "/tmp/dreamboard-project",
+  ]);
+  expect(state.calls.createSourceRevisionSdk).toHaveLength(0);
 });
 
 test("sync includes newly seeded phase files in the same source revision when the manifest changes", async () => {
   const state = currentState();
   state.getLocalDiffResult = {
-    modified: ["manifest.json"],
+    modified: ["manifest.ts"],
     added: [],
     deleted: [],
   };
@@ -255,7 +304,7 @@ test("sync includes newly seeded phase files in the same source revision when th
     "app/phases/harnessReview.ts": "export const phase = {}\n",
   };
   state.applyWorkspaceCodegenNextLocalDiffResult = {
-    modified: ["manifest.json"],
+    modified: ["manifest.ts"],
     added: ["app/phases/harnessReview.ts"],
     deleted: [],
   };
@@ -399,7 +448,7 @@ test("sync creates the first authored state even when a new workspace has no loc
 test("sync fails fast with a targeted manifest error when a resource uses displayName", async () => {
   const state = currentState();
   state.getLocalDiffResult = {
-    modified: ["manifest.json"],
+    modified: ["manifest.ts"],
     added: [],
     deleted: [],
   };
@@ -810,6 +859,18 @@ test("sync checkpoints authored head before scaffold writes", async () => {
 
 test("sync resumes local finalization from a pending authored checkpoint", async () => {
   const state = currentState();
+  state.projectConfig.localMaintainerRegistry = {
+    registryUrl: "http://127.0.0.1:4873",
+    snapshotId: "snapshot-1",
+    fingerprint: "fingerprint-1",
+    publishedAt: "2026-04-12T00:00:00.000Z",
+    packages: {
+      "@dreamboard/api-client": "0.1.0-local.1",
+      "@dreamboard/app-sdk": "0.0.40-local.1",
+      "@dreamboard/sdk-types": "0.1.0-local.1",
+      "@dreamboard/ui-sdk": "0.0.40-local.1",
+    },
+  };
   state.projectConfig.authoring = {
     authoringStateId: "authoring-1",
     sourceRevisionId: "source-revision-1",
@@ -852,6 +913,11 @@ test("sync resumes local finalization from a pending authored checkpoint", async
 
   expect(state.calls.createSourceRevisionSdk).toHaveLength(0);
   expect(state.calls.createAuthoringStateSdk).toHaveLength(0);
+  expect(state.calls.scaffoldStaticWorkspace.at(-1)).toEqual({
+    projectRoot: state.projectRoot,
+    mode: "update",
+    localMaintainerRegistry: state.projectConfig.localMaintainerRegistry,
+  });
   expect(state.projectConfig.authoring).toEqual({
     authoringStateId: "authoring-2",
     sourceRevisionId: "source-revision-2",
@@ -896,6 +962,7 @@ test("sync refreshes static scaffold even without authored changes", async () =>
     {
       projectRoot: "/tmp/dreamboard-project",
       mode: "update",
+      localMaintainerRegistry: null,
     },
   ]);
   expect(state.calls.createSourceRevisionSdk).toHaveLength(0);
@@ -941,6 +1008,7 @@ test("sync refreshes static scaffold before checking for missing files", async (
   expect(state.calls.scaffoldStaticWorkspace[0]).toEqual({
     projectRoot: "/tmp/dreamboard-project",
     mode: "update",
+    localMaintainerRegistry: null,
   });
   expect(state.calls.assertCliStaticScaffoldComplete).toEqual([
     {

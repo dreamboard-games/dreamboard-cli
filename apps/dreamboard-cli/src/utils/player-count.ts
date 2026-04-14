@@ -15,7 +15,7 @@ export async function resolvePlayerCount(
   const minPlayers = manifest.players?.minPlayers;
   if (typeof minPlayers !== "number" || !Number.isFinite(minPlayers)) {
     throw new Error(
-      "manifest.json is missing players.minPlayers. Provide --players <count> instead.",
+      "manifest.ts is missing players.minPlayers. Provide --players <count> instead.",
     );
   }
 

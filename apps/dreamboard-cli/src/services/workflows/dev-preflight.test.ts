@@ -4,7 +4,6 @@ import type {
   DevPreflightDependencies,
   GitRevisionInfo,
 } from "./dev-preflight.ts";
-import { runDevPreflight } from "./dev-preflight.ts";
 
 const compiledResult: CompiledResult = {
   id: "result-1",
@@ -76,8 +75,14 @@ function buildApiVersionResult(
   };
 }
 
+async function loadRunDevPreflight() {
+  const module = await import(`./dev-preflight.ts?test=${Math.random()}`);
+  return module.runDevPreflight;
+}
+
 describe("runDevPreflight", () => {
   test("blocks when local authored files have not been synced", async () => {
+    const runDevPreflight = await loadRunDevPreflight();
     const deps = createDependencies({
       getLocalDiff: async () => ({
         modified: ["ui/App.tsx"],
@@ -98,6 +103,7 @@ describe("runDevPreflight", () => {
   });
 
   test("blocks when a previous sync is still pending local finalization", async () => {
+    const runDevPreflight = await loadRunDevPreflight();
     await expect(
       runDevPreflight(
         {
@@ -121,6 +127,7 @@ describe("runDevPreflight", () => {
   });
 
   test("blocks when the remote authored head does not match local", async () => {
+    const runDevPreflight = await loadRunDevPreflight();
     await expect(
       runDevPreflight(
         {
@@ -137,6 +144,7 @@ describe("runDevPreflight", () => {
   });
 
   test("blocks when the scaffold sdk version does not match the backend", async () => {
+    const runDevPreflight = await loadRunDevPreflight();
     await expect(
       runDevPreflight(
         {
@@ -155,6 +163,7 @@ describe("runDevPreflight", () => {
   });
 
   test("blocks when the latest compiled result sdk version does not match the backend", async () => {
+    const runDevPreflight = await loadRunDevPreflight();
     await expect(
       runDevPreflight(
         {
@@ -183,6 +192,7 @@ describe("runDevPreflight", () => {
   });
 
   test("accepts a scaffold sdk range when it satisfies the backend version", async () => {
+    const runDevPreflight = await loadRunDevPreflight();
     const result = await runDevPreflight(
       {
         projectRoot: "/tmp/project",
@@ -195,7 +205,34 @@ describe("runDevPreflight", () => {
     expect(result.backendVersion.uiSdkVersion).toBe("0.0.40");
   });
 
+  test("accepts a local maintainer snapshot version when its base version matches the backend", async () => {
+    const runDevPreflight = await loadRunDevPreflight();
+    const result = await runDevPreflight(
+      {
+        projectRoot: "/tmp/project",
+        projectConfig,
+      },
+      createDependencies({
+        readTextFile: async (filePath) =>
+          filePath.endsWith("/package.json")
+            ? JSON.stringify({
+                dependencies: {
+                  "@dreamboard/ui-sdk":
+                    "0.0.40-local.20260412T153000Z.ab12cd34",
+                },
+              })
+            : "",
+      }),
+    );
+
+    expect(result.localSdkVersion).toBe(
+      "0.0.40-local.20260412T153000Z.ab12cd34",
+    );
+    expect(result.backendVersion.uiSdkVersion).toBe("0.0.40");
+  });
+
   test("blocks when backend version metadata cannot be loaded", async () => {
+    const runDevPreflight = await loadRunDevPreflight();
     await expect(
       runDevPreflight(
         {
@@ -215,6 +252,7 @@ describe("runDevPreflight", () => {
   });
 
   test("warns when backend revision differs from local HEAD", async () => {
+    const runDevPreflight = await loadRunDevPreflight();
     const result = await runDevPreflight(
       {
         projectRoot: "/tmp/project",

@@ -57,8 +57,6 @@ import type {
   ViewMapOf,
 } from "../model";
 
-type RuntimeIdReference = string | { id: string };
-
 export type RawRuntimeCardData = Partial<RuntimeCardData> & {
   componentType?: string;
   properties?: RuntimeRecord;
@@ -69,7 +67,6 @@ export type RawRuntimePieceData = Partial<RuntimePieceData> & {
 };
 export type RawRuntimeDieData = Partial<RuntimeDieData> & {
   componentType?: string;
-  currentValue?: number | null;
   properties?: RuntimeRecord;
 };
 export type RawRuntimeHexSpaceState = Partial<RuntimeHexSpaceState> & {
@@ -129,10 +126,8 @@ type RawRuntimeTopologyPayload = Partial<{
 export type RawRuntimeTable = Partial<{
   playerOrder: readonly string[] | Set<string>;
   zones: RuntimeZoneMap | Record<string, unknown>;
-  decks: readonly RuntimeIdReference[] | Record<string, string[]>;
-  hands:
-    | readonly RuntimeIdReference[]
-    | Record<string, Record<string, string[]>>;
+  decks: Record<string, string[]>;
+  hands: Record<string, Record<string, string[]>>;
   publicHands: readonly string[] | Set<string>;
   handVisibility: Record<string, RuntimeHandVisibilityMode>;
   cards: Record<string, RawRuntimeCardData>;
@@ -143,13 +138,10 @@ export type RawRuntimeTable = Partial<{
   >;
   ownerOfCard: Record<string, string | null>;
   visibility: Record<string, Partial<RuntimeCardVisibility>>;
-  playerResources: RuntimeResourceMap;
   resources: RuntimeResourceMap;
   boards: Partial<RuntimeBoardCollections> & {
     byId?: Record<string, RawRuntimeBoardState>;
   };
-  hexBoards: Record<string, object>;
-  squareBoards: Record<string, object>;
   dice: Record<string, RawRuntimeDieData>;
   kvStore: Record<string, unknown>;
 }>;
@@ -368,20 +360,6 @@ function toStringArray(
   return [];
 }
 
-function toIdList(value: readonly RuntimeIdReference[] | undefined): string[] {
-  if (!value) {
-    return [];
-  }
-  return value
-    .map((entry) => {
-      if (typeof entry === "string") {
-        return entry;
-      }
-      return typeof entry.id === "string" ? entry.id : undefined;
-    })
-    .filter((entry): entry is string => typeof entry === "string");
-}
-
 function toStringList(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
@@ -577,193 +555,6 @@ function normalizeLocation(
   return { type: "Detached" };
 }
 
-function componentsForSharedZone(
-  componentLocations: RuntimeComponentLocationMap,
-  zoneId: string,
-): string[] {
-  const locationPosition = (location: RuntimeComponentLocation): number =>
-    "position" in location && typeof location.position === "number"
-      ? location.position
-      : Number.MAX_SAFE_INTEGER;
-
-  return Object.entries(componentLocations)
-    .filter(
-      ([, location]) =>
-        (location.type === "InDeck" && location.deckId === zoneId) ||
-        (location.type === "InZone" && location.zoneId === zoneId),
-    )
-    .sort((left, right) => {
-      return locationPosition(left[1]) - locationPosition(right[1]);
-    })
-    .map(([cardId]) => cardId);
-}
-
-function componentsForHand(
-  componentLocations: RuntimeComponentLocationMap,
-  handId: string,
-  playerId: string,
-): string[] {
-  const locationPosition = (location: RuntimeComponentLocation): number =>
-    "position" in location && typeof location.position === "number"
-      ? location.position
-      : Number.MAX_SAFE_INTEGER;
-
-  return Object.entries(componentLocations)
-    .filter(
-      ([, location]) =>
-        location.type === "InHand" &&
-        location.handId === handId &&
-        location.playerId === playerId,
-    )
-    .sort((left, right) => {
-      return locationPosition(left[1]) - locationPosition(right[1]);
-    })
-    .map(([cardId]) => cardId);
-}
-
-function collectRawZoneComponentIds(candidate: RawRuntimeTable): string[] {
-  const componentIds = new Set<string>();
-
-  if (isRecord(candidate.decks)) {
-    for (const deck of Object.values(candidate.decks)) {
-      for (const componentId of toStringList(deck)) {
-        componentIds.add(componentId);
-      }
-    }
-  }
-
-  if (isRecord(candidate.hands)) {
-    for (const hand of Object.values(candidate.hands)) {
-      if (!isRecord(hand)) {
-        continue;
-      }
-      for (const cards of Object.values(hand)) {
-        for (const componentId of toStringList(cards)) {
-          componentIds.add(componentId);
-        }
-      }
-    }
-  }
-
-  if (isRecord(candidate.zones)) {
-    if (isRecord(candidate.zones.shared)) {
-      for (const components of Object.values(candidate.zones.shared)) {
-        for (const componentId of toStringList(components)) {
-          componentIds.add(componentId);
-        }
-      }
-    }
-    if (isRecord(candidate.zones.perPlayer)) {
-      for (const hand of Object.values(candidate.zones.perPlayer)) {
-        if (!isRecord(hand)) {
-          continue;
-        }
-        for (const components of Object.values(hand)) {
-          for (const componentId of toStringList(components)) {
-            componentIds.add(componentId);
-          }
-        }
-      }
-    }
-  }
-
-  return [...componentIds];
-}
-
-function deriveRawComponentLocations(
-  candidate: RawRuntimeTable,
-  deckIds: readonly string[],
-  handIds: readonly string[],
-  playerIds: readonly string[],
-): Record<string, RawRuntimeLocation | RuntimeComponentLocation> {
-  const derivedLocations: Record<
-    string,
-    RawRuntimeLocation | RuntimeComponentLocation
-  > = isRecord(candidate.componentLocations)
-    ? {
-        ...(candidate.componentLocations as Record<
-          string,
-          RawRuntimeLocation | RuntimeComponentLocation
-        >),
-      }
-    : {};
-
-  for (const deckId of deckIds) {
-    const deckComponents =
-      isRecord(candidate.decks) && Array.isArray(candidate.decks[deckId])
-        ? toStringList(candidate.decks[deckId])
-        : [];
-    for (const [position, componentId] of deckComponents.entries()) {
-      if (derivedLocations[componentId] == null) {
-        derivedLocations[componentId] = {
-          type: "InDeck",
-          deckId,
-          playedBy: null,
-          position,
-        };
-      }
-    }
-
-    const zoneComponents =
-      isRecord(candidate.zones) &&
-      isRecord(candidate.zones.shared) &&
-      Array.isArray(candidate.zones.shared[deckId])
-        ? toStringList(candidate.zones.shared[deckId])
-        : [];
-    for (const [position, componentId] of zoneComponents.entries()) {
-      if (derivedLocations[componentId] == null) {
-        derivedLocations[componentId] = {
-          type: "InZone",
-          zoneId: deckId,
-          playedBy: null,
-          position,
-        };
-      }
-    }
-  }
-
-  for (const handId of handIds) {
-    for (const playerId of playerIds) {
-      const handComponents =
-        isRecord(candidate.hands) &&
-        isRecord(candidate.hands[handId]) &&
-        Array.isArray(candidate.hands[handId]?.[playerId])
-          ? toStringList(candidate.hands[handId]?.[playerId])
-          : [];
-      for (const [position, componentId] of handComponents.entries()) {
-        if (derivedLocations[componentId] == null) {
-          derivedLocations[componentId] = {
-            type: "InHand",
-            handId,
-            playerId,
-            position,
-          };
-        }
-      }
-
-      const zoneComponents =
-        isRecord(candidate.zones) &&
-        isRecord(candidate.zones.perPlayer) &&
-        isRecord(candidate.zones.perPlayer[handId]) &&
-        Array.isArray(candidate.zones.perPlayer[handId]?.[playerId])
-          ? toStringList(candidate.zones.perPlayer[handId]?.[playerId])
-          : [];
-      for (const [position, componentId] of zoneComponents.entries()) {
-        if (derivedLocations[componentId] == null) {
-          derivedLocations[componentId] = {
-            type: "InHand",
-            handId,
-            playerId,
-            position,
-          };
-        }
-      }
-    }
-  }
-
-  return derivedLocations;
-}
-
 function normalizePieceMap(
   candidate: RawRuntimeTable,
   topologyPayload: RawRuntimeTopologyPayload,
@@ -817,12 +608,7 @@ function normalizeDiceMap(
             typeof die.sides === "number" && Number.isFinite(die.sides)
               ? die.sides
               : 6,
-          value:
-            typeof die.value === "number"
-              ? die.value
-              : typeof die.currentValue === "number"
-                ? die.currentValue
-                : null,
+          value: typeof die.value === "number" ? die.value : null,
           properties: asRuntimeRecord(die.properties),
         },
       ];
@@ -830,53 +616,9 @@ function normalizeDiceMap(
   );
 }
 
-const HEX_NEIGHBOR_OFFSETS = [
-  [1, 0],
-  [1, -1],
-  [0, -1],
-  [-1, 0],
-  [-1, 1],
-  [0, 1],
-] as const;
-const SQUARE_ORTHOGONAL_OFFSETS = [
-  [-1, 0],
-  [0, 1],
-  [1, 0],
-  [0, -1],
-] as const;
-const SQUARE_CORNERS = ["nw", "ne", "se", "sw"] as const;
-const SQUARE_SIDES = ["north", "east", "south", "west"] as const;
-
 function dedupeSorted(values: Iterable<string>): string[] {
   return Array.from(new Set(values)).sort((left, right) =>
     left.localeCompare(right),
-  );
-}
-
-function relationIdentityKey(
-  relation: RuntimeBoardCompatibilityState["relations"][number],
-): string {
-  return relation.id != null
-    ? `id:${relation.id}`
-    : `${relation.typeId}:${relation.directed ? "1" : "0"}:${relation.fromSpaceId}:${relation.toSpaceId}`;
-}
-
-function mergeRelations(
-  primary: RuntimeBoardCompatibilityState["relations"],
-  secondary: RuntimeBoardCompatibilityState["relations"],
-): RuntimeBoardCompatibilityState["relations"] {
-  const relationMap = new Map<
-    string,
-    RuntimeBoardCompatibilityState["relations"][number]
-  >();
-  for (const relation of primary) {
-    relationMap.set(relationIdentityKey(relation), relation);
-  }
-  for (const relation of secondary) {
-    relationMap.set(relationIdentityKey(relation), relation);
-  }
-  return Array.from(relationMap.values()).sort((left, right) =>
-    relationIdentityKey(left).localeCompare(relationIdentityKey(right)),
   );
 }
 
@@ -971,56 +713,6 @@ function normalizeBoardCompatibilityState(
   };
 }
 
-function createHexEdgeId(space1: string, space2: string): string {
-  const [left, right] = [space1, space2].sort((a, b) => a.localeCompare(b));
-  return `${left}$$${right}`;
-}
-
-function createHexVertexId(spaceIds: readonly string[]): string {
-  return [...spaceIds].sort((a, b) => a.localeCompare(b)).join("$$");
-}
-
-function createSquareEdgeId(geometryKey: string): string {
-  return `square-edge:${geometryKey}`;
-}
-
-function createSquareVertexId(geometryKey: string): string {
-  return `square-vertex:${geometryKey}`;
-}
-
-function squareCornerGeometryKey(
-  row: number,
-  col: number,
-  corner: (typeof SQUARE_CORNERS)[number],
-): string {
-  switch (corner) {
-    case "nw":
-      return `${col},${row}`;
-    case "ne":
-      return `${col + 1},${row}`;
-    case "se":
-      return `${col + 1},${row + 1}`;
-    case "sw":
-      return `${col},${row + 1}`;
-  }
-}
-
-function squareEdgeGeometryKey(
-  row: number,
-  col: number,
-  side: (typeof SQUARE_SIDES)[number],
-): string {
-  const endpoints =
-    side === "north"
-      ? [`${col},${row}`, `${col + 1},${row}`]
-      : side === "east"
-        ? [`${col + 1},${row}`, `${col + 1},${row + 1}`]
-        : side === "south"
-          ? [`${col},${row + 1}`, `${col + 1},${row + 1}`]
-          : [`${col},${row}`, `${col},${row + 1}`];
-  return endpoints.sort((left, right) => left.localeCompare(right)).join("::");
-}
-
 function normalizeHexSpaceMap(
   rawSpaces: RawRuntimeBoardState["spaces"],
 ): Record<string, RuntimeHexSpaceState> {
@@ -1098,16 +790,22 @@ function normalizeSquareSpaceMap(
 function parseTiledEdgeState(
   rawKey: string,
   rawEdge: unknown,
-  fallbackId: (spaceIds: readonly string[]) => string,
 ): RuntimeHexEdgeState | null {
   const edge = isRecord(rawEdge) ? rawEdge : {};
+  const edgeId =
+    typeof edge.id === "string"
+      ? edge.id
+      : /^\d+$/.test(rawKey)
+        ? null
+        : rawKey;
+  if (!edgeId) {
+    return null;
+  }
   const rawSpaceIds = Array.isArray(edge.spaceIds)
     ? edge.spaceIds.filter(
         (candidate): candidate is string => typeof candidate === "string",
       )
-    : (typeof edge.id === "string" ? edge.id : rawKey)
-        .split("$$")
-        .filter(Boolean);
+    : edgeId.split("$$").filter(Boolean);
   const spaceIds =
     rawSpaceIds.length === 1
       ? rawSpaceIds
@@ -1118,7 +816,7 @@ function parseTiledEdgeState(
     return null;
   }
   return {
-    id: typeof edge.id === "string" ? edge.id : fallbackId(spaceIds),
+    id: edgeId,
     spaceIds,
     typeId: typeof edge.typeId === "string" ? edge.typeId : null,
     label: typeof edge.label === "string" ? edge.label : null,
@@ -1131,20 +829,28 @@ function parseTiledVertexState(
   rawKey: string,
   rawVertex: unknown,
   maxSpaces: number,
-  fallbackId: (spaceIds: readonly string[]) => string,
 ): RuntimeHexVertexState | null {
   const vertex = isRecord(rawVertex) ? rawVertex : {};
+  const vertexId =
+    typeof vertex.id === "string"
+      ? vertex.id
+      : /^\d+$/.test(rawKey)
+        ? null
+        : rawKey;
+  if (!vertexId) {
+    return null;
+  }
   const rawSpaceIds = Array.isArray(vertex.spaceIds)
     ? vertex.spaceIds.filter(
         (candidate): candidate is string => typeof candidate === "string",
       )
-    : (typeof vertex.id === "string" ? vertex.id : rawKey).split("$$");
+    : vertexId.split("$$");
   if (rawSpaceIds.length < 1 || rawSpaceIds.length > maxSpaces) {
     return null;
   }
   const spaceIds = dedupeSorted(rawSpaceIds);
   return {
-    id: typeof vertex.id === "string" ? vertex.id : fallbackId(spaceIds),
+    id: vertexId,
     spaceIds,
     typeId: typeof vertex.typeId === "string" ? vertex.typeId : null,
     label: typeof vertex.label === "string" ? vertex.label : null,
@@ -1153,193 +859,43 @@ function parseTiledVertexState(
   };
 }
 
-function deriveHexEdges(
-  spaces: Record<string, RuntimeHexSpaceState>,
-): RuntimeHexEdgeState[] {
-  const spacesByCoordinate = new Map<string, RuntimeHexSpaceState>(
-    Object.values(spaces).map((space) => [`${space.q},${space.r}`, space]),
-  );
-  const edges = new Map<string, RuntimeHexEdgeState>();
-
-  for (const space of Object.values(spaces)) {
-    for (const [dq, dr] of HEX_NEIGHBOR_OFFSETS) {
-      const neighbor = spacesByCoordinate.get(
-        `${space.q + dq},${space.r + dr}`,
-      );
-      if (!neighbor) {
-        continue;
-      }
-      const spaceIds = [space.id, neighbor.id].sort((a, b) =>
-        a.localeCompare(b),
-      ) as [string, string];
-      const id = createHexEdgeId(spaceIds[0], spaceIds[1]);
-      if (!edges.has(id)) {
-        edges.set(id, {
-          id,
-          spaceIds,
-          typeId: null,
-          label: null,
-          ownerId: null,
-          fields: {},
-        });
-      }
-    }
-  }
-
-  return Array.from(edges.values()).sort((left, right) =>
-    left.id.localeCompare(right.id),
-  );
-}
-
-function deriveHexVertices(
-  spaces: Record<string, RuntimeHexSpaceState>,
-): RuntimeHexVertexState[] {
-  const spacesByCoordinate = new Map<string, RuntimeHexSpaceState>(
-    Object.values(spaces).map((space) => [`${space.q},${space.r}`, space]),
-  );
-  const vertices = new Map<string, RuntimeHexVertexState>();
-
-  for (const space of Object.values(spaces)) {
-    for (let index = 0; index < HEX_NEIGHBOR_OFFSETS.length; index += 1) {
-      const [leftQ, leftR] = HEX_NEIGHBOR_OFFSETS[index]!;
-      const [rightQ, rightR] =
-        HEX_NEIGHBOR_OFFSETS[(index + 1) % HEX_NEIGHBOR_OFFSETS.length]!;
-      const leftNeighbor = spacesByCoordinate.get(
-        `${space.q + leftQ},${space.r + leftR}`,
-      );
-      const rightNeighbor = spacesByCoordinate.get(
-        `${space.q + rightQ},${space.r + rightR}`,
-      );
-      if (!leftNeighbor || !rightNeighbor) {
-        continue;
-      }
-      const spaceIds = [space.id, leftNeighbor.id, rightNeighbor.id].sort(
-        (a, b) => a.localeCompare(b),
-      ) as [string, string, string];
-      const id = createHexVertexId(spaceIds);
-      if (!vertices.has(id)) {
-        vertices.set(id, {
-          id,
-          spaceIds,
-          typeId: null,
-          label: null,
-          fields: {},
-        });
-      }
-    }
-  }
-
-  return Array.from(vertices.values()).sort((left, right) =>
-    left.id.localeCompare(right.id),
-  );
-}
-
-function deriveSquareEdges(
-  spaces: Record<string, RuntimeSquareSpaceState>,
-): RuntimeHexEdgeState[] {
-  const edges = new Map<string, RuntimeHexEdgeState>();
-
-  for (const space of Object.values(spaces)) {
-    for (const side of SQUARE_SIDES) {
-      const geometryKey = squareEdgeGeometryKey(space.row, space.col, side);
-      const existing = edges.get(geometryKey);
-      const spaceIds = dedupeSorted([...(existing?.spaceIds ?? []), space.id]);
-      edges.set(geometryKey, {
-        id: existing?.id ?? createSquareEdgeId(geometryKey),
-        spaceIds,
-        typeId: existing?.typeId ?? null,
-        label: existing?.label ?? null,
-        ownerId: existing?.ownerId ?? null,
-        fields: existing?.fields ?? {},
-      });
-    }
-  }
-
-  return Array.from(edges.values()).sort((left, right) =>
-    left.id.localeCompare(right.id),
-  );
-}
-
-function deriveSquareVertices(
-  spaces: Record<string, RuntimeSquareSpaceState>,
-): RuntimeHexVertexState[] {
-  const vertices = new Map<string, RuntimeHexVertexState>();
-
-  for (const space of Object.values(spaces)) {
-    for (const corner of SQUARE_CORNERS) {
-      const geometryKey = squareCornerGeometryKey(space.row, space.col, corner);
-      const existing = vertices.get(geometryKey);
-      const spaceIds = dedupeSorted([...(existing?.spaceIds ?? []), space.id]);
-      vertices.set(geometryKey, {
-        id: existing?.id ?? createSquareVertexId(geometryKey),
-        spaceIds,
-        typeId: existing?.typeId ?? null,
-        label: existing?.label ?? null,
-        ownerId: existing?.ownerId ?? null,
-        fields: existing?.fields ?? {},
-      });
-    }
-  }
-
-  return Array.from(vertices.values()).sort((left, right) =>
-    left.id.localeCompare(right.id),
-  );
-}
-
-function deriveHexRelations(
-  edges: RuntimeHexEdgeState[],
-): RuntimeBoardCompatibilityState["relations"] {
-  return edges
-    .filter((edge) => edge.spaceIds.length === 2)
-    .map((edge) => ({
-      id: edge.id,
-      typeId: "adjacent",
-      fromSpaceId: edge.spaceIds[0]!,
-      toSpaceId: edge.spaceIds[1]!,
-      directed: false,
-      fields: {},
-    }));
-}
-
-function deriveSquareRelations(
-  edges: RuntimeHexEdgeState[],
-): RuntimeBoardCompatibilityState["relations"] {
-  return edges
-    .filter((edge) => edge.spaceIds.length === 2)
-    .map((edge) => ({
-      id: edge.id,
-      typeId: "adjacent",
-      fromSpaceId: edge.spaceIds[0]!,
-      toSpaceId: edge.spaceIds[1]!,
-      directed: false,
-      fields: {},
-    }));
-}
-
 function normalizeHexBoardState(
   boardId: string,
   rawBoard: RawRuntimeBoardState | undefined,
 ): RuntimeHexBoardState {
   const board = rawBoard ?? {};
+  if (!isRecord(board.spaces)) {
+    throw new Error(
+      `Board '${boardId}' with layout 'hex' requires explicit spaces in the runtime table.`,
+    );
+  }
+  if (!Array.isArray(board.relations)) {
+    throw new Error(
+      `Board '${boardId}' with layout 'hex' requires explicit relations in the runtime table.`,
+    );
+  }
+  if (!Array.isArray(board.edges) && !isRecord(board.edges)) {
+    throw new Error(
+      `Board '${boardId}' with layout 'hex' requires explicit edges in the runtime table.`,
+    );
+  }
+  if (!Array.isArray(board.vertices) && !isRecord(board.vertices)) {
+    throw new Error(
+      `Board '${boardId}' with layout 'hex' requires explicit vertices in the runtime table.`,
+    );
+  }
   const base = normalizeBoardBaseState(boardId, board);
   const spaces = normalizeHexSpaceMap(board.spaces);
   const compatibility = normalizeBoardCompatibilityState({
     ...board,
     spaces: undefined,
   });
-  const derivedEdges = deriveHexEdges(spaces);
-  const edgeMap = new Map(derivedEdges.map((edge) => [edge.id, edge] as const));
   const rawEdges = Array.isArray(board.edges)
     ? board.edges.map((edge, index) => [String(index), edge] as const)
-    : isRecord(board.edges)
-      ? Object.entries(board.edges)
-      : [];
+    : Object.entries(board.edges);
+  const edgeMap = new Map<string, RuntimeHexEdgeState>();
   for (const [edgeKey, rawEdge] of rawEdges) {
-    const parsedEdge = parseTiledEdgeState(edgeKey, rawEdge, (spaceIds) =>
-      spaceIds.length === 2
-        ? createHexEdgeId(spaceIds[0]!, spaceIds[1]!)
-        : spaceIds[0]!,
-    );
+    const parsedEdge = parseTiledEdgeState(edgeKey, rawEdge);
     if (parsedEdge) {
       edgeMap.set(parsedEdge.id, parsedEdge);
     }
@@ -1348,22 +904,12 @@ function normalizeHexBoardState(
     left.id.localeCompare(right.id),
   );
 
-  const derivedVertices = deriveHexVertices(spaces);
-  const vertexMap = new Map(
-    derivedVertices.map((vertex) => [vertex.id, vertex] as const),
-  );
   const rawVertices = Array.isArray(board.vertices)
     ? board.vertices.map((vertex, index) => [String(index), vertex] as const)
-    : isRecord(board.vertices)
-      ? Object.entries(board.vertices)
-      : [];
+    : Object.entries(board.vertices);
+  const vertexMap = new Map<string, RuntimeHexVertexState>();
   for (const [vertexKey, rawVertex] of rawVertices) {
-    const parsedVertex = parseTiledVertexState(
-      vertexKey,
-      rawVertex,
-      3,
-      createHexVertexId,
-    );
+    const parsedVertex = parseTiledVertexState(vertexKey, rawVertex, 3);
     if (parsedVertex) {
       vertexMap.set(parsedVertex.id, parsedVertex);
     }
@@ -1377,10 +923,7 @@ function normalizeHexBoardState(
     layout: "hex",
     orientation: board.orientation === "flat-top" ? "flat-top" : "pointy-top",
     spaces,
-    relations: mergeRelations(
-      deriveHexRelations(edges),
-      compatibility.relations,
-    ),
+    relations: compatibility.relations,
     containers: compatibility.containers,
     edges,
     vertices,
@@ -1392,25 +935,38 @@ function normalizeSquareBoardState(
   rawBoard: RawRuntimeBoardState | undefined,
 ): RuntimeSquareBoardState {
   const board = rawBoard ?? {};
+  if (!isRecord(board.spaces)) {
+    throw new Error(
+      `Board '${boardId}' with layout 'square' requires explicit spaces in the runtime table.`,
+    );
+  }
+  if (!Array.isArray(board.relations)) {
+    throw new Error(
+      `Board '${boardId}' with layout 'square' requires explicit relations in the runtime table.`,
+    );
+  }
+  if (!Array.isArray(board.edges) && !isRecord(board.edges)) {
+    throw new Error(
+      `Board '${boardId}' with layout 'square' requires explicit edges in the runtime table.`,
+    );
+  }
+  if (!Array.isArray(board.vertices) && !isRecord(board.vertices)) {
+    throw new Error(
+      `Board '${boardId}' with layout 'square' requires explicit vertices in the runtime table.`,
+    );
+  }
   const base = normalizeBoardBaseState(boardId, board);
   const spaces = normalizeSquareSpaceMap(board.spaces);
   const compatibility = normalizeBoardCompatibilityState({
     ...board,
     spaces: undefined,
   });
-  const derivedEdges = deriveSquareEdges(spaces);
-  const edgeMap = new Map(derivedEdges.map((edge) => [edge.id, edge] as const));
   const rawEdges = Array.isArray(board.edges)
     ? board.edges.map((edge, index) => [String(index), edge] as const)
-    : isRecord(board.edges)
-      ? Object.entries(board.edges)
-      : [];
+    : Object.entries(board.edges);
+  const edgeMap = new Map<string, RuntimeHexEdgeState>();
   for (const [edgeKey, rawEdge] of rawEdges) {
-    const parsedEdge = parseTiledEdgeState(
-      edgeKey,
-      rawEdge,
-      (spaceIds) => `square-edge:${spaceIds.join("$$")}`,
-    );
+    const parsedEdge = parseTiledEdgeState(edgeKey, rawEdge);
     if (parsedEdge) {
       edgeMap.set(parsedEdge.id, parsedEdge);
     }
@@ -1419,22 +975,12 @@ function normalizeSquareBoardState(
     left.id.localeCompare(right.id),
   );
 
-  const derivedVertices = deriveSquareVertices(spaces);
-  const vertexMap = new Map(
-    derivedVertices.map((vertex) => [vertex.id, vertex] as const),
-  );
   const rawVertices = Array.isArray(board.vertices)
     ? board.vertices.map((vertex, index) => [String(index), vertex] as const)
-    : isRecord(board.vertices)
-      ? Object.entries(board.vertices)
-      : [];
+    : Object.entries(board.vertices);
+  const vertexMap = new Map<string, RuntimeHexVertexState>();
   for (const [vertexKey, rawVertex] of rawVertices) {
-    const parsedVertex = parseTiledVertexState(
-      vertexKey,
-      rawVertex,
-      4,
-      (spaceIds) => `square-vertex:${spaceIds.join("$$")}`,
-    );
+    const parsedVertex = parseTiledVertexState(vertexKey, rawVertex, 4);
     if (parsedVertex) {
       vertexMap.set(parsedVertex.id, parsedVertex);
     }
@@ -1447,10 +993,7 @@ function normalizeSquareBoardState(
     ...base,
     layout: "square",
     spaces,
-    relations: mergeRelations(
-      deriveSquareRelations(edges),
-      compatibility.relations,
-    ),
+    relations: compatibility.relations,
     containers: compatibility.containers,
     edges,
     vertices,
@@ -1498,7 +1041,6 @@ function normalizeBoards(
     (isRecord(topologyPayload.boards?.hex)
       ? topologyPayload.boards?.hex
       : undefined) ??
-    candidate.hexBoards ??
     {};
   const hex = {
     ...Object.fromEntries(
@@ -1520,7 +1062,6 @@ function normalizeBoards(
     (isRecord(topologyPayload.boards?.square)
       ? topologyPayload.boards?.square
       : undefined) ??
-    candidate.squareBoards ??
     {};
   const square = {
     ...Object.fromEntries(
@@ -1631,15 +1172,11 @@ function normalizeTableShape<
   const deckIds =
     manifestShape.deckIds && manifestShape.deckIds.length > 0
       ? [...manifestShape.deckIds]
-      : Array.isArray(candidate.decks)
-        ? toIdList(candidate.decks)
-        : Object.keys(candidate.decks ?? {});
+      : Object.keys(isRecord(candidate.decks) ? candidate.decks : {});
   const handIds =
     manifestShape.handIds && manifestShape.handIds.length > 0
       ? [...manifestShape.handIds]
-      : Array.isArray(candidate.hands)
-        ? toIdList(candidate.hands)
-        : Object.keys(candidate.hands ?? {});
+      : Object.keys(isRecord(candidate.hands) ? candidate.hands : {});
   const cardIds =
     manifestShape.cardIds && manifestShape.cardIds.length > 0
       ? [...manifestShape.cardIds]
@@ -1649,18 +1186,17 @@ function normalizeTableShape<
   const dice = normalizeDiceMap(candidate, topologyPayload);
   const boards = normalizeBoards(candidate, topologyPayload);
   const boardZoneLookups = buildBoardZoneLookups(boards);
-  const rawComponentLocations = deriveRawComponentLocations(
-    candidate,
-    deckIds,
-    handIds,
-    resolvedPlayerIds,
-  );
+  const rawComponentLocations = isRecord(candidate.componentLocations)
+    ? (candidate.componentLocations as Record<
+        string,
+        RawRuntimeLocation | RuntimeComponentLocation
+      >)
+    : {};
   const componentIds = Array.from(
     new Set([
       ...cardIds,
       ...Object.keys(pieces),
       ...Object.keys(dice),
-      ...collectRawZoneComponentIds(candidate),
       ...Object.keys(rawComponentLocations),
     ]),
   );
@@ -1687,11 +1223,7 @@ function normalizeTableShape<
       ];
     }),
   ) as Record<string, RuntimeCardData>;
-  const rawResources = isRecord(candidate.playerResources)
-    ? candidate.playerResources
-    : isRecord(candidate.resources)
-      ? candidate.resources
-      : {};
+  const rawResources = isRecord(candidate.resources) ? candidate.resources : {};
   const zones: RuntimeZoneMap = {
     shared: Object.fromEntries(
       deckIds.map((deckId) => [
@@ -1700,7 +1232,7 @@ function normalizeTableShape<
         isRecord(candidate.zones.shared) &&
         Array.isArray(candidate.zones.shared[deckId])
           ? toStringList(candidate.zones.shared[deckId])
-          : componentsForSharedZone(componentLocations, deckId),
+          : (manifestShape.defaultZones?.shared?.[deckId] ?? []),
       ]),
     ),
     perPlayer: Object.fromEntries(
@@ -1714,9 +1246,7 @@ function normalizeTableShape<
             isRecord(candidate.zones.perPlayer[handId]) &&
             Array.isArray(candidate.zones.perPlayer[handId]?.[playerId])
               ? toStringList(candidate.zones.perPlayer[handId]?.[playerId])
-              : (componentsForHand(componentLocations, handId, playerId) ??
-                manifestShape.defaultHands?.[handId]?.[playerId] ??
-                []),
+              : (manifestShape.defaultHands?.[handId]?.[playerId] ?? []),
           ]),
         ),
       ]),
@@ -1752,7 +1282,9 @@ function normalizeTableShape<
     decks: Object.fromEntries(
       deckIds.map((deckId) => [
         deckId,
-        componentsForSharedZone(componentLocations, deckId),
+        isRecord(candidate.decks) && Array.isArray(candidate.decks[deckId])
+          ? toStringList(candidate.decks[deckId])
+          : (zones.shared[deckId] ?? []),
       ]),
     ),
     hands: Object.fromEntries(
@@ -1761,9 +1293,13 @@ function normalizeTableShape<
         Object.fromEntries(
           resolvedPlayerIds.map((playerId) => [
             playerId,
-            componentsForHand(componentLocations, handId, playerId) ??
-              manifestShape.defaultHands?.[handId]?.[playerId] ??
-              [],
+            isRecord(candidate.hands) &&
+            isRecord(candidate.hands[handId]) &&
+            Array.isArray(candidate.hands[handId]?.[playerId])
+              ? toStringList(candidate.hands[handId]?.[playerId])
+              : (zones.perPlayer[handId]?.[playerId] ??
+                manifestShape.defaultHands?.[handId]?.[playerId] ??
+                []),
           ]),
         ),
       ]),
@@ -2059,7 +1595,7 @@ export function createIngressRuntimeCodec<
     setup: z
       .object({
         profileId: z.string(),
-        optionValues: z.record(z.string(), z.string()).default({}),
+        optionValues: z.record(z.string(), z.string().nullable()).default({}),
       })
       .nullable()
       .default(null),

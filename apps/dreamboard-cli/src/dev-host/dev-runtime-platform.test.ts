@@ -1,4 +1,7 @@
+import os from "node:os";
 import path from "node:path";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 import { describe, expect, test } from "bun:test";
 
 import { createDevRuntimePlatform } from "./dev-runtime-platform.js";
@@ -41,47 +44,20 @@ describe("createDevRuntimePlatform", () => {
       platform.repoRoot,
     ]);
     expect(platform.resolveDedupe).toEqual(["react", "react-dom"]);
-    expect(findAliasReplacement(platform, "^react$")).toBe(
-      path.resolve(platform.cliRoot, "node_modules/react/index.js"),
+    expect(findAliasReplacement(platform, "^react$")).toMatch(
+      /react\/index\.js$/,
     );
-    expect(findAliasReplacement(platform, "^react-dom$")).toBe(
-      path.resolve(platform.cliRoot, "node_modules/react-dom/index.js"),
-    );
-    expect(findAliasReplacement(platform, "^@dreamboard\\/ui-sdk$")).toBe(
-      path.resolve(platform.repoRoot, "packages/ui-sdk/src/index.ts"),
+    expect(findAliasReplacement(platform, "^react-dom$")).toMatch(
+      /react-dom\/index\.js$/,
     );
     expect(
-      findAliasReplacement(
-        platform,
-        "^@dreamboard\\/ui-sdk\\/internal\\/runtime-context$",
-      ),
-    ).toBe(
-      path.resolve(
-        platform.repoRoot,
-        "packages/ui-sdk/src/context/RuntimeContext.tsx",
-      ),
+      findAliasReplacement(platform, "^@dreamboard\\/manifest-contract$"),
+    ).toBe(path.resolve(projectRoot, "shared/manifest-contract.ts"));
+    expect(findAliasReplacement(platform, "^@dreamboard\\/ui-contract$")).toBe(
+      path.resolve(projectRoot, "shared/generated/ui-contract.ts"),
     );
-    expect(
-      findAliasReplacement(
-        platform,
-        "^@dreamboard\\/ui-sdk\\/internal\\/usePluginRuntime$",
-      ),
-    ).toBe(
-      path.resolve(
-        platform.repoRoot,
-        "packages/ui-sdk/src/hooks/usePluginRuntime.ts",
-      ),
-    );
-    expect(
-      findAliasReplacement(
-        platform,
-        "^@dreamboard\\/ui-sdk\\/internal\\/player-state$",
-      ),
-    ).toBe(
-      path.resolve(
-        platform.repoRoot,
-        "packages/ui-sdk/src/types/player-state.ts",
-      ),
+    expect(findAliasReplacement(platform, "^@shared\\/(.*)$")).toBe(
+      path.resolve(projectRoot, "shared/$1"),
     );
     expect(findAliasReplacement(platform, "^tailwindcss$")).toBe(
       tailwindCssEntry,
@@ -109,5 +85,44 @@ describe("createDevRuntimePlatform", () => {
     expect(platform.diagnosticsLevel).toBe("verbose");
     expect(platform.viteLogLevel).toBe("info");
     expect(platform.serverConfig.port).toBe(6111);
+  });
+
+  test("resolves cliRoot for installed package layouts", async () => {
+    const repoRoot = await mkdtemp(path.join(os.tmpdir(), "db-dev-runtime-"));
+    const cliRoot = path.join(
+      repoRoot,
+      "build",
+      "install",
+      "node_modules",
+      "dreamboard",
+    );
+    const distRoot = path.join(cliRoot, "dist");
+
+    try {
+      await mkdir(distRoot, { recursive: true });
+      await writeFile(
+        path.join(repoRoot, "pnpm-workspace.yaml"),
+        "packages:\n  - apps/*\n",
+        "utf8",
+      );
+      await writeFile(path.join(repoRoot, "package.json"), "{}\n", "utf8");
+      await writeFile(path.join(cliRoot, "package.json"), "{}\n", "utf8");
+
+      const platform = createDevRuntimePlatform({
+        importMetaUrl: pathToFileURL(path.join(distRoot, "index.js")).href,
+        projectRoot: "/tmp/dreamboard-project",
+        debug: false,
+        tailwindCssEntry:
+          "/tmp/dreamboard-project/node_modules/tailwindcss/index.css",
+      });
+
+      expect(platform.cliRoot).toBe(cliRoot);
+      expect(platform.repoRoot).toBe(repoRoot);
+      expect(findAliasReplacement(platform, "^react$")).toBe(
+        path.resolve(platform.cliRoot, "node_modules/react/index.js"),
+      );
+    } finally {
+      await rm(repoRoot, { recursive: true, force: true });
+    }
   });
 });

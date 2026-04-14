@@ -1,9 +1,11 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { GameTopologyManifest } from "@dreamboard/sdk-types";
 
 const require = createRequire(import.meta.url);
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const UI_SDK_COMPONENT_SEED_PREFIX = "ui/components/dreamboard/";
 const UI_SDK_COMPONENT_IMPORT_REWRITES = new Map<string, string>([
   ["../manifest-contract.js", "@dreamboard/manifest-contract"],
@@ -53,7 +55,7 @@ import type {
   WindowActionParamsOfDefinition,
   WindowIdsOfDefinition,
   WindowInstanceId as WindowInstanceIdBrand,
-} from "@dreamboard/app-sdk/reducer";
+} from "@dreamboard/app-sdk/reducer/model";
 
 type GameDefinition = typeof game;
 
@@ -75,7 +77,7 @@ type CommandShape<Name extends string, Params> = [Params] extends [undefined]
   ? { type: Name }
   : Params extends object
     ? keyof Params extends never
-      ? { type: Name; params?: Params }
+      ? { type: Name }
       : RequiredKeys<Params> extends never
         ? { type: Name; params?: Params }
         : { type: Name; params: Params }
@@ -242,7 +244,7 @@ function generateReducerGameSeed(): string {
   return `import { defineGame } from "@dreamboard/app-sdk/reducer";
 import { gameContract } from "./game-contract";
 import { phases } from "./phases";
-import { setupProfiles } from "./setup-profiles";
+import setupProfiles from "./setup-profiles";
 
 export default defineGame({
   contract: gameContract,
@@ -269,20 +271,11 @@ function generateSetupProfilesSeed(manifest: GameTopologyManifest): string {
           .join("\n")}\n}`;
 
   return `// ${SETUP_PROFILES_SEED_MARKER}
-import {
-  manifestContract,
-  type SetupProfileId,
-} from "../shared/manifest-contract";
-import { defineSetupProfilesFor } from "@dreamboard/app-sdk/reducer";
+import { setupProfiles } from "../shared/manifest-contract";
 
-export const setupProfiles = defineSetupProfilesFor(manifestContract)<SetupProfileId>()(${
-    setupProfileEntries || "{}"
-  });
+export default setupProfiles(${setupProfileEntries || "{}"});
 `;
 }
-
-const LEGACY_SETUP_PROFILES_SEED_PATTERN =
-  /^import\s*\{\s*manifestContract,\s*type SetupProfileId,\s*\}\s*from\s*"..\/shared\/manifest-contract";\s*import\s*\{\s*defineSetupProfilesFor\s*\}\s*from\s*"@dreamboard\/app-sdk\/reducer";\s*export const setupProfiles = defineSetupProfilesFor\(manifestContract\)<SetupProfileId>\(\)\(\{\s*(?:"[^"]+"\s*:\s*\{\s*\},?\s*)*\}\);\s*$/s;
 
 export function isFrameworkOwnedSetupProfilesSeed(
   content: string | null | undefined,
@@ -297,8 +290,7 @@ export function isFrameworkOwnedSetupProfilesSeed(
   if (trimmed.includes(SETUP_PROFILES_SEED_MARKER)) {
     return true;
   }
-
-  return LEGACY_SETUP_PROFILES_SEED_PATTERN.test(trimmed);
+  return false;
 }
 
 function generateSetupPhaseSeed(): string {
@@ -509,10 +501,48 @@ export default function App() {
 }
 
 function resolveUiSdkComponentsRoot(): string {
-  const uiSdkPackageJsonPath = require.resolve(
-    "@dreamboard/ui-sdk/package.json",
+  try {
+    const uiSdkPackageJsonPath = require.resolve(
+      "@dreamboard/ui-sdk/package.json",
+    );
+    const installedComponentsRoot = path.join(
+      path.dirname(uiSdkPackageJsonPath),
+      "src",
+      "components",
+    );
+    if (existsSync(installedComponentsRoot)) {
+      return installedComponentsRoot;
+    }
+  } catch {
+    // Fall through to the repo-local source checkout lookup below.
+  }
+
+  let currentDir = MODULE_DIR;
+  while (true) {
+    const repoLocalComponentsRoot = path.join(
+      currentDir,
+      "packages",
+      "ui-sdk",
+      "src",
+      "components",
+    );
+    if (
+      existsSync(path.join(currentDir, "pnpm-workspace.yaml")) &&
+      existsSync(repoLocalComponentsRoot)
+    ) {
+      return repoLocalComponentsRoot;
+    }
+
+    const parentDir = path.dirname(currentDir);
+    if (parentDir === currentDir) {
+      break;
+    }
+    currentDir = parentDir;
+  }
+
+  throw new Error(
+    "Could not resolve Dreamboard UI SDK component seeds from an installed package or source checkout.",
   );
-  return path.join(path.dirname(uiSdkPackageJsonPath), "src", "components");
 }
 
 function walkUiSdkComponentFiles(rootDir: string): string[] {

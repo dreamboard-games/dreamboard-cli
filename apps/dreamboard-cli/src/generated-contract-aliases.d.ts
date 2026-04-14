@@ -113,9 +113,86 @@ declare module "@dreamboard/manifest-contract" {
     BoardId,
     Record<string, string>
   >;
+  export type BoardState<BoardIdValue extends BoardId = BoardId> = Record<
+    string,
+    unknown
+  > & { id: BoardIdValue };
+  export type BoardFields<BoardIdValue extends BoardId = BoardId> = Record<
+    string,
+    unknown
+  >;
+  export type BoardSpaceStateByBoardId = Record<
+    BoardId,
+    Record<string, unknown>
+  >;
+  export type BoardSpaceState<BoardIdValue extends BoardId = BoardId> = Record<
+    string,
+    unknown
+  >;
+  export type BoardSpaceFields<BoardIdValue extends BoardId = BoardId> = Record<
+    string,
+    unknown
+  >;
+  export type BoardRelationStateByBoardId = Record<
+    BoardId,
+    Record<string, unknown>
+  >;
+  export type BoardRelationState<BoardIdValue extends BoardId = BoardId> =
+    Record<string, unknown>;
+  export type BoardRelationFields<BoardIdValue extends BoardId = BoardId> =
+    Record<string, unknown>;
+  export type BoardContainerStateByBoardId = Record<
+    BoardId,
+    Record<string, unknown>
+  >;
+  export type BoardContainerState<BoardIdValue extends BoardId = BoardId> =
+    Record<string, unknown>;
+  export type BoardContainerFields<BoardIdValue extends BoardId = BoardId> =
+    Record<string, unknown>;
+  export type HexEdgeState<BoardIdValue extends BoardId = BoardId> = Record<
+    string,
+    unknown
+  >;
+  export type HexEdgeFields<BoardIdValue extends BoardId = BoardId> = Record<
+    string,
+    unknown
+  >;
+  export type HexVertexState<BoardIdValue extends BoardId = BoardId> = Record<
+    string,
+    unknown
+  >;
+  export type HexVertexFields<BoardIdValue extends BoardId = BoardId> = Record<
+    string,
+    unknown
+  >;
+  export type SquareEdgeState<BoardIdValue extends BoardId = BoardId> = Record<
+    string,
+    unknown
+  >;
+  export type SquareEdgeFields<BoardIdValue extends BoardId = BoardId> = Record<
+    string,
+    unknown
+  >;
+  export type SquareVertexState<BoardIdValue extends BoardId = BoardId> =
+    Record<string, unknown>;
+  export type SquareVertexFields<BoardIdValue extends BoardId = BoardId> =
+    Record<string, unknown>;
+  export type TiledBoardId = BoardId;
+  export type TiledEdgeState<BoardIdValue extends TiledBoardId = TiledBoardId> =
+    Record<string, unknown>;
+  export type TiledEdgeFields<
+    BoardIdValue extends TiledBoardId = TiledBoardId,
+  > = Record<string, unknown>;
+  export type TiledVertexState<
+    BoardIdValue extends TiledBoardId = TiledBoardId,
+  > = Record<string, unknown>;
+  export type TiledVertexFields<
+    BoardIdValue extends TiledBoardId = TiledBoardId,
+  > = Record<string, unknown>;
 
   const manifestContract: any;
   export default manifestContract;
   export const literals: any;
   export const ids: any;
+  export const boardHelpers: any;
 }

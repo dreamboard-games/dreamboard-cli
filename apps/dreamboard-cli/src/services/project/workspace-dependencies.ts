@@ -1,26 +1,60 @@
+import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
+import { existsSync } from "node:fs";
+import { mkdir, lstat, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Readable } from "node:stream";
-import { resolveCliRepoRoot } from "../../utils/repo-root.js";
-import { exists, readJsonFile, writeJsonFile } from "../../utils/fs.js";
+import { fileURLToPath } from "node:url";
+import {
+  buildDependencyPreparationFailureMessage,
+  buildMissingDependencyToolingMessage,
+  buildMissingGeneratedLockfileMessage,
+  buildPackageLockConflictMessage,
+} from "./dependency-tooling-messages.js";
+
+type LockfileGenerationOptions = Record<string, never>;
 
 type PackageJsonShape = {
+  packageManager?: string;
   dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
 };
 
-type LockfileGenerationOptions = {
-  localSdkPackageFallback?: boolean;
+type DependencyInstallMetadata = {
+  dependencyFingerprint: string;
+  installedAt: string;
+  packageManager: string;
 };
 
 type LockfileCommand = {
-  binary: "pnpm" | "npm";
+  binary: string;
   args: string[];
 };
 
+export type WorkspaceDependencyReconciliationResult = {
+  required: boolean;
+  installed: boolean;
+  lockfileGenerated: boolean;
+  packageManagerNormalized: boolean;
+  fingerprint: string | null;
+};
+
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
+const CLI_ROOT = path.resolve(MODULE_DIR, "../../..");
+const REPO_ROOT = path.resolve(CLI_ROOT, "../..");
+const REPO_PACKAGE_JSON_PATH = path.join(REPO_ROOT, "package.json");
+const DEFAULT_PACKAGE_MANAGER = "pnpm@10.4.1";
+const DEPENDENCY_INSTALL_METADATA_PATH_SEGMENTS = [
+  ".dreamboard",
+  "dependency-install.json",
+] as const;
+
 class LockfileGenerationError extends Error {
   constructor(
-    readonly binary: LockfileCommand["binary"],
+    readonly binary: string,
     readonly details: {
       code?: number | null;
       stdout: string;
@@ -35,155 +69,257 @@ class LockfileGenerationError extends Error {
   }
 }
 
-const repoRoot = resolveCliRepoRoot(import.meta.url);
-
-const LOCAL_CHECKOUT_SDK_DEPENDENCIES = {
-  "@dreamboard/app-sdk": `file:${path.join(repoRoot, "packages", "app-sdk")}`,
-  "@dreamboard/sdk-types": `file:${path.join(repoRoot, "packages", "sdk-types")}`,
-  "@dreamboard/ui-sdk": `file:${path.join(repoRoot, "packages", "ui-sdk")}`,
-} as const;
-
 export async function generatePnpmLockfile(
   projectRoot: string,
-  options: LockfileGenerationOptions = {},
+  _options: LockfileGenerationOptions = {},
 ): Promise<boolean> {
-  if (options.localSdkPackageFallback) {
-    await rewriteWorkspacePackageDependencies(
-      projectRoot,
-      LOCAL_CHECKOUT_SDK_DEPENDENCIES,
-    );
-  }
-
-  await runPreferredPackageManagerCommand(
-    projectRoot,
-    {
-      binary: "pnpm",
-      args: [
-        "install",
-        "--ignore-workspace",
-        "--lockfile-only",
-        "--config.shared-workspace-lockfile=false",
-      ],
-    },
-    {
-      binary: "npm",
-      args: ["install", "--package-lock-only"],
-    },
-  );
+  await ensurePackageManagerNormalized(projectRoot);
+  await assertNoNpmLockfileConflict(projectRoot);
+  await runPackageManagerCommand(projectRoot, {
+    args: [
+      "install",
+      "--ignore-workspace",
+      "--lockfile-only",
+      "--config.shared-workspace-lockfile=false",
+    ],
+  });
+  await assertPnpmLockfilePresent(projectRoot);
   return true;
 }
 
 export async function installWorkspaceDependencies(
   projectRoot: string,
-  options: LockfileGenerationOptions = {},
+  _options: LockfileGenerationOptions = {},
 ): Promise<boolean> {
-  if (options.localSdkPackageFallback) {
-    await rewriteWorkspacePackageDependencies(
-      projectRoot,
-      LOCAL_CHECKOUT_SDK_DEPENDENCIES,
-    );
+  const result = await reconcileWorkspaceDependencies(projectRoot);
+  return result.required;
+}
+
+export async function reconcileWorkspaceDependencies(
+  projectRoot: string,
+): Promise<WorkspaceDependencyReconciliationResult> {
+  const packageJsonPath = path.join(projectRoot, "package.json");
+  if (!(await pathExists(packageJsonPath))) {
+    return {
+      required: false,
+      installed: false,
+      lockfileGenerated: false,
+      packageManagerNormalized: false,
+      fingerprint: null,
+    };
   }
 
-  await runPreferredPackageManagerCommand(
+  await assertNoNpmLockfileConflict(projectRoot);
+  const packageManagerNormalized =
+    await ensurePackageManagerNormalized(projectRoot);
+  const pnpmLockfilePath = path.join(projectRoot, "pnpm-lock.yaml");
+  const nodeModulesPath = path.join(projectRoot, "node_modules");
+  const metadataPath = path.join(
     projectRoot,
-    {
-      binary: "pnpm",
+    ...DEPENDENCY_INSTALL_METADATA_PATH_SEGMENTS,
+  );
+
+  let lockfileGenerated = false;
+  let installed = false;
+  const metadata = await readJsonFile<DependencyInstallMetadata>(metadataPath);
+  const lockfileExists = await pathExists(pnpmLockfilePath);
+
+  if (!lockfileExists) {
+    await runPackageManagerCommand(projectRoot, {
       args: [
         "install",
         "--ignore-workspace",
         "--config.shared-workspace-lockfile=false",
       ],
-    },
-    {
-      binary: "npm",
-      args: ["install"],
-    },
-  );
+    });
+    lockfileGenerated = true;
+    installed = true;
+  }
+
+  await assertPnpmLockfilePresent(projectRoot);
+  let fingerprint = await fingerprintInstallManifest({
+    packageJsonPath,
+    lockfilePath: pnpmLockfilePath,
+  });
+  const hasValidInstalledDeps =
+    (await pathExists(nodeModulesPath)) &&
+    (await hasValidInstalledDependencies({
+      packageJsonPath,
+      nodeModulesPath,
+    }));
+  const shouldInstall =
+    !installed &&
+    (metadata?.dependencyFingerprint !== fingerprint || !hasValidInstalledDeps);
+
+  if (shouldInstall) {
+    await rm(nodeModulesPath, { recursive: true, force: true });
+    await runPackageManagerCommand(projectRoot, {
+      args: [
+        "install",
+        "--ignore-workspace",
+        "--config.shared-workspace-lockfile=false",
+      ],
+    });
+    installed = true;
+    fingerprint = await fingerprintInstallManifest({
+      packageJsonPath,
+      lockfilePath: pnpmLockfilePath,
+    });
+  }
+
+  if (installed || packageManagerNormalized || !metadata) {
+    await mkdir(path.dirname(metadataPath), { recursive: true });
+    await writeJsonFile(metadataPath, {
+      dependencyFingerprint: fingerprint,
+      installedAt: new Date().toISOString(),
+      packageManager: await readRepoPackageManager(),
+    } satisfies DependencyInstallMetadata);
+  }
+
+  return {
+    required: true,
+    installed,
+    lockfileGenerated,
+    packageManagerNormalized,
+    fingerprint,
+  };
+}
+
+async function assertNoNpmLockfileConflict(projectRoot: string): Promise<void> {
+  const packageLockPath = path.join(projectRoot, "package-lock.json");
+  const pnpmLockPath = path.join(projectRoot, "pnpm-lock.yaml");
+  if (
+    (await pathExists(packageLockPath)) &&
+    !(await pathExists(pnpmLockPath))
+  ) {
+    throw new Error(buildPackageLockConflictMessage());
+  }
+}
+
+async function assertPnpmLockfilePresent(projectRoot: string): Promise<void> {
+  const pnpmLockfilePath = path.join(projectRoot, "pnpm-lock.yaml");
+  if (!(await pathExists(pnpmLockfilePath))) {
+    throw new Error(buildMissingGeneratedLockfileMessage());
+  }
+}
+
+async function ensurePackageManagerNormalized(
+  projectRoot: string,
+): Promise<boolean> {
+  const packageJsonPath = path.join(projectRoot, "package.json");
+  const packageJsonContent = await readFile(packageJsonPath, "utf8");
+  const packageJson = JSON.parse(packageJsonContent) as PackageJsonShape;
+  const packageManager = await readRepoPackageManager();
+  const nextPackageJson: PackageJsonShape = {
+    ...packageJson,
+    packageManager,
+  };
+  const normalizedPackageJson = `${JSON.stringify(nextPackageJson, null, 2)}\n`;
+  if (normalizedPackageJson === packageJsonContent) {
+    return false;
+  }
+  await writeFile(packageJsonPath, normalizedPackageJson, "utf8");
   return true;
 }
 
-async function rewriteWorkspacePackageDependencies(
-  projectRoot: string,
-  dependencies: Record<string, string>,
-): Promise<void> {
-  const packageJsonPath = path.join(projectRoot, "package.json");
-  if (!(await exists(packageJsonPath))) {
-    return;
-  }
-
-  const packageJson = await readJsonFile<PackageJsonShape>(packageJsonPath);
-  const nextDependencies = {
-    ...(packageJson.dependencies ?? {}),
-  };
-
-  let changed = false;
-  for (const [packageName, specifier] of Object.entries(dependencies)) {
-    if (nextDependencies[packageName] === specifier) {
-      continue;
-    }
-    if (!(packageName in nextDependencies)) {
-      continue;
-    }
-    nextDependencies[packageName] = specifier;
-    changed = true;
-  }
-
-  if (!changed) {
-    return;
-  }
-
-  await writeJsonFile(packageJsonPath, {
-    ...packageJson,
-    dependencies: nextDependencies,
-  });
+async function fingerprintInstallManifest(options: {
+  packageJsonPath: string;
+  lockfilePath: string;
+}): Promise<string> {
+  const packageJson = await readFile(options.packageJsonPath, "utf8");
+  const lockfile = await readFile(options.lockfilePath, "utf8");
+  const packageManager = await readRepoPackageManager();
+  return fingerprintContent([
+    packageJson,
+    lockfile,
+    `packageManager:${packageManager}`,
+  ]);
 }
 
-function buildLockfileGenerationErrorMessage(
-  binary: LockfileCommand["binary"],
-  details: {
-    code?: number | null;
-    stdout: string;
-    stderr: string;
-    cause?: Error;
-  },
-): string {
-  if (details.cause) {
-    return `Failed to start ${binary} for lockfile generation. ${details.cause.message}`;
-  }
-
-  const output = [details.stdout.trim(), details.stderr.trim()]
-    .filter((chunk) => chunk.length > 0)
-    .join("\n");
-
-  return `${binary} lockfile generation failed with exit code ${details.code ?? "unknown"}${output ? `:\n${output}` : "."}`;
-}
-
-function isCommandNotFoundError(
-  error: unknown,
-  binary: LockfileCommand["binary"],
-): boolean {
-  return (
-    error instanceof LockfileGenerationError &&
-    error.binary === binary &&
-    (error.details.cause?.message.includes("ENOENT") ?? false)
+async function hasValidInstalledDependencies(options: {
+  packageJsonPath: string;
+  nodeModulesPath: string;
+}): Promise<boolean> {
+  const packageJson = await readJsonFile<PackageJsonShape>(
+    options.packageJsonPath,
   );
-}
+  if (!packageJson) {
+    return false;
+  }
 
-async function runPreferredPackageManagerCommand(
-  projectRoot: string,
-  preferred: LockfileCommand,
-  fallback: LockfileCommand,
-): Promise<void> {
-  try {
-    await runLockfileCommand(projectRoot, preferred);
-    return;
-  } catch (error) {
-    if (!isCommandNotFoundError(error, preferred.binary)) {
-      throw error;
+  const directDependencyNames = new Set<string>();
+  for (const field of [
+    "dependencies",
+    "devDependencies",
+    "optionalDependencies",
+  ] as const) {
+    for (const packageName of Object.keys(packageJson[field] ?? {})) {
+      directDependencyNames.add(packageName);
     }
   }
 
-  await runLockfileCommand(projectRoot, fallback);
+  if (directDependencyNames.size === 0) {
+    return true;
+  }
+
+  for (const packageName of directDependencyNames) {
+    if (
+      !(await pathExists(
+        path.join(
+          options.nodeModulesPath,
+          ...packageName.split("/"),
+          "package.json",
+        ),
+      ))
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function hasExactPnpmVersion(value?: string): boolean {
+  return /^pnpm@\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(value ?? "");
+}
+
+async function readRepoPackageManager(): Promise<string> {
+  const packageJson = await readJsonFile<PackageJsonShape>(
+    REPO_PACKAGE_JSON_PATH,
+  );
+  const packageManager = packageJson?.packageManager?.trim();
+  return hasExactPnpmVersion(packageManager)
+    ? packageManager!
+    : DEFAULT_PACKAGE_MANAGER;
+}
+
+function fingerprintContent(parts: string[]): string {
+  return crypto
+    .createHash("sha256")
+    .update(parts.join("\n---\n"))
+    .digest("hex");
+}
+
+function resolvePnpmInstallInvocation(installArgs: readonly string[]): {
+  command: string;
+  args: string[];
+} {
+  const corepackPath = path.join(path.dirname(process.execPath), "corepack");
+  if (existsSync(corepackPath)) {
+    return { command: corepackPath, args: ["pnpm", ...installArgs] };
+  }
+  return { command: "pnpm", args: [...installArgs] };
+}
+
+async function runPackageManagerCommand(
+  projectRoot: string,
+  command: { args: string[] },
+): Promise<void> {
+  const invocation = resolvePnpmInstallInvocation(command.args);
+  await runLockfileCommand(projectRoot, {
+    binary: invocation.command,
+    args: invocation.args,
+  });
 }
 
 async function runLockfileCommand(
@@ -230,6 +366,61 @@ async function runLockfileCommand(
       );
     });
   });
+}
+
+function buildLockfileGenerationErrorMessage(
+  binary: string,
+  details: {
+    code?: number | null;
+    stdout: string;
+    stderr: string;
+    cause?: Error;
+  },
+): string {
+  if (details.cause) {
+    const errnoError = details.cause as NodeJS.ErrnoException;
+    const binaryName = path.basename(binary).toLowerCase();
+    if (
+      errnoError.code === "ENOENT" &&
+      (binaryName === "pnpm" ||
+        binaryName === "pnpm.cmd" ||
+        binaryName === "corepack" ||
+        binaryName === "corepack.exe")
+    ) {
+      return buildMissingDependencyToolingMessage();
+    }
+    return `Failed to start ${binary} for Dreamboard dependency reconciliation. ${details.cause.message}`;
+  }
+
+  const output = [details.stdout.trim(), details.stderr.trim()]
+    .filter((chunk) => chunk.length > 0)
+    .join("\n");
+
+  return buildDependencyPreparationFailureMessage({
+    exitCode: details.code,
+    output,
+  });
+}
+
+async function pathExists(targetPath: string): Promise<boolean> {
+  try {
+    await lstat(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function readJsonFile<T>(filePath: string): Promise<T | null> {
+  try {
+    return JSON.parse(await readFile(filePath, "utf8")) as T;
+  } catch {
+    return null;
+  }
+}
+
+async function writeJsonFile(filePath: string, value: unknown): Promise<void> {
+  await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
 function bindStream(

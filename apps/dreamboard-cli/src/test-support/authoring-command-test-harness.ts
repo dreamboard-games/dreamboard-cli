@@ -160,9 +160,12 @@ type HarnessCalls = {
     projectRoot: string;
     manifest: Record<string, unknown>;
   }>;
+  installWorkspaceDependencies: string[];
+  ensureLocalMaintainerSnapshot: string[];
   scaffoldStaticWorkspace: Array<{
     projectRoot: string;
     mode: "new" | "update";
+    localMaintainerRegistry?: ProjectConfig["localMaintainerRegistry"];
   }>;
   updateProjectState: Array<{
     rootDir: string;
@@ -199,6 +202,19 @@ export type AuthoringCommandTestState = {
   createCompiledResultResult: CompiledResultResult;
   createSourceRevisionError: Error | null;
   createSourceRevisionResult: SourceRevisionResult;
+  installWorkspaceDependenciesError: Error | null;
+  installWorkspaceDependenciesResult: {
+    required: boolean;
+    installed: boolean;
+    lockfileGenerated: boolean;
+    packageManagerNormalized: boolean;
+    fingerprint: string | null;
+  };
+  installWorkspaceDependenciesNextCollectLocalFilesResult: Record<
+    string,
+    string
+  > | null;
+  installWorkspaceDependenciesNextLocalDiffResult: LocalDiff | null;
   applyWorkspaceCodegenError: Error | null;
   applyWorkspaceCodegenErrorOnCall: number | null;
   applyWorkspaceCodegenNextCollectLocalFilesResult: Record<
@@ -271,6 +287,8 @@ function createDefaultState(): AuthoringCommandTestState {
       saveManifestSdk: [],
       saveRuleSdk: [],
       applyWorkspaceCodegen: [],
+      installWorkspaceDependencies: [],
+      ensureLocalMaintainerSnapshot: [],
       scaffoldStaticWorkspace: [],
       updateProjectState: [],
       writeManifest: [],
@@ -315,6 +333,16 @@ function createDefaultState(): AuthoringCommandTestState {
       id: "source-revision-2",
       treeHash: "tree-hash-2",
     },
+    installWorkspaceDependenciesError: null,
+    installWorkspaceDependenciesResult: {
+      required: false,
+      installed: false,
+      lockfileGenerated: false,
+      packageManagerNormalized: false,
+      fingerprint: null,
+    },
+    installWorkspaceDependenciesNextCollectLocalFilesResult: null,
+    installWorkspaceDependenciesNextLocalDiffResult: null,
     applyWorkspaceCodegenError: null,
     applyWorkspaceCodegenErrorOnCall: null,
     applyWorkspaceCodegenNextCollectLocalFilesResult: null,
@@ -799,7 +827,7 @@ mock.module("../services/project/local-files.js", () => ({
     structuredClone(authoringCommandTestHarness.current.getLocalDiffResult),
   isAllowedGamePath: (filePath: string) =>
     !filePath.startsWith(".dreamboard/") &&
-    filePath !== "manifest.json" &&
+    filePath !== "manifest.ts" &&
     filePath !== "rule.md",
   loadManifest: async () =>
     (() => {
@@ -845,10 +873,16 @@ mock.module("../services/project/static-scaffold.js", () => ({
   scaffoldStaticWorkspace: async (
     projectRoot: string,
     mode: "new" | "update",
+    options?: {
+      localMaintainerRegistry?: ProjectConfig["localMaintainerRegistry"];
+    },
   ) => {
     authoringCommandTestHarness.current.calls.scaffoldStaticWorkspace.push({
       projectRoot,
       mode,
+      localMaintainerRegistry: structuredClone(
+        options?.localMaintainerRegistry,
+      ),
     });
   },
 }));
@@ -895,6 +929,56 @@ mock.module("../services/project/workspace-codegen.js", () => ({
       merged: [],
     };
   },
+}));
+
+mock.module("../services/project/workspace-dependencies.js", () => ({
+  installWorkspaceDependencies: async (projectRoot: string) => {
+    const state = authoringCommandTestHarness.current;
+    state.calls.installWorkspaceDependencies.push(projectRoot);
+    if (state.installWorkspaceDependenciesError) {
+      throw state.installWorkspaceDependenciesError;
+    }
+    if (state.installWorkspaceDependenciesNextCollectLocalFilesResult) {
+      state.collectLocalFilesResult = structuredClone(
+        state.installWorkspaceDependenciesNextCollectLocalFilesResult,
+      );
+    }
+    if (state.installWorkspaceDependenciesNextLocalDiffResult) {
+      state.getLocalDiffResult = structuredClone(
+        state.installWorkspaceDependenciesNextLocalDiffResult,
+      );
+    }
+    return true;
+  },
+  reconcileWorkspaceDependencies: async (projectRoot: string) => {
+    const state = authoringCommandTestHarness.current;
+    state.calls.installWorkspaceDependencies.push(projectRoot);
+    if (state.installWorkspaceDependenciesError) {
+      throw state.installWorkspaceDependenciesError;
+    }
+    if (state.installWorkspaceDependenciesNextCollectLocalFilesResult) {
+      state.collectLocalFilesResult = structuredClone(
+        state.installWorkspaceDependenciesNextCollectLocalFilesResult,
+      );
+    }
+    if (state.installWorkspaceDependenciesNextLocalDiffResult) {
+      state.getLocalDiffResult = structuredClone(
+        state.installWorkspaceDependenciesNextLocalDiffResult,
+      );
+    }
+    return structuredClone(state.installWorkspaceDependenciesResult);
+  },
+}));
+
+mock.module("../services/project/local-maintainer-registry.js", () => ({
+  ensureLocalMaintainerSnapshot: async (apiBaseUrl: string) => {
+    authoringCommandTestHarness.current.calls.ensureLocalMaintainerSnapshot.push(
+      apiBaseUrl,
+    );
+    return null;
+  },
+  didLocalMaintainerSnapshotChange: () => false,
+  readWorkspaceLocalMaintainerRegistry: async () => null,
 }));
 
 mock.module("../services/project/sync.js", () => ({
@@ -946,12 +1030,17 @@ mock.module("../utils/errors.js", () => ({
 
 mock.module("../utils/fs.js", () => ({
   ensureDir: async () => undefined,
+  exists: async () => false,
+  readJsonFile: async () => {
+    throw new Error("readJsonFile mock not implemented for this harness path");
+  },
   readTextFileIfExists: async (filePath: string) => {
     const state = authoringCommandTestHarness.current;
     state.calls.readTextFileIfExists.push(filePath);
     return state.readTextFiles[filePath] ?? null;
   },
   writeTextFile: async () => undefined,
+  writeJsonFile: async () => undefined,
 }));
 
 mock.module("../utils/prompts.js", () => ({

@@ -1,11 +1,17 @@
+import type { GameTopologyManifest } from "@dreamboard/sdk-types";
 import { loadManifest } from "../project/local-files.js";
 
-export async function resolveSetupProfileIdForSession(options: {
-  projectRoot: string;
+export type ResolvedSetupProfileSelection = {
+  id: string | null;
+  name: string | null;
+  source: "explicit" | "implicit-single" | "implicit-first" | "none";
+};
+
+export function resolveSetupProfileSelection(options: {
+  manifest: GameTopologyManifest;
   requestedSetupProfileId?: string;
-}): Promise<string | null> {
-  const manifest = await loadManifest(options.projectRoot);
-  const setupProfiles = manifest.setupProfiles ?? [];
+}): ResolvedSetupProfileSelection {
+  const setupProfiles = options.manifest.setupProfiles ?? [];
   const requestedSetupProfileId =
     options.requestedSetupProfileId?.trim() || undefined;
 
@@ -23,19 +29,55 @@ export async function resolveSetupProfileIdForSession(options: {
           : `Unknown setup profile '${requestedSetupProfileId}'. Expected one of: ${knownProfiles}.`,
       );
     }
-    return requestedProfile.id;
+    return {
+      id: requestedProfile.id,
+      name: requestedProfile.name,
+      source: "explicit",
+    };
   }
 
   if (setupProfiles.length === 0) {
-    return null;
+    return {
+      id: null,
+      name: null,
+      source: "none",
+    };
   }
 
   if (setupProfiles.length === 1) {
-    return setupProfiles[0]?.id ?? null;
+    return {
+      id: setupProfiles[0]?.id ?? null,
+      name: setupProfiles[0]?.name ?? null,
+      source: "implicit-single",
+    };
   }
 
-  const knownProfiles = setupProfiles.map((profile) => profile.id).join(", ");
-  throw new Error(
-    `This manifest defines multiple setup profiles. Pass --setup-profile with one of: ${knownProfiles}.`,
-  );
+  return {
+    id: setupProfiles[0]?.id ?? null,
+    name: setupProfiles[0]?.name ?? null,
+    source: "implicit-first",
+  };
+}
+
+export async function resolveSetupProfileSelectionForSession(options: {
+  projectRoot: string;
+  requestedSetupProfileId?: string;
+}): Promise<ResolvedSetupProfileSelection> {
+  const manifest = await loadManifest(options.projectRoot);
+  return resolveSetupProfileSelection({
+    manifest,
+    requestedSetupProfileId: options.requestedSetupProfileId,
+  });
+}
+
+export async function resolveSetupProfileIdForSession(options: {
+  projectRoot: string;
+  requestedSetupProfileId?: string;
+}): Promise<string | null> {
+  return (
+    await resolveSetupProfileSelectionForSession({
+      projectRoot: options.projectRoot,
+      requestedSetupProfileId: options.requestedSetupProfileId,
+    })
+  ).id;
 }

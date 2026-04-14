@@ -22,7 +22,7 @@ import { toDreamboardApiError } from "../utils/errors.js";
 import { openBrowser } from "../auth/auth-server.js";
 import { startDreamboardDevServer } from "../dev-host/start-dev-server.js";
 import { runDevPreflight } from "../services/workflows/dev-preflight.js";
-import { resolveSetupProfileIdForSession } from "../services/workflows/resolve-setup-profile.js";
+import { resolveSetupProfileSelectionForSession } from "../services/workflows/resolve-setup-profile.js";
 
 type DevResumeResult = {
   session: PersistedDevSession | null;
@@ -105,10 +105,11 @@ export default defineCommand({
       throw new Error("Cannot combine --resume with --new-session.");
     }
     const requestedSeed = parseDevSeed(parsedArgs.seed);
-    const selectedSetupProfileId = await resolveSetupProfileIdForSession({
+    const selectedSetupProfile = await resolveSetupProfileSelectionForSession({
       projectRoot,
       requestedSetupProfileId: parsedArgs["setup-profile"],
     });
+    const selectedSetupProfileId = selectedSetupProfile.id;
     const resolvedPlayerCount = await resolvePlayerCount(
       projectRoot,
       parsePlayerCountFlags(parsedArgs),
@@ -200,6 +201,16 @@ export default defineCommand({
     consola.info(
       `RNG seed: ${runSession.seed ?? "unknown"}${parsedArgs.seed ? " (from --seed)." : " (default 1337; change it in the dev host or pass --seed)."}`,
     );
+    if (selectedSetupProfile.source === "implicit-single") {
+      consola.info(
+        `Using setup profile ${selectedSetupProfileId} (${selectedSetupProfile.name ?? selectedSetupProfileId}) because it is the only declared manifest profile.`,
+      );
+    }
+    if (selectedSetupProfile.source === "implicit-first") {
+      consola.info(
+        `Using setup profile ${selectedSetupProfileId} (${selectedSetupProfile.name ?? selectedSetupProfileId}) because it is the first declared manifest profile.`,
+      );
+    }
     consola.info(
       parsedArgs.debug
         ? "Verbose dev logging enabled via --debug."

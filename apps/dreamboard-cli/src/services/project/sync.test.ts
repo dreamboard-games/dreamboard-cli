@@ -30,9 +30,9 @@ test("buildPulledProjectConfig preserves configured URLs while hydrating the lat
       {
         gameId: "game-1",
         slug: "test-game",
-        manifestId: "manifest-1",
-        ruleId: "rule-1",
         authoring: {
+          manifestId: "manifest-1",
+          ruleId: "rule-1",
           pendingSync: {
             phase: "authoring_state_created",
             authoringStateId: "authoring-state-stale",

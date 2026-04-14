@@ -1,0 +1,211 @@
+import { createRequire } from "node:module";
+import { existsSync } from "node:fs";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { build } from "esbuild";
+import { zGameTopologyManifest } from "@dreamboard/api-client";
+import type { GameTopologyManifest } from "@dreamboard/sdk-types";
+import { validateManifestAuthoring } from "@dreamboard/workspace-codegen";
+import { MANIFEST_FILE, MATERIALIZED_MANIFEST_FILE } from "../../constants.js";
+import {
+  exists,
+  readTextFile,
+  writeJsonFile,
+  writeTextFile,
+} from "../../utils/fs.js";
+
+const REQUIRE = createRequire(import.meta.url);
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
+
+function resolveRepoLocalSdkTypesEntry(): string | null {
+  let currentDir = MODULE_DIR;
+
+  while (true) {
+    const candidate = path.join(currentDir, "packages/sdk-types/src/index.ts");
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+
+    const parentDir = path.dirname(currentDir);
+    if (parentDir === currentDir) {
+      return null;
+    }
+    currentDir = parentDir;
+  }
+}
+
+function resolveSdkTypesEntry(): string {
+  try {
+    return REQUIRE.resolve("@dreamboard/sdk-types");
+  } catch {
+    const repoLocalEntry = resolveRepoLocalSdkTypesEntry();
+    if (repoLocalEntry) {
+      return repoLocalEntry;
+    }
+
+    throw new Error(
+      "Could not resolve @dreamboard/sdk-types while evaluating manifest.ts.",
+    );
+  }
+}
+
+const SDK_TYPES_ENTRY = resolveSdkTypesEntry();
+
+function formatIssuePath(pathSegments: ReadonlyArray<string | number>): string {
+  if (pathSegments.length === 0) {
+    return "manifest";
+  }
+
+  return `manifest${pathSegments
+    .map((segment) =>
+      typeof segment === "number" ? `[${segment}]` : `.${segment}`,
+    )
+    .join("")}`;
+}
+
+function formatManifestValidationError(manifest: unknown): string {
+  const parsedManifest = zGameTopologyManifest.strict().safeParse(manifest);
+  if (!parsedManifest.success) {
+    const lines = parsedManifest.error.issues.map((issue) => {
+      const issuePath = formatIssuePath(
+        issue.path.filter(
+          (segment): segment is string | number =>
+            typeof segment === "string" || typeof segment === "number",
+        ),
+      );
+      return `${issuePath}: ${issue.message}`;
+    });
+
+    return `Invalid manifest:\n- ${lines.join("\n- ")}`;
+  }
+
+  const validationResult = validateManifestAuthoring(
+    parsedManifest.data as GameTopologyManifest,
+  );
+  if (validationResult.errors.length > 0) {
+    return `Invalid manifest:\n- ${validationResult.errors.join("\n- ")}`;
+  }
+  if (validationResult.warnings.length > 0) {
+    console.warn(
+      `Manifest warnings:\n- ${validationResult.warnings.join("\n- ")}`,
+    );
+  }
+
+  return "";
+}
+
+async function evaluateManifestSource(
+  projectRoot: string,
+): Promise<GameTopologyManifest> {
+  const manifestPath = `${projectRoot}/${MANIFEST_FILE}`;
+  if (!(await exists(manifestPath))) {
+    throw new Error(`Missing ${MANIFEST_FILE}.`);
+  }
+
+  let outputText: string | undefined;
+  try {
+    const buildResult = await build({
+      absWorkingDir: projectRoot,
+      entryPoints: [MANIFEST_FILE],
+      bundle: true,
+      format: "esm",
+      platform: "node",
+      target: ["node20"],
+      write: false,
+      logLevel: "silent",
+      plugins: [
+        {
+          name: "resolve-dreamboard-sdk-types",
+          setup(buildContext) {
+            buildContext.onResolve(
+              { filter: /^@dreamboard\/sdk-types$/ },
+              () => ({
+                path: SDK_TYPES_ENTRY,
+              }),
+            );
+          },
+        },
+      ],
+    });
+    outputText = buildResult.outputFiles[0]?.text;
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unknown bundle failure";
+    throw new Error(`Failed to evaluate ${MANIFEST_FILE}: ${message}`);
+  }
+
+  if (!outputText) {
+    throw new Error(
+      `Failed to evaluate ${MANIFEST_FILE}: no bundled module was produced.`,
+    );
+  }
+
+  let moduleRecord: { default?: unknown };
+  const tempRoot = await mkdtemp(path.join(tmpdir(), "dreamboard-manifest-"));
+  const bundlePath = path.join(tempRoot, "manifest.mjs");
+  try {
+    await writeFile(bundlePath, outputText, "utf8");
+    moduleRecord = (await import(
+      `${pathToFileURL(bundlePath).href}?t=${Date.now()}`
+    )) as {
+      default?: unknown;
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to evaluate ${MANIFEST_FILE}: ${message}`);
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+
+  if (moduleRecord.default === undefined) {
+    throw new Error(
+      `${MANIFEST_FILE} must default-export defineTopologyManifest(...).`,
+    );
+  }
+
+  const validationError = formatManifestValidationError(moduleRecord.default);
+  if (validationError) {
+    throw new Error(validationError);
+  }
+
+  return moduleRecord.default as GameTopologyManifest;
+}
+
+export function renderManifestSource(manifest: GameTopologyManifest): string {
+  return [
+    'import { defineTopologyManifest } from "@dreamboard/sdk-types";',
+    "",
+    "export default defineTopologyManifest(",
+    `${JSON.stringify(manifest, null, 2)}`,
+    ");",
+    "",
+  ].join("\n");
+}
+
+export async function materializeManifest(
+  projectRoot: string,
+): Promise<GameTopologyManifest> {
+  const manifest = await evaluateManifestSource(projectRoot);
+  await writeJsonFile(`${projectRoot}/${MATERIALIZED_MANIFEST_FILE}`, manifest);
+  return manifest;
+}
+
+export async function readMaterializedManifestText(
+  projectRoot: string,
+): Promise<string> {
+  await materializeManifest(projectRoot);
+  return readTextFile(`${projectRoot}/${MATERIALIZED_MANIFEST_FILE}`);
+}
+
+export async function writeManifestSource(
+  projectRoot: string,
+  manifest: GameTopologyManifest,
+): Promise<void> {
+  await writeTextFile(
+    `${projectRoot}/${MANIFEST_FILE}`,
+    renderManifestSource(manifest),
+  );
+  await writeJsonFile(`${projectRoot}/${MATERIALIZED_MANIFEST_FILE}`, manifest);
+}

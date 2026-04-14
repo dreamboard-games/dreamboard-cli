@@ -61,6 +61,8 @@ export type EdgePropertiesByBoardId = Record<BoardId, Record<string, string>>;
 export type VertexPropertiesByBoardId = Record<BoardId, Record<string, string>>;
 export type SpacePropertiesByBoardId = Record<BoardId, Record<string, string>>;
 export type PiecePropertiesByBoardId = Record<BoardId, Record<string, string>>;
+export type SetupProfileId = string;
+export type TableState = Record<string, unknown>;
 
 export interface BoardState<BoardIdValue extends BoardId = BoardId> {
   id: BoardIdValue;
@@ -148,15 +150,124 @@ export type TiledVertexFields<
 > = Record<string, unknown> & (BoardIdValue extends TiledBoardId ? {} : never);
 
 export const boardHelpers = {
-  boardIdsByBaseId: {} as const,
-  boardLayoutById: {} as const,
-  boardIdsByTypeId: {} as const,
-  spaceIdsByBoardId: {} as const,
-  spaceTypeIdByBoardId: {} as const,
-  spaceIdsByTypeId: {} as const,
-  containerIdsByBoardId: {} as const,
-  containerHostByBoardId: {} as const,
-  relationTypeIdsByBoardId: {} as const,
-  edgeIdsByTypeId: {} as const,
-  vertexIdsByTypeId: {} as const,
+  boardIdsForLayout: ((_: string) => [] as const) as (
+    layout: string,
+  ) => readonly BoardId[],
+  boardBaseIdsForLayout: ((_: string) => [] as const) as (
+    layout: string,
+  ) => readonly string[],
+  boardIdsForBase: ((_: string) => [] as const) as (
+    boardBaseId: string,
+  ) => readonly BoardId[],
+  boardBaseIdsForTemplate: ((_: string) => [] as const) as (
+    templateId: string,
+  ) => readonly string[],
+  boardIdsForType: ((_: string) => [] as const) as (
+    typeId: string,
+  ) => readonly BoardId[],
+  boardLayout: ((_: string) => "generic") as (boardId: string) => string,
+  boardTemplateLayout: ((_: string) => "generic") as (
+    templateId: string,
+  ) => string,
+  spaceIds: ((_: string) => [] as const) as (
+    boardId: string,
+  ) => readonly SpaceId[],
+  spaceKinds: ((_: string) => ({})) as (
+    boardId: string,
+  ) => Record<string, string | null>,
+  spaceIdsForType: ((_: string) => [] as const) as (
+    typeId: string,
+  ) => readonly SpaceId[],
+  containerIds: ((_: string) => [] as const) as (
+    boardId: string,
+  ) => readonly string[],
+  containerHost: ((_: string, __: string) => ({ type: "board" as const })) as (
+    boardId: string,
+    containerId: string,
+  ) => { type: "board" } | { type: "space"; spaceId: string },
+  relationTypeIds: ((_: string) => [] as const) as (
+    boardId: string,
+  ) => readonly string[],
+  edgeIdsForType: ((_: string) => [] as const) as (
+    typeId: string,
+  ) => readonly EdgeId[],
+  edgeIds: ((_: string, __: string) => [] as const) as (
+    boardId: string,
+    typeId: string,
+  ) => readonly EdgeId[],
+  vertexIdsForType: ((_: string) => [] as const) as (
+    typeId: string,
+  ) => readonly VertexId[],
+  vertexIds: ((_: string, __: string) => [] as const) as (
+    boardId: string,
+    typeId: string,
+  ) => readonly VertexId[],
+  boardIdForPlayer: ((_: string, __: string) => {
+    throw new Error(
+      "boardIdForPlayer is only available in generated manifest contracts.",
+    );
+  }) as (boardBaseId: string, playerId: string) => BoardId,
 } as const;
+
+export function createInitialTable(_options?: {
+  playerIds?: readonly string[];
+  shuffleItems?: <Value>(values: readonly Value[]) => Value[];
+}): TableState {
+  return {};
+}
+
+export function setupProfiles<
+  const Profiles extends Record<SetupProfileId, unknown>,
+>(profiles: Profiles): Profiles {
+  return profiles;
+}
+
+export function shuffle(container: { type: string; [key: string]: unknown }): {
+  type: "shuffle";
+  container: typeof container;
+} {
+  return {
+    type: "shuffle",
+    container,
+  };
+}
+
+export function dealToPlayerZone(options: Record<string, unknown>): {
+  type: "deal";
+  [key: string]: unknown;
+} {
+  return {
+    type: "deal",
+    ...options,
+  };
+}
+
+export function dealToPlayerBoardContainer(options: Record<string, unknown>): {
+  type: "deal";
+  [key: string]: unknown;
+} {
+  return {
+    type: "deal",
+    ...options,
+  };
+}
+
+export function seedSharedBoardContainer(options: Record<string, unknown>): {
+  type: "move";
+  [key: string]: unknown;
+} {
+  return {
+    type: "move",
+    ...options,
+  };
+}
+
+export function seedSharedBoardSpace(options: Record<string, unknown>): {
+  type: "move";
+  [key: string]: unknown;
+} {
+  return {
+    type: "move",
+    ...options,
+  };
+}

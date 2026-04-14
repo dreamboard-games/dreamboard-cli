@@ -245,9 +245,13 @@ export type PlayersDefinition = {
 
 export type PresetCardSetDefinition = {
     /**
-     * Unique identifier for the card set
+     * Unique local identifier for the authored card set
      */
     id: string;
+    /**
+     * Built-in preset card-set selector
+     */
+    presetId: string;
     /**
      * Display name of the card set
      */
@@ -351,9 +355,25 @@ export type VertexHomeSpec = {
     ref: BoardVertexRef;
 };
 
+export type PieceSlotHostRef = {
+    kind: 'piece';
+    id: string;
+};
+
+export type DieSlotHostRef = {
+    kind: 'die';
+    id: string;
+};
+
+export type SlotHostRef = ({
+    kind: 'piece';
+} & PieceSlotHostRef) | ({
+    kind: 'die';
+} & DieSlotHostRef);
+
 export type SlotHomeSpec = {
     type: 'slot';
-    hostComponentId: string;
+    host: SlotHostRef;
     slotId: string;
 };
 
@@ -951,12 +971,21 @@ export type BoardSpec = ({
 } & SquareBoardSpec);
 
 /**
+ * Named authored slot exposed by a piece or die type
+ */
+export type ComponentSlotSpec = {
+    id: string;
+    name?: string;
+};
+
+/**
  * Reusable authored piece type
  */
 export type PieceTypeSpec = {
     id: string;
     name: string;
     fieldsSchema?: ObjectSchema;
+    slots?: Array<ComponentSlotSpec>;
 };
 
 /**
@@ -989,6 +1018,7 @@ export type DieTypeSpec = {
     name: string;
     sides: number;
     fieldsSchema?: ObjectSchema;
+    slots?: Array<ComponentSlotSpec>;
 };
 
 /**

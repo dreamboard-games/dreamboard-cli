@@ -168,6 +168,7 @@ export const zPlayersDefinition = z.object({
 
 export const zPresetCardSetDefinition = z.object({
     id: z.string().min(1),
+    presetId: z.string().min(1),
     name: z.string().min(1),
     type: z.enum(['preset'])
 });
@@ -259,9 +260,28 @@ export const zVertexHomeSpec = z.object({
     ref: zBoardVertexRef
 });
 
+export const zPieceSlotHostRef = z.object({
+    kind: z.enum(['piece']),
+    id: z.string()
+});
+
+export const zDieSlotHostRef = z.object({
+    kind: z.enum(['die']),
+    id: z.string()
+});
+
+export const zSlotHostRef = z.union([
+    z.object({
+        kind: z.literal('piece')
+    }).and(zPieceSlotHostRef),
+    z.object({
+        kind: z.literal('die')
+    }).and(zDieSlotHostRef)
+]);
+
 export const zSlotHomeSpec = z.object({
     type: z.enum(['slot']),
-    hostComponentId: z.string(),
+    host: zSlotHostRef,
     slotId: z.string()
 });
 
@@ -652,12 +672,21 @@ export const zBoardSpec = z.union([
 ]);
 
 /**
+ * Named authored slot exposed by a piece or die type
+ */
+export const zComponentSlotSpec = z.object({
+    id: z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]*$/),
+    name: z.optional(z.string())
+});
+
+/**
  * Reusable authored piece type
  */
 export const zPieceTypeSpec = z.object({
     id: z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]*$/),
     name: z.string(),
-    fieldsSchema: z.optional(zObjectSchema)
+    fieldsSchema: z.optional(zObjectSchema),
+    slots: z.optional(z.array(zComponentSlotSpec))
 });
 
 /**
@@ -681,7 +710,8 @@ export const zDieTypeSpec = z.object({
     id: z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]*$/),
     name: z.string(),
     sides: z.int().gte(2).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }).default(6),
-    fieldsSchema: z.optional(zObjectSchema)
+    fieldsSchema: z.optional(zObjectSchema),
+    slots: z.optional(z.array(zComponentSlotSpec))
 });
 
 /**

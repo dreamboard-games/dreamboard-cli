@@ -40,43 +40,86 @@ defineTopologyManifest({
   boardTemplates: [],
   boards: [
     {
-      id: "board",
-      name: "Board",
+      id: "board-a",
+      name: "Board A",
       layout: "square",
       scope: "shared",
       spaces: [{ id: "space-a", row: 0, col: 0 }],
-      containers: [{ id: "supply", name: "Supply", host: { type: "board" } }],
+      containers: [
+        { id: "supply-a", name: "Supply A", host: { type: "board" } },
+      ],
+    },
+    {
+      id: "board-b",
+      name: "Board B",
+      layout: "square",
+      scope: "shared",
+      spaces: [{ id: "space-b", row: 0, col: 0 }],
+      containers: [
+        { id: "supply-b", name: "Supply B", host: { type: "board" } },
+      ],
     },
   ],
-  pieceTypes: [{ id: "meeple", name: "Meeple" }],
+  pieceTypes: [
+    { id: "meeple", name: "Meeple" },
+    {
+      id: "player-mat",
+      name: "Player Mat",
+      slots: [{ id: "worker-rest", name: "Worker Rest" }],
+    },
+  ],
   pieceSeeds: [
     {
-      typeId: "pawn",
+      id: "mat-alpha",
+      typeId: "player-mat",
+    },
+    {
+      id: "worker-a",
+      typeId: "meeple",
       ownerId: "player-1",
       home: {
         type: "space",
-        boardId: "board",
-        spaceId: "space-a",
+        boardId: "board-a",
+        spaceId: "space-b",
       },
     },
     {
       typeId: "meeple",
-      ownerId: "player-3",
+      ownerId: "player-1",
       home: {
-        type: "space",
-        boardId: "missing-board",
-        spaceId: "space-a",
+        type: "slot",
+        host: {
+          kind: "piece",
+          id: "missing-host",
+        },
+        slotId: "worker-rest",
       },
     },
   ],
-  dieTypes: [{ id: "d6", name: "D6", sides: 6 }],
+  dieTypes: [
+    { id: "d6", name: "D6", sides: 6 },
+    {
+      id: "die-holder",
+      name: "Die Holder",
+      sides: 6,
+      slots: [{ id: "staging", name: "Staging" }],
+    },
+  ],
   dieSeeds: [
     {
+      id: "holder-a",
+      typeId: "die-holder",
+    },
+    {
+      id: "d6-a",
       typeId: "d6",
       home: {
-        type: "container",
-        boardId: "board",
-        containerId: "missing-container",
+        type: "slot",
+        host: {
+          kind: "die",
+          id: "holder-a",
+        },
+        slotId: "missing-slot",
       },
     },
   ],

@@ -15,7 +15,11 @@ const STATIC_ASSET_ROOT = path.resolve(
   import.meta.dir,
   "../../scaffold/assets/static",
 );
-const DYNAMIC_STATIC_PATHS = ["package.json", "ui/package.json"] as const;
+const DYNAMIC_STATIC_PATHS = [
+  ".npmrc",
+  "package.json",
+  "ui/package.json",
+] as const;
 
 test("cli scaffold ownership re-exports workspace-codegen ownership", () => {
   expect(SCAFFOLD_OWNERSHIP).toEqual(WORKSPACE_CODEGEN_OWNERSHIP);

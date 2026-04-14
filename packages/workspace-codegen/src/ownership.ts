@@ -22,13 +22,15 @@ export type ScaffoldingOwnership = {
 };
 
 export const WORKSPACE_CODEGEN_OWNERSHIP: ScaffoldingOwnership = {
-  version: 20,
+  version: 21,
   allowedPaths: {
     rootFiles: [
+      ".npmrc",
       "package.json",
       "pnpm-lock.yaml",
       "package-lock.json",
-      "manifest.json",
+      "manifest.ts",
+      "manifest.tsconfig.json",
       "rule.md",
     ],
     directoryPrefixes: ["app/", "ui/", "shared/", "test/"],
@@ -56,6 +58,7 @@ export const WORKSPACE_CODEGEN_OWNERSHIP: ScaffoldingOwnership = {
   },
   cliStatic: {
     exactFiles: [
+      ".npmrc",
       "package.json",
       "app/tsconfig.json",
       "ui/index.tsx",

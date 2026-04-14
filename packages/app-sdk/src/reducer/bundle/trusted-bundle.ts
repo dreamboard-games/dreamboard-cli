@@ -30,6 +30,7 @@ import type {
   ReducerValidationResult,
   PromptInstanceId,
   RuntimeSetupSelection,
+  RuntimeSetupSelectionInput,
   RuntimeParams,
   RuntimePromptInstance,
   SchemaLike,
@@ -249,7 +250,7 @@ export function createTrustedReducerBundle<
   }
 
   function resolveSelectedSetup(
-    setup: RuntimeSetupSelection<Manifest> | null | undefined,
+    setup: RuntimeSetupSelectionInput<Manifest> | null | undefined,
   ): State["runtime"]["setup"] {
     if (!setup) {
       return null;
@@ -258,12 +259,28 @@ export function createTrustedReducerBundle<
     if (!manifestProfile) {
       throw new Error(`Unknown setup profile '${setup.profileId}'.`);
     }
+    const resolvedOptionValues: Record<string, string | null> =
+      Object.fromEntries(
+        definition.contract.manifest.literals.setupOptionIds.map(
+          (optionId: string) => [optionId, null] as const,
+        ),
+      );
+
+    for (const [optionId, choiceId] of Object.entries(
+      manifestProfile.optionValues ?? {},
+    ) as Array<[string, string]>) {
+      resolvedOptionValues[optionId] = choiceId;
+    }
+    for (const [optionId, choiceId] of Object.entries(
+      setup.optionValues ?? {},
+    ) as Array<[string, string]>) {
+      resolvedOptionValues[optionId] = choiceId ?? null;
+    }
+
     return {
       profileId: setup.profileId,
-      optionValues: {
-        ...(manifestProfile.optionValues ?? {}),
-        ...(setup.optionValues ?? {}),
-      },
+      optionValues:
+        resolvedOptionValues as RuntimeSetupSelection<Manifest>["optionValues"],
     };
   }
 
@@ -1335,7 +1352,7 @@ export function createTrustedReducerBundle<
       table: State["table"];
       playerIds: PlayerId[];
       rngSeed?: number | null;
-      setup?: RuntimeSetupSelection<Manifest> | null;
+      setup?: RuntimeSetupSelectionInput<Manifest> | null;
     }) {
       const parsedTable = safeParseOrThrow(
         definition.contract.manifest.tableSchema,

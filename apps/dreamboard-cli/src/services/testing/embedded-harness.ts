@@ -9,11 +9,13 @@ import type { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { client } from "@dreamboard/api-client/client.gen";
 import consola from "consola";
+import { MATERIALIZED_MANIFEST_FILE } from "../../constants.js";
 import type { ProjectConfig } from "../../types.js";
 import { exists } from "../../utils/fs.js";
 import { hashContent } from "../../utils/crypto.js";
 import { getProjectAuthoringState } from "../project/project-state.js";
 import { loadManifest } from "../project/local-files.js";
+import { readMaterializedManifestText } from "../project/manifest-authoring.js";
 
 const READY_PREFIX = "HARNESS_READY ";
 const HARNESS_START_IDLE_TIMEOUT_MS = 180_000;
@@ -94,7 +96,7 @@ export async function startEmbeddedHarnessSession(options: {
       ...gradlew.args,
       "--console=plain",
       ":apps:backend:runEmbeddedHarness",
-      `-PharnessManifestPath=${path.join(options.projectRoot, "manifest.json")}`,
+      `-PharnessManifestPath=${path.join(options.projectRoot, MATERIALIZED_MANIFEST_FILE)}`,
       `-PharnessBundlePath=${fixture.bundleRoot}`,
       `-PharnessGameId=${fixture.gameId}`,
       `-PharnessManifestId=${fixture.manifestId}`,
@@ -199,9 +201,10 @@ async function prepareLocalHarnessFixture(options: {
 }): Promise<LocalHarnessFixture> {
   await ensureEmbeddedHarnessDependencies(options.projectRoot);
 
-  const manifestPath = path.join(options.projectRoot, "manifest.json");
-  const manifestContent = await readFile(manifestPath, "utf8");
   await loadManifest(options.projectRoot);
+  const manifestContent = await readMaterializedManifestText(
+    options.projectRoot,
+  );
 
   const appEntryPath = path.join(options.projectRoot, "app", "index.ts");
   if (!(await exists(appEntryPath))) {

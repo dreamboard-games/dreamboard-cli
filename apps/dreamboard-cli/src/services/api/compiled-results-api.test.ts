@@ -213,6 +213,34 @@ test("waitForCompiledResultJobSdk falls back to a descriptive terminal error whe
   );
 });
 
+test("waitForCompiledResultJobSdk preserves enriched compiler terminal details when no result exists", async () => {
+  mockState.jobResponses.push({
+    data: {
+      jobId: "job-4",
+      gameId: "game-1",
+      jobType: "COMPILED_RESULT_BUILD",
+      status: "FAILED",
+      createdAt: "2026-03-17T05:45:58Z",
+      phase: "failed",
+      message:
+        "Compiler job job-4 ended without a result (status=COMPLETED, phase=completed, message=Compiler accepted the job but produced no result)",
+      errorMessage:
+        "Compiler job job-4 ended without a result (status=COMPLETED, phase=completed, message=Compiler accepted the job but produced no result)",
+    },
+    error: null,
+    response: { status: 200 },
+  });
+
+  await expect(
+    waitForCompiledResultJobSdk({
+      gameId: "game-1",
+      jobId: "job-4",
+    }),
+  ).rejects.toThrow(
+    "Compile failed [failed]: Compiler job job-4 ended without a result (status=COMPLETED, phase=completed, message=Compiler accepted the job but produced no result)",
+  );
+});
+
 test("waitForCompiledResultJobSdk falls back to the latest compiled result for the authoring state", async () => {
   mockState.jobResponses.push({
     data: {

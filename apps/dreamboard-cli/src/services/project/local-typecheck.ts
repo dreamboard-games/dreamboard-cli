@@ -1,5 +1,6 @@
+import { MANIFEST_TYPECHECK_CONFIG_FILE } from "../../constants.js";
 import { spawn } from "node:child_process";
-import { lstat, mkdir, symlink } from "node:fs/promises";
+import { lstat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -16,21 +17,7 @@ type TypecheckRunner = {
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(MODULE_DIR, "../../../../..");
-const PROJECT_DEPENDENCY_NODE_MODULES = path.join(
-  REPO_ROOT,
-  "apps",
-  "dreamboard-cli",
-  "node_modules",
-);
 const TYPESCRIPT_NODE_MODULES = path.join(REPO_ROOT, "node_modules");
-const APP_SDK_NODE_MODULES = path.join(
-  REPO_ROOT,
-  "packages/app-sdk/node_modules",
-);
-const UI_SDK_NODE_MODULES = path.join(
-  REPO_ROOT,
-  "packages/ui-sdk/node_modules",
-);
 const TYPESCRIPT_BIN_PATH_SEGMENTS = [
   "node_modules",
   "typescript",
@@ -61,19 +48,6 @@ async function pathExists(targetPath: string): Promise<boolean> {
   }
 }
 
-async function ensureSymlink(targetPath: string, linkPath: string) {
-  if (await pathExists(linkPath)) {
-    return;
-  }
-
-  await mkdir(path.dirname(linkPath), { recursive: true });
-  await symlink(
-    targetPath,
-    linkPath,
-    process.platform === "win32" ? "junction" : "dir",
-  );
-}
-
 async function ensureTypecheckDependencies(
   projectRoot: string,
 ): Promise<string | null> {
@@ -81,30 +55,7 @@ async function ensureTypecheckDependencies(
     return null;
   }
 
-  if (!(await pathExists(PROJECT_DEPENDENCY_NODE_MODULES))) {
-    return `Skipping local typecheck: project dependencies are not installed at ${getProjectNodeModules(projectRoot)}, and scaffold dependencies are not installed at ${PROJECT_DEPENDENCY_NODE_MODULES}.`;
-  }
-
-  await ensureSymlink(
-    PROJECT_DEPENDENCY_NODE_MODULES,
-    getProjectNodeModules(projectRoot),
-  );
-
-  if (await pathExists(APP_SDK_NODE_MODULES)) {
-    await ensureSymlink(
-      APP_SDK_NODE_MODULES,
-      path.join(projectRoot, "app", "node_modules"),
-    );
-  }
-
-  if (await pathExists(UI_SDK_NODE_MODULES)) {
-    await ensureSymlink(
-      UI_SDK_NODE_MODULES,
-      path.join(projectRoot, "ui", "node_modules"),
-    );
-  }
-
-  return null;
+  return `Skipping local typecheck: workspace dependencies are not installed at ${getProjectNodeModules(projectRoot)}. Run \`dreamboard sync\` to reconcile workspace dependencies first.`;
 }
 
 async function resolveTypecheckRunner(
@@ -209,7 +160,11 @@ export async function runLocalTypecheck(
     };
   }
 
-  for (const projectPath of ["app/tsconfig.json", "ui/tsconfig.json"]) {
+  for (const projectPath of [
+    MANIFEST_TYPECHECK_CONFIG_FILE,
+    "app/tsconfig.json",
+    "ui/tsconfig.json",
+  ]) {
     const result = await runTypecheckProject(runner, projectRoot, projectPath);
     if (!result.success) {
       return result;

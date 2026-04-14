@@ -60,7 +60,12 @@ function formatRemoteCompileCommandError(options: {
   jobId?: string;
 }): string {
   const detail = options.message.trim();
+  const hasActionableTerminalContext =
+    /^Compile\s+(failed|completed|cancelled|interrupted)\b/i.test(detail);
   if (options.jobId) {
+    if (hasActionableTerminalContext) {
+      return `Remote compile job ${options.jobId} could not be completed. ${detail}`;
+    }
     return `Remote compile job ${options.jobId} could not be completed. ${detail} Check backend health and try 'dreamboard compile' again.`;
   }
   return `Remote compile could not be started. ${detail} Check backend health and try 'dreamboard compile' again.`;

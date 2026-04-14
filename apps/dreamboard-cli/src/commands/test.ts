@@ -83,6 +83,11 @@ const generateCommand = defineCommand({
       type: "string",
       description: "Optional scenario file path under test/scenarios",
     },
+    debug: {
+      type: "boolean",
+      description: "Print full reducer-native validation details",
+      default: false,
+    },
     ...CONFIG_FLAG_ARGS,
   },
   async run({ args }) {
@@ -105,6 +110,7 @@ const generateCommand = defineCommand({
       scenarioPath: args.scenario,
       compiledResultId: runtimeIdentity.compiledResultId,
       gameId: runtimeIdentity.gameId,
+      debug: Boolean(args.debug),
     });
 
     if (bases.length === 0) {
@@ -129,6 +135,11 @@ const runCommand = defineCommand({
     scenario: {
       type: "string",
       description: "Optional scenario file path under test/scenarios",
+    },
+    debug: {
+      type: "boolean",
+      description: "Print full reducer-native validation details",
+      default: false,
     },
     runner: {
       type: "string",
@@ -165,6 +176,7 @@ const runCommand = defineCommand({
       scenarioPath: args.scenario,
       compiledResultId: runtimeIdentity.compiledResultId,
       gameId: runtimeIdentity.gameId,
+      debug: Boolean(args.debug),
     });
 
     for (const result of summary.results) {

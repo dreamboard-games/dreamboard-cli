@@ -66,7 +66,7 @@ const configCommandArgsSchema = configFlagsSchema.extend({
 });
 
 const authCommandArgsSchema = z.object({
-  action: z.enum(["set", "clear", "login", "env"]),
+  action: z.enum(["set", "clear", "login", "env", "status"]),
   tokenValue: z.string().optional(),
   token: z.string().optional(),
   jwt: z.boolean().optional(),

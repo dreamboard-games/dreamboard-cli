@@ -17,9 +17,16 @@ import {
 } from "../services/project/local-files.js";
 import {
   getProjectAuthoringState,
+  updateProjectLocalMaintainerRegistry,
   updateProjectAuthoringState,
 } from "../services/project/project-state.js";
 import { applyWorkspaceCodegen } from "../services/project/workspace-codegen.js";
+import {
+  ensureLocalMaintainerSnapshot,
+  readWorkspaceLocalMaintainerRegistry,
+} from "../services/project/local-maintainer-registry.js";
+import { scaffoldStaticWorkspace } from "../services/project/static-scaffold.js";
+import { installWorkspaceDependencies } from "../services/project/workspace-dependencies.js";
 
 export default defineCommand({
   meta: {
@@ -39,6 +46,9 @@ export default defineCommand({
     const parsedArgs = parsePullCommandArgs(args);
     const { projectRoot, projectConfig, config } =
       await resolveProjectContext(parsedArgs);
+    const localMaintainerRegistry = await ensureLocalMaintainerSnapshot(
+      config.apiBaseUrl,
+    );
     const localAuthoring = getProjectAuthoringState(projectConfig);
     const latestRemote = await fetchLatestRemoteSources(projectConfig.gameId);
 
@@ -59,7 +69,31 @@ export default defineCommand({
           `This workspace has no authored base. Use 'dreamboard pull --force' to replace local files with remote authored state ${latestRemote.authoringStateId}.`,
         );
       }
-      await pullIntoDirectory(config, projectRoot, projectConfig);
+      const pulledProjectConfig = await pullIntoDirectory(
+        config,
+        projectRoot,
+        projectConfig,
+      );
+      const fallbackRegistryUrl = localMaintainerRegistry?.registryUrl;
+      const workspaceLocalMaintainerRegistry =
+        localMaintainerRegistry ??
+        (await readWorkspaceLocalMaintainerRegistry(
+          projectRoot,
+          fallbackRegistryUrl,
+        ));
+      await scaffoldStaticWorkspace(projectRoot, "update", {
+        localMaintainerRegistry: workspaceLocalMaintainerRegistry,
+      });
+      if (workspaceLocalMaintainerRegistry) {
+        await installWorkspaceDependencies(projectRoot);
+        await updateProjectState(
+          projectRoot,
+          updateProjectLocalMaintainerRegistry(
+            pulledProjectConfig,
+            workspaceLocalMaintainerRegistry,
+          ),
+        );
+      }
       consola.success("Pulled remote authored state into the workspace.");
       return;
     }
@@ -70,7 +104,31 @@ export default defineCommand({
     }
 
     if (parsedArgs.force) {
-      await pullIntoDirectory(config, projectRoot, projectConfig);
+      const pulledProjectConfig = await pullIntoDirectory(
+        config,
+        projectRoot,
+        projectConfig,
+      );
+      const fallbackRegistryUrl = localMaintainerRegistry?.registryUrl;
+      const workspaceLocalMaintainerRegistry =
+        localMaintainerRegistry ??
+        (await readWorkspaceLocalMaintainerRegistry(
+          projectRoot,
+          fallbackRegistryUrl,
+        ));
+      await scaffoldStaticWorkspace(projectRoot, "update", {
+        localMaintainerRegistry: workspaceLocalMaintainerRegistry,
+      });
+      if (workspaceLocalMaintainerRegistry) {
+        await installWorkspaceDependencies(projectRoot);
+        await updateProjectState(
+          projectRoot,
+          updateProjectLocalMaintainerRegistry(
+            pulledProjectConfig,
+            workspaceLocalMaintainerRegistry,
+          ),
+        );
+      }
       consola.success(
         "Replaced local files with the current remote authored state.",
       );
@@ -93,8 +151,25 @@ export default defineCommand({
       );
     }
 
-    await updateProjectState(
+    await applyWorkspaceCodegen({
       projectRoot,
+      manifest: await loadManifest(projectRoot),
+    });
+    const fallbackRegistryUrl = localMaintainerRegistry?.registryUrl;
+    const workspaceLocalMaintainerRegistry =
+      localMaintainerRegistry ??
+      (await readWorkspaceLocalMaintainerRegistry(
+        projectRoot,
+        fallbackRegistryUrl,
+      ));
+    await scaffoldStaticWorkspace(projectRoot, "update", {
+      localMaintainerRegistry: workspaceLocalMaintainerRegistry,
+    });
+    if (workspaceLocalMaintainerRegistry) {
+      await installWorkspaceDependencies(projectRoot);
+    }
+
+    const nextProjectConfig = updateProjectLocalMaintainerRegistry(
       updateProjectAuthoringState(projectConfig, {
         authoringStateId: reconcileResult.latest.authoringStateId,
         sourceRevisionId: reconcileResult.latest.sourceRevisionId,
@@ -108,12 +183,9 @@ export default defineCommand({
         ruleId:
           reconcileResult.latest.ruleId ?? projectConfig.authoring?.ruleId,
       }),
+      workspaceLocalMaintainerRegistry ?? undefined,
     );
-
-    await applyWorkspaceCodegen({
-      projectRoot,
-      manifest: await loadManifest(projectRoot),
-    });
+    await updateProjectState(projectRoot, nextProjectConfig);
 
     const reconciledLocalFiles = await collectLocalFiles(projectRoot);
     await writeSnapshotFromFiles(

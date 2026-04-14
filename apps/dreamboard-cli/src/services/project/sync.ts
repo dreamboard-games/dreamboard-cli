@@ -26,7 +26,7 @@ import {
 import { isAllowedGamePath, isLibraryPath } from "./scaffold-ownership.js";
 import { applyWorkspaceCodegen } from "./workspace-codegen.js";
 
-const META_FILES = new Set([MANIFEST_FILE, RULE_FILE]);
+const META_FILES = new Set([RULE_FILE]);
 
 export type RemoteProjectSources = {
   authoringStateId: string;
@@ -59,13 +59,6 @@ function normalizeRemoteFiles(
   return response?.files ?? response?.sourceFiles ?? {};
 }
 
-function manifestToText(
-  manifest: GameTopologyManifest | undefined,
-): string | null {
-  if (!manifest) return null;
-  return `${JSON.stringify(manifest, null, 2)}\n`;
-}
-
 function isMergeablePath(filePath: string): boolean {
   if (META_FILES.has(filePath)) return true;
   return isAllowedGamePath(filePath) && !isLibraryPath(filePath);
@@ -88,11 +81,6 @@ function buildMergeableRemoteFiles(
     if (isMergeablePath(filePath)) {
       files[filePath] = content;
     }
-  }
-
-  const manifestText = manifestToText(sources.manifest);
-  if (manifestText !== null) {
-    files[MANIFEST_FILE] = manifestText;
   }
 
   if (typeof sources.ruleText === "string") {
@@ -231,7 +219,7 @@ export async function pullIntoDirectory(
   await writeSourceFiles(targetDir, latest.files);
   await removeExtraneousFiles(targetDir, new Set(Object.keys(latest.files)));
 
-  if (latest.manifest) {
+  if (latest.manifest && !latest.files[MANIFEST_FILE]) {
     await writeManifest(targetDir, latest.manifest);
   }
 
@@ -239,7 +227,7 @@ export async function pullIntoDirectory(
     await writeRule(targetDir, latest.ruleText);
   }
 
-  const manifestForCodegen = latest.manifest ?? (await loadManifest(targetDir));
+  const manifestForCodegen = await loadManifest(targetDir);
   await applyWorkspaceCodegen({
     projectRoot: targetDir,
     manifest: manifestForCodegen,

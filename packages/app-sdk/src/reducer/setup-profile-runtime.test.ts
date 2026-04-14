@@ -7,7 +7,6 @@ import {
   defineGame,
   defineGameContract,
   definePhase,
-  defineSetupProfiles,
   type RuntimeTableRecord,
 } from "../reducer";
 
@@ -53,7 +52,7 @@ function createManifestContract(setupProfileIds: readonly string[]) {
     literals: {
       playerIds,
       phaseNames,
-      setupOptionIds: ["mode"] as const,
+      setupOptionIds: ["mode", "variant"] as const,
       setupProfileIds,
       cardSetIds: [] as const,
       cardTypes: [] as const,
@@ -153,6 +152,11 @@ function createManifestContract(setupProfileIds: readonly string[]) {
         name: "Mode",
         choices: [{ id: "draft", label: "Draft" }],
       },
+      variant: {
+        id: "variant",
+        name: "Variant",
+        choices: [{ id: "advanced", label: "Advanced" }],
+      },
     },
     setupProfilesById: Object.fromEntries(
       setupProfileIds.map((profileId) => [
@@ -244,11 +248,11 @@ describe("setup profile runtime", () => {
         }),
       },
       initialPhase: "defaultPhase",
-      setupProfiles: defineSetupProfiles<"draft-profile">()({
+      setupProfiles: {
         "draft-profile": {
           initialPhase: "draftPhase",
         },
-      }),
+      },
       phases,
     });
 
@@ -267,6 +271,7 @@ describe("setup profile runtime", () => {
       profileId: "draft-profile",
       optionValues: {
         mode: "draft",
+        variant: null,
       },
     });
     expect(initialized.domain.publicState).toEqual({
@@ -315,9 +320,9 @@ describe("setup profile runtime", () => {
     const game = defineGame({
       contract,
       initialPhase: "defaultPhase",
-      setupProfiles: defineSetupProfiles<"draft-profile">()({
+      setupProfiles: {
         "draft-profile": {},
-      }),
+      },
       phases: {
         defaultPhase: definePhase<typeof contract>()({
           kind: "auto",
@@ -356,7 +361,7 @@ describe("setup profile runtime", () => {
     expect(initialized.domain.table.resources["player-3"]).toBeUndefined();
   });
 
-  test("initialize reconstructs player order and occupancy from raw deck and hand state", async () => {
+  test("initialize preserves explicit deck, hand, and component location state", async () => {
     const playerIds = ["player-1", "player-2"] as const;
     const phaseNames = ["defaultPhase"] as const;
     const deckIds = ["draw-deck"] as const;
@@ -563,6 +568,20 @@ describe("setup profile runtime", () => {
           },
         },
         pieces: {},
+        componentLocations: {
+          "card-1": {
+            type: "InDeck",
+            deckId: "draw-deck",
+            playedBy: null,
+            position: 0,
+          },
+          "card-2": {
+            type: "InHand",
+            handId: "hand",
+            playerId: "player-2",
+            position: 0,
+          },
+        },
         ownerOfCard: {},
         visibility: {},
         resources: {},
@@ -615,14 +634,14 @@ describe("setup profile runtime", () => {
     const game = defineGame({
       contract,
       initialPhase: "defaultPhase",
-      setupProfiles: defineSetupProfiles<"base-profile" | "draft-profile">()({
+      setupProfiles: {
         "base-profile": {
           initialPhase: "defaultPhase",
         },
         "draft-profile": {
           initialPhase: "draftPhase",
         },
-      }),
+      },
       phases: {
         defaultPhase: definePhase<typeof contract>()({
           kind: "auto",

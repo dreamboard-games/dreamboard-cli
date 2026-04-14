@@ -24,6 +24,17 @@ const VALID_MANIFEST = {
   setupProfiles: [],
 } as const;
 
+function renderManifestSource(manifestSource: string): string {
+  return [
+    'import { defineTopologyManifest } from "@dreamboard/sdk-types";',
+    "",
+    "export default defineTopologyManifest(",
+    manifestSource,
+    ");",
+    "",
+  ].join("\n");
+}
+
 async function withTempProject(
   manifestContents: string,
   run: (rootDir: string) => Promise<void>,
@@ -31,7 +42,7 @@ async function withTempProject(
   const rootDir = await mkdtemp(path.join(os.tmpdir(), "db-local-files-"));
 
   try {
-    await Bun.write(path.join(rootDir, "manifest.json"), manifestContents);
+    await Bun.write(path.join(rootDir, "manifest.ts"), manifestContents);
     await run(rootDir);
   } finally {
     await rm(rootDir, { recursive: true, force: true });
@@ -76,7 +87,7 @@ function runLoadManifest(rootDir: string): {
 
 test("loadManifest parses a valid manifest with the generated Zod schema", async () => {
   await withTempProject(
-    `${JSON.stringify(VALID_MANIFEST, null, 2)}\n`,
+    renderManifestSource(`${JSON.stringify(VALID_MANIFEST, null, 2)}`),
     async (rootDir) => {
       const result = runLoadManifest(rootDir);
 
@@ -238,7 +249,7 @@ test("loadManifest preserves JSON-valued authored fields and richer property sch
   };
 
   await withTempProject(
-    `${JSON.stringify(manifestWithTypedFields, null, 2)}\n`,
+    renderManifestSource(`${JSON.stringify(manifestWithTypedFields, null, 2)}`),
     async (rootDir) => {
       const result = runLoadManifest(rootDir);
 
@@ -285,7 +296,7 @@ test("loadManifest surfaces path-specific Zod issues for invalid resources", asy
   };
 
   await withTempProject(
-    `${JSON.stringify(invalidManifest, null, 2)}\n`,
+    renderManifestSource(`${JSON.stringify(invalidManifest, null, 2)}`),
     async (rootDir) => {
       const result = runLoadManifest(rootDir);
 
@@ -305,7 +316,7 @@ test("loadManifest rejects unknown manifest fields", async () => {
   };
 
   await withTempProject(
-    `${JSON.stringify(invalidManifest, null, 2)}\n`,
+    renderManifestSource(`${JSON.stringify(invalidManifest, null, 2)}`),
     async (rootDir) => {
       const result = runLoadManifest(rootDir);
 
@@ -338,7 +349,7 @@ test("loadManifest rejects setupProfiles that reference unknown setup options", 
   };
 
   await withTempProject(
-    `${JSON.stringify(invalidManifest, null, 2)}\n`,
+    renderManifestSource(`${JSON.stringify(invalidManifest, null, 2)}`),
     async (rootDir) => {
       const result = runLoadManifest(rootDir);
 
@@ -346,6 +357,71 @@ test("loadManifest rejects setupProfiles that reference unknown setup options", 
       expect(result.stderr).toContain("Invalid manifest:");
       expect(result.stderr).toContain(
         "manifest.setupProfiles[0].optionValues.expansion: Unknown setup option 'expansion'.",
+      );
+    },
+  );
+});
+
+test("loadManifest rejects player-scoped seed homes without ownerId", async () => {
+  const invalidManifest = {
+    ...VALID_MANIFEST,
+    zones: [
+      {
+        id: "scout-hand",
+        name: "Scout Hand",
+        scope: "perPlayer",
+      },
+    ],
+    boards: [
+      {
+        id: "player-mat",
+        name: "Player Mat",
+        layout: "square",
+        scope: "perPlayer",
+        spaces: [{ id: "camp", row: 0, col: 0 }],
+        relations: [],
+        containers: [],
+        edges: [],
+        vertices: [],
+      },
+    ],
+    pieceTypes: [{ id: "meeple", name: "Meeple" }],
+    pieceSeeds: [
+      {
+        id: "worker-a",
+        typeId: "meeple",
+        home: {
+          type: "space",
+          boardId: "player-mat",
+          spaceId: "camp",
+        },
+      },
+    ],
+    dieTypes: [{ id: "d6", name: "D6", sides: 6 }],
+    dieSeeds: [
+      {
+        id: "die-a",
+        typeId: "d6",
+        home: {
+          type: "zone",
+          zoneId: "scout-hand",
+        },
+      },
+    ],
+  };
+
+  await withTempProject(
+    renderManifestSource(`${JSON.stringify(invalidManifest, null, 2)}`),
+    async (rootDir) => {
+      const result = runLoadManifest(rootDir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Invalid manifest:");
+      expect(result.stderr).toContain(
+        "manifest.pieceSeeds[0].home.boardId: Piece seed 'worker-a' requires ownerId because board 'player-mat' has scope 'perPlayer'. Add ownerId to resolve the player-scoped destination.",
+      );
+      expect(result.stderr).toContain(
+        "manifest.dieSeeds[0].home.zoneId: Die seed 'die-a' requires ownerId because zone 'scout-hand' has scope 'perPlayer'. Add ownerId to resolve the player-scoped destination.",
       );
     },
   );
@@ -373,7 +449,7 @@ test("loadManifest rejects setupProfiles that reference unknown setup option cho
   };
 
   await withTempProject(
-    `${JSON.stringify(invalidManifest, null, 2)}\n`,
+    renderManifestSource(`${JSON.stringify(invalidManifest, null, 2)}`),
     async (rootDir) => {
       const result = runLoadManifest(rootDir);
 
@@ -386,25 +462,35 @@ test("loadManifest rejects setupProfiles that reference unknown setup option cho
   );
 });
 
-test("loadManifest reports malformed JSON cleanly", async () => {
-  await withTempProject('{\n  "players":\n', async (rootDir) => {
-    const result = runLoadManifest(rootDir);
+test("loadManifest reports invalid manifest.ts syntax cleanly", async () => {
+  await withTempProject(
+    [
+      'import { defineTopologyManifest } from "@dreamboard/sdk-types";',
+      "",
+      "export default defineTopologyManifest({",
+      "",
+    ].join("\n"),
+    async (rootDir) => {
+      const result = runLoadManifest(rootDir);
 
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("Invalid manifest.json:");
-  });
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Failed to evaluate manifest.ts:");
+    },
+  );
 });
 
 test("getLocalDiff ignores playwright and generated test artifacts", async () => {
   await withTempProject(
-    `${JSON.stringify(VALID_MANIFEST, null, 2)}\n`,
+    renderManifestSource(`${JSON.stringify(VALID_MANIFEST, null, 2)}`),
     async (rootDir) => {
       const { getLocalDiff, writeSnapshotFromFiles } = await import(
         LOCAL_FILES_MODULE_PATH
       );
 
       await writeSnapshotFromFiles(rootDir, {
-        "manifest.json": `${JSON.stringify(VALID_MANIFEST, null, 2)}\n`,
+        "manifest.ts": renderManifestSource(
+          `${JSON.stringify(VALID_MANIFEST, null, 2)}`,
+        ),
       });
 
       await Bun.write(

@@ -27,6 +27,17 @@ const VALID_MANIFEST_BASE = {
   setupProfiles: [],
 } as const;
 
+function renderManifestSource(manifest: Record<string, unknown>): string {
+  return [
+    'import { defineTopologyManifest } from "@dreamboard/sdk-types";',
+    "",
+    "export default defineTopologyManifest(",
+    `${JSON.stringify(manifest, null, 2)}`,
+    ");",
+    "",
+  ].join("\n");
+}
+
 async function withTempProject(
   manifest: Record<string, unknown>,
   run: (projectRoot: string) => Promise<void>,
@@ -37,8 +48,8 @@ async function withTempProject(
 
   try {
     await Bun.write(
-      path.join(projectRoot, "manifest.json"),
-      `${JSON.stringify(manifest, null, 2)}\n`,
+      path.join(projectRoot, "manifest.ts"),
+      renderManifestSource(manifest),
     );
     await run(projectRoot);
   } finally {
@@ -120,7 +131,7 @@ describe("resolveSetupProfileIdForSession", () => {
     );
   });
 
-  test("requires an explicit setup profile when multiple profiles exist", async () => {
+  test("implicitly selects the first declared setup profile when multiple profiles exist", async () => {
     await withTempProject(
       {
         ...VALID_MANIFEST_BASE,
@@ -132,10 +143,8 @@ describe("resolveSetupProfileIdForSession", () => {
       async (projectRoot) => {
         const result = runResolveSetupProfile(projectRoot);
 
-        expect(result.exitCode).toBe(1);
-        expect(result.stderr).toContain(
-          "This manifest defines multiple setup profiles. Pass --setup-profile with one of: base-profile, draft-profile.",
-        );
+        expect(result.exitCode).toBe(0);
+        expect(JSON.parse(result.stdout)).toBe("base-profile");
       },
     );
   });

@@ -1,4 +1,5 @@
 import type {
+  LocalMaintainerRegistryConfig,
   ProjectAuthoringState,
   ProjectCompileAttempt,
   ProjectCompileState,
@@ -22,6 +23,12 @@ export function getProjectCompileState(
   projectConfig: ProjectConfig,
 ): ProjectCompileState {
   return projectConfig.compile ?? {};
+}
+
+export function getProjectLocalMaintainerRegistry(
+  projectConfig: ProjectConfig,
+): LocalMaintainerRegistryConfig | undefined {
+  return projectConfig.localMaintainerRegistry;
 }
 
 export function updateProjectAuthoringState(
@@ -122,5 +129,15 @@ export function clearProjectCompileState(
   return {
     ...projectConfig,
     compile: {},
+  };
+}
+
+export function updateProjectLocalMaintainerRegistry(
+  projectConfig: ProjectConfig,
+  localMaintainerRegistry: LocalMaintainerRegistryConfig | undefined,
+): ProjectConfig {
+  return {
+    ...projectConfig,
+    localMaintainerRegistry,
   };
 }

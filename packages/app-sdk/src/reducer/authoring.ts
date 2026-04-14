@@ -8,7 +8,6 @@ import type {
   ChoicePromptSpec,
   ChoiceOptionIdTuple,
   ContinuationCallable,
-  GeneratedManifestContractLike,
   InitialStateCallbacks,
   ManifestContractOf,
   NonEmptyReadonlyArray,
@@ -20,7 +19,6 @@ import type {
   ReducerManifestContract,
   ManifestContract,
   RuntimeParams,
-  SetupProfileDefinition,
   RuntimeTableRecord,
   SchemaLike,
   ScopedPhaseState,
@@ -239,45 +237,6 @@ export function defineGame<
   >,
 ): ReducerGameDefinition<Contract, Definitions, Views> {
   return definition;
-}
-
-type ExactRecord<
-  Keys extends string,
-  Value,
-  Candidate extends Record<string, Value>,
-> = Candidate &
-  Record<Exclude<Keys, keyof Candidate>, never> &
-  Record<Exclude<keyof Candidate, Keys>, never>;
-
-export function defineSetupProfiles<SetupProfileId extends string>() {
-  return <
-    const Profiles extends Record<string, SetupProfileDefinition<string>>,
-  >(
-    profiles: ExactRecord<
-      SetupProfileId,
-      SetupProfileDefinition<string>,
-      Profiles
-    >,
-  ) => profiles;
-}
-
-export function defineSetupProfilesFor<
-  const Manifest extends GeneratedManifestContractLike,
->(_manifest: Manifest) {
-  return <SetupProfileId extends string>() =>
-    <
-      const Profiles extends Record<
-        string,
-        SetupProfileDefinition<string, Manifest>
-      >,
-    >(
-      profiles: ExactRecord<
-        SetupProfileId,
-        SetupProfileDefinition<string, Manifest>,
-        Profiles
-      >,
-    ) =>
-      profiles;
 }
 
 export function definePhase<Contract extends AnyReducerGameContract>() {

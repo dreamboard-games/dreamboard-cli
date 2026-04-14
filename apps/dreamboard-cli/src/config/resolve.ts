@@ -122,11 +122,7 @@ function assertPublicRuntimeFlags(flags: ConfigFlags): void {
  * so the CLI always has a valid access token, even if the original JWT has expired.
  */
 export async function configureClient(config: ResolvedConfig): Promise<void> {
-  const refreshedSession = await refreshAuthTokenIfNeeded(config);
-
-  if (refreshedSession && usesStoredSession(config)) {
-    await persistStoredSession(refreshedSession);
-  }
+  await refreshResolvedAuthSession(config);
 
   client.setConfig({
     baseUrl: config.apiBaseUrl,
@@ -202,6 +198,18 @@ async function refreshAuthTokenIfNeeded(
   }
 
   return null;
+}
+
+export async function refreshResolvedAuthSession(
+  config: ResolvedConfig,
+): Promise<{ authToken: string; refreshToken?: string } | null> {
+  const refreshedSession = await refreshAuthTokenIfNeeded(config);
+
+  if (refreshedSession && usesStoredSession(config)) {
+    await persistStoredSession(refreshedSession);
+  }
+
+  return refreshedSession;
 }
 
 async function refreshSessionWithSupabase(
@@ -290,6 +298,29 @@ export function valueOrUndefined(
   return typeof value === "string" && value.trim().length > 0
     ? value.trim()
     : undefined;
+}
+
+export function getAuthTokenExpiry(authToken: string | undefined): Date | null {
+  if (!authToken) {
+    return null;
+  }
+
+  const parts = authToken.split(".");
+  if (parts.length !== 3) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(
+      Buffer.from(parts[1]!, "base64url").toString("utf8"),
+    ) as { exp?: unknown };
+    if (typeof payload.exp !== "number" || !Number.isFinite(payload.exp)) {
+      return null;
+    }
+    return new Date(payload.exp * 1000);
+  } catch {
+    return null;
+  }
 }
 
 export function isInvalidRefreshTokenMessage(

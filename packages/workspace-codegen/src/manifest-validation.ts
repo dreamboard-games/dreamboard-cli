@@ -6,11 +6,20 @@ import type {
   BoardCard,
   BoardSpec,
   BoardTemplateSpec,
+  DieSeedSpec,
+  DieTypeSpec,
   GameTopologyManifest,
+  PieceSeedSpec,
+  PieceTypeSpec,
   SetupOptionSpec,
   ZoneSpec,
 } from "@dreamboard/sdk-types";
 import { resolveHexVertexGeometryKey } from "./hex-geometry.js";
+
+export type ManifestAuthoringValidationResult = {
+  errors: string[];
+  warnings: string[];
+};
 
 function isHexBoardTemplateSpec(
   boardTemplate: BoardTemplateSpec,
@@ -75,6 +84,139 @@ function expandSeedIds<
   });
 }
 
+function validateTypeSlotDuplicates(options: {
+  pieceTypes: readonly PieceTypeSpec[];
+  dieTypes: readonly DieTypeSpec[];
+}): string[] {
+  const issues: string[] = [];
+
+  for (const [index, pieceType] of options.pieceTypes.entries()) {
+    issues.push(
+      ...collectDuplicateIdIssues({
+        entries: (pieceType.slots ?? []).map((slot, slotIndex) => ({
+          id: slot.id,
+          path: `manifest.pieceTypes[${index}].slots[${slotIndex}].id`,
+        })),
+        label: "piece slot id",
+      }),
+    );
+  }
+
+  for (const [index, dieType] of options.dieTypes.entries()) {
+    issues.push(
+      ...collectDuplicateIdIssues({
+        entries: (dieType.slots ?? []).map((slot, slotIndex) => ({
+          id: slot.id,
+          path: `manifest.dieTypes[${index}].slots[${slotIndex}].id`,
+        })),
+        label: "die slot id",
+      }),
+    );
+  }
+
+  return issues;
+}
+
+function validateSlotHostsAndHomes(manifest: GameTopologyManifest): string[] {
+  const issues: string[] = [];
+  const pieceTypesById = new Map(
+    (manifest.pieceTypes ?? []).map(
+      (pieceType) => [pieceType.id, pieceType] as const,
+    ),
+  );
+  const dieTypesById = new Map(
+    (manifest.dieTypes ?? []).map((dieType) => [dieType.id, dieType] as const),
+  );
+  const slotIdsByHostKey = new Map<string, Set<string>>();
+
+  for (const [index, seed] of (manifest.pieceSeeds ?? []).entries()) {
+    const pieceType = pieceTypesById.get(seed.typeId);
+    const slotIds = (pieceType?.slots ?? []).map((slot) => slot.id);
+    if (slotIds.length === 0) {
+      continue;
+    }
+    if (typeof seed.id !== "string" || seed.id.length === 0) {
+      issues.push(
+        `manifest.pieceSeeds[${index}].id: Piece seed for slot-bearing type '${seed.typeId}' must declare an explicit id.`,
+      );
+      continue;
+    }
+    if ((seed.count ?? 1) !== 1) {
+      issues.push(
+        `manifest.pieceSeeds[${index}].count: Piece seed '${seed.id}' for slot-bearing type '${seed.typeId}' must omit count or set it to 1.`,
+      );
+      continue;
+    }
+    slotIdsByHostKey.set(`piece:${seed.id}`, new Set(slotIds));
+  }
+
+  for (const [index, seed] of (manifest.dieSeeds ?? []).entries()) {
+    const dieType = dieTypesById.get(seed.typeId);
+    const slotIds = (dieType?.slots ?? []).map((slot) => slot.id);
+    if (slotIds.length === 0) {
+      continue;
+    }
+    if (typeof seed.id !== "string" || seed.id.length === 0) {
+      issues.push(
+        `manifest.dieSeeds[${index}].id: Die seed for slot-bearing type '${seed.typeId}' must declare an explicit id.`,
+      );
+      continue;
+    }
+    if ((seed.count ?? 1) !== 1) {
+      issues.push(
+        `manifest.dieSeeds[${index}].count: Die seed '${seed.id}' for slot-bearing type '${seed.typeId}' must omit count or set it to 1.`,
+      );
+      continue;
+    }
+    slotIdsByHostKey.set(`die:${seed.id}`, new Set(slotIds));
+  }
+
+  const validateHome = (
+    home: BoardCard["home"] | PieceSeedSpec["home"] | DieSeedSpec["home"],
+    path: string,
+  ) => {
+    if (home?.type !== "slot") {
+      return;
+    }
+
+    const hostKey = `${home.host.kind}:${home.host.id}`;
+    const slotIds = slotIdsByHostKey.get(hostKey);
+    if (!slotIds) {
+      issues.push(
+        `${path}.host: Unknown strict slot host '${home.host.kind}:${home.host.id}'. Hosts must be singleton piece/die seeds whose type declares slots.`,
+      );
+      return;
+    }
+    if (!slotIds.has(home.slotId)) {
+      issues.push(
+        `${path}.slotId: Unknown slot '${home.slotId}' for host '${home.host.kind}:${home.host.id}'.`,
+      );
+    }
+  };
+
+  for (const [cardSetIndex, cardSet] of manifest.cardSets.entries()) {
+    if (cardSet.type !== "manual") {
+      continue;
+    }
+    for (const [cardIndex, card] of cardSet.cards.entries()) {
+      validateHome(
+        card.home,
+        `manifest.cardSets[${cardSetIndex}].cards[${cardIndex}].home`,
+      );
+    }
+  }
+
+  for (const [index, seed] of (manifest.pieceSeeds ?? []).entries()) {
+    validateHome(seed.home, `manifest.pieceSeeds[${index}].home`);
+  }
+
+  for (const [index, seed] of (manifest.dieSeeds ?? []).entries()) {
+    validateHome(seed.home, `manifest.dieSeeds[${index}].home`);
+  }
+
+  return issues;
+}
+
 function validateSetupProfileReferences(
   manifest: GameTopologyManifest,
 ): string[] {
@@ -115,6 +257,72 @@ function validateSetupProfileReferences(
   }
 
   return issues;
+}
+
+function validatePlayerScopedSeedHomes(
+  manifest: GameTopologyManifest,
+): string[] {
+  const issues: string[] = [];
+  const boardScopeById = new Map(
+    (manifest.boards ?? []).map((board) => [board.id, board.scope] as const),
+  );
+  const zoneScopeById = new Map(
+    (manifest.zones ?? []).map((zone) => [zone.id, zone.scope] as const),
+  );
+
+  const validateSeedHome = (
+    seed: PieceSeedSpec | DieSeedSpec,
+    path: string,
+    label: "Piece seed" | "Die seed",
+  ) => {
+    const authoredId = seed.id ?? seed.typeId;
+    if (seed.ownerId) {
+      return;
+    }
+
+    if (
+      homeTargetsBoard(seed.home) &&
+      boardScopeById.get(seed.home.boardId) === "perPlayer"
+    ) {
+      issues.push(
+        `${path}.boardId: ${label} '${authoredId}' requires ownerId because board '${seed.home.boardId}' has scope 'perPlayer'. Add ownerId to resolve the player-scoped destination.`,
+      );
+      return;
+    }
+
+    if (
+      seed.home?.type === "zone" &&
+      zoneScopeById.get(seed.home.zoneId) === "perPlayer"
+    ) {
+      issues.push(
+        `${path}.zoneId: ${label} '${authoredId}' requires ownerId because zone '${seed.home.zoneId}' has scope 'perPlayer'. Add ownerId to resolve the player-scoped destination.`,
+      );
+    }
+  };
+
+  for (const [index, seed] of (manifest.pieceSeeds ?? []).entries()) {
+    validateSeedHome(seed, `manifest.pieceSeeds[${index}].home`, "Piece seed");
+  }
+
+  for (const [index, seed] of (manifest.dieSeeds ?? []).entries()) {
+    validateSeedHome(seed, `manifest.dieSeeds[${index}].home`, "Die seed");
+  }
+
+  return issues;
+}
+
+function homeTargetsBoard(
+  home: PieceSeedSpec["home"] | DieSeedSpec["home"] | undefined,
+): home is Extract<
+  NonNullable<PieceSeedSpec["home"] | DieSeedSpec["home"]>,
+  { type: "space" | "container" | "edge" | "vertex" }
+> {
+  return (
+    home?.type === "space" ||
+    home?.type === "container" ||
+    home?.type === "edge" ||
+    home?.type === "vertex"
+  );
 }
 
 function validateBoardTemplateDuplicates(
@@ -306,9 +514,7 @@ function validateHexVertexRefs(options: {
   return issues;
 }
 
-function validateHexBoardVertexRefs(
-  manifest: GameTopologyManifest,
-): string[] {
+function validateHexBoardVertexRefs(manifest: GameTopologyManifest): string[] {
   const issues: string[] = [];
   const hexTemplatesById = new Map(
     (manifest.boardTemplates ?? [])
@@ -316,7 +522,9 @@ function validateHexBoardVertexRefs(
       .map((boardTemplate) => [boardTemplate.id, boardTemplate] as const),
   );
 
-  for (const [templateIndex, template] of (manifest.boardTemplates ?? []).entries()) {
+  for (const [templateIndex, template] of (
+    manifest.boardTemplates ?? []
+  ).entries()) {
     if (!isHexBoardTemplateSpec(template)) {
       continue;
     }
@@ -338,7 +546,10 @@ function validateHexBoardVertexRefs(
       ...validateHexVertexRefs({
         ownerPath: `manifest.boards[${boardIndex}]`,
         ownerLabel: `Hex board '${board.id}'`,
-        spaces: resolveHexSpaces(board, hexTemplatesById.get(board.templateId ?? "")),
+        spaces: resolveHexSpaces(
+          board,
+          hexTemplatesById.get(board.templateId ?? ""),
+        ),
         vertices: board.vertices ?? [],
       }),
     );
@@ -347,12 +558,103 @@ function validateHexBoardVertexRefs(
   return issues;
 }
 
-export function validateManifestAuthoring(
+function collectAmbiguousBoardTypeWarnings(
   manifest: GameTopologyManifest,
 ): string[] {
-  const issues: string[] = [];
+  const warnings: string[] = [];
+  const boardTemplatesById = new Map(
+    (manifest.boardTemplates ?? []).map(
+      (template) => [template.id, template] as const,
+    ),
+  );
+  const boardsBySpaceType = new Map<string, Set<string>>();
+  const boardsByEdgeType = new Map<string, Set<string>>();
+  const boardsByVertexType = new Map<string, Set<string>>();
 
-  issues.push(
+  const addBoardUsage = (
+    target: Map<string, Set<string>>,
+    typeId: string | null | undefined,
+    boardId: string,
+  ) => {
+    if (!typeId) {
+      return;
+    }
+    const boardIds = target.get(typeId) ?? new Set<string>();
+    boardIds.add(boardId);
+    target.set(typeId, boardIds);
+  };
+
+  for (const board of manifest.boards ?? []) {
+    const template = board.templateId
+      ? boardTemplatesById.get(board.templateId)
+      : undefined;
+    for (const space of [
+      ...((template?.layout === board.layout ? template.spaces : undefined) ??
+        []),
+      ...(board.spaces ?? []),
+    ]) {
+      addBoardUsage(boardsBySpaceType, space.typeId, board.id);
+    }
+
+    if (board.layout === "hex" || board.layout === "square") {
+      for (const edge of [
+        ...((template?.layout === board.layout ? template.edges : undefined) ??
+          []),
+        ...(board.edges ?? []),
+      ]) {
+        addBoardUsage(boardsByEdgeType, edge.typeId, board.id);
+      }
+      for (const vertex of [
+        ...((template?.layout === board.layout
+          ? template.vertices
+          : undefined) ?? []),
+        ...(board.vertices ?? []),
+      ]) {
+        addBoardUsage(boardsByVertexType, vertex.typeId, board.id);
+      }
+    }
+  }
+
+  const pushWarnings = (
+    kind: "space" | "edge" | "vertex",
+    boardsByType: Map<string, Set<string>>,
+    helperName: string,
+  ) => {
+    for (const [typeId, boardIds] of boardsByType.entries()) {
+      if (boardIds.size < 2) {
+        continue;
+      }
+      warnings.push(
+        `Ambiguous ${kind}.typeId '${typeId}' is authored on multiple boards (${Array.from(boardIds).sort().join(", ")}). Prefer ${helperName} for board-scoped lookups.`,
+      );
+    }
+  };
+
+  pushWarnings(
+    "space",
+    boardsBySpaceType,
+    "boardHelpers.spaceIdsByBoardId / boardHelpers.spaceTypeIdByBoardId",
+  );
+  pushWarnings(
+    "edge",
+    boardsByEdgeType,
+    "boardHelpers.edgeIdsByBoardIdAndTypeId",
+  );
+  pushWarnings(
+    "vertex",
+    boardsByVertexType,
+    "boardHelpers.vertexIdsByBoardIdAndTypeId",
+  );
+
+  return warnings;
+}
+
+export function validateManifestAuthoring(
+  manifest: GameTopologyManifest,
+): ManifestAuthoringValidationResult {
+  const errors: string[] = [];
+
+  errors.push(
     ...collectDuplicateIdIssues({
       entries: manifest.cardSets.map((cardSet, index) => ({
         id: cardSet.id,
@@ -361,7 +663,7 @@ export function validateManifestAuthoring(
       label: "card set id",
     }),
   );
-  issues.push(
+  errors.push(
     ...collectDuplicateIdIssues({
       entries: manifest.cardSets.flatMap((cardSet, cardSetIndex) =>
         cardSet.type === "manual"
@@ -376,7 +678,7 @@ export function validateManifestAuthoring(
       label: "card runtime id",
     }),
   );
-  issues.push(
+  errors.push(
     ...collectDuplicateIdIssues({
       entries: (manifest.zones ?? []).map((zone: ZoneSpec, index) => ({
         id: zone.id,
@@ -385,7 +687,7 @@ export function validateManifestAuthoring(
       label: "zone id",
     }),
   );
-  issues.push(
+  errors.push(
     ...collectDuplicateIdIssues({
       entries: (manifest.boardTemplates ?? []).map((boardTemplate, index) => ({
         id: boardTemplate.id,
@@ -394,10 +696,10 @@ export function validateManifestAuthoring(
       label: "board template id",
     }),
   );
-  issues.push(
+  errors.push(
     ...validateBoardTemplateDuplicates(manifest.boardTemplates ?? []),
   );
-  issues.push(
+  errors.push(
     ...collectDuplicateIdIssues({
       entries: (manifest.boards ?? []).map((board, index) => ({
         id: board.id,
@@ -406,8 +708,14 @@ export function validateManifestAuthoring(
       label: "board id",
     }),
   );
-  issues.push(...validateBoardDuplicates(manifest.boards ?? []));
-  issues.push(
+  errors.push(...validateBoardDuplicates(manifest.boards ?? []));
+  errors.push(
+    ...validateTypeSlotDuplicates({
+      pieceTypes: manifest.pieceTypes ?? [],
+      dieTypes: manifest.dieTypes ?? [],
+    }),
+  );
+  errors.push(
     ...collectDuplicateIdIssues({
       entries: (manifest.pieceTypes ?? []).map((pieceType, index) => ({
         id: pieceType.id,
@@ -416,7 +724,7 @@ export function validateManifestAuthoring(
       label: "piece type id",
     }),
   );
-  issues.push(
+  errors.push(
     ...collectDuplicateIdIssues({
       entries: expandSeedIds(manifest.pieceSeeds ?? []).map(
         (pieceId, index) => ({
@@ -427,7 +735,7 @@ export function validateManifestAuthoring(
       label: "piece runtime id",
     }),
   );
-  issues.push(
+  errors.push(
     ...collectDuplicateIdIssues({
       entries: (manifest.dieTypes ?? []).map((dieType, index) => ({
         id: dieType.id,
@@ -436,7 +744,7 @@ export function validateManifestAuthoring(
       label: "die type id",
     }),
   );
-  issues.push(
+  errors.push(
     ...collectDuplicateIdIssues({
       entries: expandSeedIds(manifest.dieSeeds ?? []).map((dieId, index) => ({
         id: dieId,
@@ -445,7 +753,7 @@ export function validateManifestAuthoring(
       label: "die runtime id",
     }),
   );
-  issues.push(
+  errors.push(
     ...collectDuplicateIdIssues({
       entries: (manifest.resources ?? []).map((resource, index) => ({
         id: resource.id,
@@ -454,7 +762,7 @@ export function validateManifestAuthoring(
       label: "resource id",
     }),
   );
-  issues.push(
+  errors.push(
     ...collectDuplicateIdIssues({
       entries: (manifest.setupOptions ?? []).map((option, index) => ({
         id: option.id,
@@ -463,10 +771,10 @@ export function validateManifestAuthoring(
       label: "setup option id",
     }),
   );
-  issues.push(
+  errors.push(
     ...validateSetupOptionChoiceDuplicates(manifest.setupOptions ?? []),
   );
-  issues.push(
+  errors.push(
     ...collectDuplicateIdIssues({
       entries: (manifest.setupProfiles ?? []).map((profile, index) => ({
         id: profile.id,
@@ -475,8 +783,13 @@ export function validateManifestAuthoring(
       label: "setup profile id",
     }),
   );
-  issues.push(...validateSetupProfileReferences(manifest));
-  issues.push(...validateHexBoardVertexRefs(manifest));
+  errors.push(...validateSlotHostsAndHomes(manifest));
+  errors.push(...validatePlayerScopedSeedHomes(manifest));
+  errors.push(...validateSetupProfileReferences(manifest));
+  errors.push(...validateHexBoardVertexRefs(manifest));
 
-  return issues;
+  return {
+    errors,
+    warnings: collectAmbiguousBoardTypeWarnings(manifest),
+  };
 }

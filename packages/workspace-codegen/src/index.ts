@@ -1,5 +1,8 @@
 import type { GameTopologyManifest } from "@dreamboard/sdk-types";
-import { generateManifestContractSource } from "./manifest-contract.js";
+import {
+  generateManifestContractSource,
+  materializeManifestTable,
+} from "./manifest-contract.js";
 import { validateManifestAuthoring } from "./manifest-validation.js";
 import {
   AUTHORITATIVE_GENERATED_FILES,
@@ -19,6 +22,11 @@ import {
   isFrameworkOwnedSetupProfilesSeed,
   SETUP_PROFILES_SEED_MARKER,
 } from "./seeds.js";
+export {
+  materializeCardSet,
+  materializePresetCardSet,
+} from "./preset-card-sets.js";
+export { materializeManifestTable };
 
 export {
   AUTHORITATIVE_GENERATED_FILES,

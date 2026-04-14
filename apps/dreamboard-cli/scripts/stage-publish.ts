@@ -1,6 +1,7 @@
 import { cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { getPublishedPackageFiles } from "../src/publish/stage-publish-layout.js";
 import {
   assertPublicSkillScriptsArePublishable,
   IGNORED_PUBLIC_SKILL_ENTRY_NAMES,
@@ -18,12 +19,65 @@ const sourcePackage = JSON.parse(
   version: string;
   keywords?: string[];
   dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
   description?: string;
   repository?: string | { type?: string; url?: string };
   homepage?: string;
   bugs?: string | { url?: string };
   license?: string;
 };
+const sdkDependencyRanges = Object.fromEntries(
+  await Promise.all(
+    [
+      [
+        "@dreamboard/app-sdk",
+        path.join(
+          packageRoot,
+          "..",
+          "..",
+          "packages",
+          "app-sdk",
+          "package.json",
+        ),
+      ],
+      [
+        "@dreamboard/sdk-types",
+        path.join(
+          packageRoot,
+          "..",
+          "..",
+          "packages",
+          "sdk-types",
+          "package.json",
+        ),
+      ],
+      [
+        "@dreamboard/ui-sdk",
+        path.join(
+          packageRoot,
+          "..",
+          "..",
+          "packages",
+          "ui-sdk",
+          "package.json",
+        ),
+      ],
+    ].map(async ([packageName, packageJsonPath]) => {
+      const packageJson = JSON.parse(
+        await readFile(packageJsonPath, "utf8"),
+      ) as { version?: string };
+      return [packageName, `^${packageJson.version?.trim() ?? ""}`];
+    }),
+  ),
+);
+const packagedDependencies = Object.fromEntries(
+  Object.entries(sourcePackage.dependencies ?? {}).filter(
+    ([packageName]) => !packageName.startsWith("@dreamboard/"),
+  ),
+);
+if (sourcePackage.devDependencies?.playwright) {
+  packagedDependencies.playwright = sourcePackage.devDependencies.playwright;
+}
 
 const repositoryUrl =
   typeof sourcePackage.repository === "string"
@@ -49,9 +103,7 @@ const packageJson: Record<string, unknown> = {
   bin: {
     dreamboard: "dist/index.js",
   },
-  files: publicSkillRoot
-    ? ["dist", "README.md", "skills"]
-    : ["dist", "README.md"],
+  files: getPublishedPackageFiles(Boolean(publicSkillRoot)),
   keywords: sourcePackage.keywords ?? [
     "dreamboard",
     "cli",
@@ -65,9 +117,8 @@ const packageJson: Record<string, unknown> = {
   publishConfig: {
     access: "public",
   },
-  dependencies: {
-    esbuild: sourcePackage.dependencies?.esbuild ?? "^0.25.1",
-  },
+  dependencies: packagedDependencies,
+  dreamboardSdkDependencyRanges: sdkDependencyRanges,
   license:
     sourcePackage.license ??
     process.env.DREAMBOARD_PUBLIC_LICENSE ??

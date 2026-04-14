@@ -13,8 +13,8 @@ import type {
   PhaseNameOfState,
   PlayerIdOfState,
   PlayerIdOfTable,
-  SetupSelectionOfManifest,
   TableOfState,
+  SetupSelectionOfManifest,
 } from "./extract";
 import type {
   AnyContinuationToken,

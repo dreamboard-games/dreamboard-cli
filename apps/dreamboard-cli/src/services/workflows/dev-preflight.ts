@@ -192,7 +192,10 @@ function doesLocalSdkVersionMatchBackend(
   localSdkVersion: string,
   backendSdkVersion: string,
 ): boolean {
-  if (localSdkVersion === backendSdkVersion) {
+  const normalizedLocalSdkVersion =
+    normalizeLocalSnapshotVersion(localSdkVersion);
+
+  if (normalizedLocalSdkVersion === backendSdkVersion) {
     return true;
   }
 
@@ -201,13 +204,15 @@ function doesLocalSdkVersionMatchBackend(
     return false;
   }
 
-  const exactLocalVersion = parseStableSdkVersion(localSdkVersion);
+  const exactLocalVersion = parseStableSdkVersion(normalizedLocalSdkVersion);
   if (exactLocalVersion) {
     return compareStableSdkVersions(exactLocalVersion, backendVersion) === 0;
   }
 
-  const localRangePrefix = localSdkVersion[0];
-  const localRangeVersion = parseStableSdkVersion(localSdkVersion.slice(1));
+  const localRangePrefix = normalizedLocalSdkVersion[0];
+  const localRangeVersion = parseStableSdkVersion(
+    normalizedLocalSdkVersion.slice(1),
+  );
   if (!localRangeVersion) {
     return false;
   }
@@ -221,6 +226,15 @@ function doesLocalSdkVersionMatchBackend(
   }
 
   return false;
+}
+
+function normalizeLocalSnapshotVersion(input: string): string {
+  const trimmed = input.trim();
+  const localMarkerIndex = trimmed.indexOf("-local.");
+  if (localMarkerIndex >= 0) {
+    return trimmed.slice(0, localMarkerIndex);
+  }
+  return trimmed;
 }
 
 function parseStableSdkVersion(input: string): StableSdkVersion | null {

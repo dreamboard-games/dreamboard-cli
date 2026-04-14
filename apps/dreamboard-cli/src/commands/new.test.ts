@@ -18,6 +18,19 @@ const actualApiServices = await import("../services/api/index.js");
 const actualStrings = await import("../utils/strings.js");
 const actualErrors = await import("../utils/errors.js");
 const configureClient = mock(async () => undefined);
+const ensureLocalMaintainerSnapshot = mock(async () => null);
+const localMaintainerSnapshot = {
+  registryUrl: "http://127.0.0.1:4873",
+  snapshotId: "snapshot-1",
+  fingerprint: "fingerprint-1",
+  publishedAt: "2026-04-12T00:00:00.000Z",
+  packages: {
+    "@dreamboard/api-client": "0.1.0-local.1",
+    "@dreamboard/app-sdk": "0.0.40-local.1",
+    "@dreamboard/sdk-types": "0.1.0-local.1",
+    "@dreamboard/ui-sdk": "0.0.40-local.1",
+  },
+} as const;
 
 mock.module("@dreamboard/api-client", () => ({
   createGame,
@@ -55,11 +68,18 @@ mock.module("@dreamboard/api-client", () => ({
 }));
 
 mock.module("../config/resolve.js", () => ({
-  resolveConfig: () => ({
-    apiBaseUrl: "https://api.example.com",
-    webBaseUrl: "https://web.example.com",
-    token: "token",
-  }),
+  resolveConfig: (_globalConfig: unknown, args: Record<string, unknown>) =>
+    args.env === "local"
+      ? {
+          apiBaseUrl: "http://localhost:8080",
+          webBaseUrl: "http://localhost:5173",
+          token: "token",
+        }
+      : {
+          apiBaseUrl: "https://api.example.com",
+          webBaseUrl: "https://web.example.com",
+          token: "token",
+        },
   resolveProjectContext: async () => ({
     projectRoot: "/tmp/dreamboard-project",
     projectConfig: {
@@ -176,6 +196,12 @@ mock.module("../services/project/workspace-dependencies.js", () => ({
   installWorkspaceDependencies,
 }));
 
+mock.module("../services/project/local-maintainer-registry.js", () => ({
+  ensureLocalMaintainerSnapshot,
+  didLocalMaintainerSnapshotChange: () => false,
+  readWorkspaceLocalMaintainerRegistry: async () => null,
+}));
+
 mock.module("../config/project-config.js", () => ({
   updateProjectState: async () => undefined,
 }));
@@ -191,6 +217,7 @@ test("new command scaffolds locally with workspace codegen", async () => {
   installWorkspaceDependencies.mockClear();
   createGame.mockClear();
   configureClient.mockClear();
+  ensureLocalMaintainerSnapshot.mockClear();
 
   await newCommand.run({
     args: {
@@ -210,9 +237,34 @@ test("new command scaffolds locally with workspace codegen", async () => {
   });
   expect(installWorkspaceDependencies).toHaveBeenCalledWith(
     expect.stringContaining("test-game"),
-    {
-      localSdkPackageFallback: false,
+  );
+  expect(ensureLocalMaintainerSnapshot).toHaveBeenCalledWith(
+    "https://api.example.com",
+  );
+});
+
+test("new command writes local maintainer snapshot dependencies for local env scaffolds", async () => {
+  applyWorkspaceCodegen.mockClear();
+  installWorkspaceDependencies.mockClear();
+  createGame.mockClear();
+  configureClient.mockClear();
+  ensureLocalMaintainerSnapshot.mockClear();
+  ensureLocalMaintainerSnapshot.mockResolvedValueOnce(localMaintainerSnapshot);
+
+  await newCommand.run({
+    args: {
+      slug: "test-game-local",
+      description: "A local test game",
+      force: false,
+      env: "local",
     },
+  });
+
+  expect(ensureLocalMaintainerSnapshot).toHaveBeenCalledWith(
+    "http://localhost:8080",
+  );
+  expect(installWorkspaceDependencies).toHaveBeenCalledWith(
+    expect.stringContaining("test-game-local"),
   );
 });
 
@@ -221,6 +273,7 @@ test("new command surfaces a re-login hint for invalid stored sessions", async (
   installWorkspaceDependencies.mockClear();
   createGame.mockClear();
   configureClient.mockClear();
+  ensureLocalMaintainerSnapshot.mockClear();
   configureClient.mockImplementationOnce(async () => {
     throw new Error(
       "Stored Dreamboard session is expired or invalid (Invalid Refresh Token: Refresh Token Not Found). Run `dreamboard login` to authenticate again.",

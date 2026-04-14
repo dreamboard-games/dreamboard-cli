@@ -82,27 +82,4 @@ describe("project config normalization", () => {
     expect(loaded.compile?.latestAttempt?.jobId).toBe("compile-job-1");
     expect(loaded.compile?.latestSuccessful).toBeUndefined();
   });
-
-  test("upgrades legacy flat fields into nested authoring and compile state", async () => {
-    const rootDir = await mkdtemp(path.join(tmpdir(), "dreamboard-config-"));
-    tempDirs.push(rootDir);
-
-    await updateProjectState(rootDir, {
-      gameId: "game-1",
-      slug: "legacy-game",
-      ruleId: "rule-legacy",
-      manifestId: "manifest-legacy",
-      manifestContentHash: "manifest-hash-legacy",
-      resultId: "result-legacy",
-      sourceRevisionId: "source-legacy",
-      sourceTreeHash: "tree-legacy",
-    });
-
-    const loaded = await loadProjectConfig(rootDir);
-    expect(loaded.authoring?.ruleId).toBe("rule-legacy");
-    expect(loaded.authoring?.manifestId).toBe("manifest-legacy");
-    expect(loaded.authoring?.sourceRevisionId).toBe("source-legacy");
-    expect(loaded.compile?.latestAttempt?.resultId).toBe("result-legacy");
-    expect(loaded.compile?.latestSuccessful?.resultId).toBe("result-legacy");
-  });
 });
