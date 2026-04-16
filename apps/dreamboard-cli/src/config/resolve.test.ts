@@ -38,6 +38,8 @@ const { configureClient, resolveConfig } = await import("./resolve.ts");
 
 const originalEnvToken = process.env.DREAMBOARD_TOKEN;
 const originalEnvRefreshToken = process.env.DREAMBOARD_REFRESH_TOKEN;
+const originalApiBaseUrl = process.env.DREAMBOARD_API_BASE_URL;
+const originalWebBaseUrl = process.env.DREAMBOARD_WEB_BASE_URL;
 
 beforeEach(() => {
   setSession.mockClear();
@@ -65,6 +67,8 @@ beforeEach(() => {
 
   delete process.env.DREAMBOARD_TOKEN;
   delete process.env.DREAMBOARD_REFRESH_TOKEN;
+  delete process.env.DREAMBOARD_API_BASE_URL;
+  delete process.env.DREAMBOARD_WEB_BASE_URL;
 });
 
 afterEach(() => {
@@ -78,6 +82,18 @@ afterEach(() => {
     delete process.env.DREAMBOARD_REFRESH_TOKEN;
   } else {
     process.env.DREAMBOARD_REFRESH_TOKEN = originalEnvRefreshToken;
+  }
+
+  if (originalApiBaseUrl === undefined) {
+    delete process.env.DREAMBOARD_API_BASE_URL;
+  } else {
+    process.env.DREAMBOARD_API_BASE_URL = originalApiBaseUrl;
+  }
+
+  if (originalWebBaseUrl === undefined) {
+    delete process.env.DREAMBOARD_WEB_BASE_URL;
+  } else {
+    process.env.DREAMBOARD_WEB_BASE_URL = originalWebBaseUrl;
   }
 });
 
@@ -113,6 +129,23 @@ test("explicit env overrides project-local API and web base URLs", () => {
   expect(config.webBaseUrl).toBe("https://dreamboard.games");
   expect(config.supabaseUrl).toBe(PROD_SUPABASE_URL);
   expect(config.supabaseAnonKey).toBe(PROD_SUPABASE_ANON_KEY);
+});
+
+test("environment variable base URLs override resolved environment defaults", () => {
+  process.env.DREAMBOARD_API_BASE_URL = "http://127.0.0.1:8081";
+  process.env.DREAMBOARD_WEB_BASE_URL = "http://127.0.0.1:4173";
+
+  const config = resolveConfig(
+    {
+      environment: "local",
+    },
+    {
+      env: "local",
+    },
+  );
+
+  expect(config.apiBaseUrl).toBe("http://127.0.0.1:8081");
+  expect(config.webBaseUrl).toBe("http://127.0.0.1:4173");
 });
 
 test("configureClient persists rotated stored sessions", async () => {

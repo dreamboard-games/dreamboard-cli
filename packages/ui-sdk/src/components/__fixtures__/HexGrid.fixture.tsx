@@ -722,13 +722,13 @@ export default {
           onInteractiveVertexClick={handleVertexClick}
           onInteractiveVertexEnter={(v) => setHoveredVertex(v.id)}
           onInteractiveVertexLeave={() => setHoveredVertex(null)}
-          renderInteractiveVertex={(vertex, isHovered) => {
+          renderInteractiveVertex={(vertex, position, isHovered) => {
             const isPlaced = placedVertices.has(vertex.id);
             if (isPlaced) {
               return (
                 <circle
-                  cx={vertex.position.x}
-                  cy={vertex.position.y}
+                  cx={position.x}
+                  cy={position.y}
                   r={12}
                   fill="#ef4444"
                   stroke="#1e293b"
@@ -738,7 +738,7 @@ export default {
             }
             return (
               <DefaultInteractiveVertex
-                vertex={vertex}
+                position={position}
                 isHovered={isHovered}
                 color="rgba(255, 255, 255, 0.15)"
                 hoverColor="rgba(34, 197, 94, 0.7)"
@@ -831,15 +831,15 @@ export default {
           onInteractiveEdgeClick={handleEdgeClick}
           onInteractiveEdgeEnter={(e) => setHoveredEdge(e.id)}
           onInteractiveEdgeLeave={() => setHoveredEdge(null)}
-          renderInteractiveEdge={(edge, isHovered) => {
+          renderInteractiveEdge={(edge, position, isHovered) => {
             const isPlaced = placedEdges.has(edge.id);
             if (isPlaced) {
               return (
                 <line
-                  x1={edge.position.x1}
-                  y1={edge.position.y1}
-                  x2={edge.position.x2}
-                  y2={edge.position.y2}
+                  x1={position.x1}
+                  y1={position.y1}
+                  x2={position.x2}
+                  y2={position.y2}
                   stroke="#3b82f6"
                   strokeWidth={8}
                   strokeLinecap="round"
@@ -848,7 +848,7 @@ export default {
             }
             return (
               <DefaultInteractiveEdge
-                edge={edge}
+                position={position}
                 isHovered={isHovered}
                 color="rgba(255, 255, 255, 0.1)"
                 hoverColor="rgba(251, 146, 60, 0.7)"
@@ -1009,13 +1009,13 @@ export default {
           interactiveEdges={placementMode === "road"}
           onInteractiveVertexClick={handleVertexClick}
           onInteractiveEdgeClick={handleEdgeClick}
-          renderInteractiveVertex={(vertex, isHovered) => {
+          renderInteractiveVertex={(vertex, position, isHovered) => {
             const placed = placedVertices.get(vertex.id);
             if (placed) {
               return (
                 <circle
-                  cx={vertex.position.x}
-                  cy={vertex.position.y}
+                  cx={position.x}
+                  cy={position.y}
                   r={12}
                   fill={playerColors[placed.player]}
                   stroke="#1e293b"
@@ -1025,21 +1025,21 @@ export default {
             }
             return (
               <DefaultInteractiveVertex
-                vertex={vertex}
+                position={position}
                 isHovered={isHovered}
                 hoverColor={playerColors[currentPlayer]}
               />
             );
           }}
-          renderInteractiveEdge={(edge, isHovered) => {
+          renderInteractiveEdge={(edge, position, isHovered) => {
             const placed = placedEdges.get(edge.id);
             if (placed) {
               return (
                 <line
-                  x1={edge.position.x1}
-                  y1={edge.position.y1}
-                  x2={edge.position.x2}
-                  y2={edge.position.y2}
+                  x1={position.x1}
+                  y1={position.y1}
+                  x2={position.x2}
+                  y2={position.y2}
                   stroke={playerColors[placed.player]}
                   strokeWidth={8}
                   strokeLinecap="round"
@@ -1048,7 +1048,7 @@ export default {
             }
             return (
               <DefaultInteractiveEdge
-                edge={edge}
+                position={position}
                 isHovered={isHovered}
                 hoverColor={playerColors[currentPlayer]}
               />
@@ -1134,11 +1134,11 @@ export default {
           onInteractiveEdgeEnter={(e) => setHoveredEdge(e.id)}
           onInteractiveEdgeLeave={() => setHoveredEdge(null)}
           // Custom purple theme for vertices
-          renderInteractiveVertex={(vertex, isHovered) => (
+          renderInteractiveVertex={(vertex, position, isHovered) => (
             <g>
               <circle
-                cx={vertex.position.x}
-                cy={vertex.position.y}
+                cx={position.x}
+                cy={position.y}
                 r={isHovered ? 10 : 6}
                 fill={isHovered ? "#a855f7" : "rgba(168, 85, 247, 0.3)"}
                 stroke={isHovered ? "#c084fc" : "rgba(168, 85, 247, 0.5)"}
@@ -1147,8 +1147,8 @@ export default {
               />
               {isHovered && (
                 <circle
-                  cx={vertex.position.x}
-                  cy={vertex.position.y}
+                  cx={position.x}
+                  cy={position.y}
                   r={16}
                   fill="none"
                   stroke="#c084fc"
@@ -1161,13 +1161,13 @@ export default {
             </g>
           )}
           // Custom cyan theme for edges
-          renderInteractiveEdge={(edge, isHovered) => (
+          renderInteractiveEdge={(edge, position, isHovered) => (
             <g>
               <line
-                x1={edge.position.x1}
-                y1={edge.position.y1}
-                x2={edge.position.x2}
-                y2={edge.position.y2}
+                x1={position.x1}
+                y1={position.y1}
+                x2={position.x2}
+                y2={position.y2}
                 stroke={isHovered ? "#06b6d4" : "rgba(6, 182, 212, 0.25)"}
                 strokeWidth={isHovered ? 6 : 3}
                 strokeLinecap="round"
@@ -1176,14 +1176,14 @@ export default {
               {isHovered && (
                 <>
                   <circle
-                    cx={edge.position.x1}
-                    cy={edge.position.y1}
+                    cx={position.x1}
+                    cy={position.y1}
                     r={4}
                     fill="#06b6d4"
                   />
                   <circle
-                    cx={edge.position.x2}
-                    cy={edge.position.y2}
+                    cx={position.x2}
+                    cy={position.y2}
                     r={4}
                     fill="#06b6d4"
                   />

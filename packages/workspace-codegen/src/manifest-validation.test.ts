@@ -136,6 +136,26 @@ test("validateManifestAuthoring rejects slot-bearing die seeds with count greate
   );
 });
 
+test("validateManifestAuthoring accepts die types that omit sides", () => {
+  const validation = validateManifestAuthoring({
+    ...BASE_MANIFEST,
+    dieTypes: [
+      {
+        id: "d6",
+        name: "D6",
+      },
+    ],
+    dieSeeds: [
+      {
+        id: "d6-a",
+        typeId: "d6",
+      },
+    ],
+  });
+
+  expect(validation.errors).toEqual([]);
+});
+
 test("validateManifestAuthoring rejects invalid strict slot hosts and slot ids", () => {
   const validation = validateManifestAuthoring({
     ...BASE_MANIFEST,

@@ -1,22 +1,25 @@
 {/* Generated from packages/ui-sdk/src/components/board/SquareGrid.tsx */}
 {/* Run `pnpm docs:gen-props` to regenerate. Do not edit directly. */}
 
-<ParamField path="rows" type="number" required>
+<ParamField path="rows" type="number">
   `rows` value
 </ParamField>
-<ParamField path="cols" type="number" required>
+<ParamField path="cols" type="number">
   `cols` value
 </ParamField>
-<ParamField path="cells" type="GridCell[]">
+<ParamField path="cells" type="readonly GridCell[]">
   `cells` value
 </ParamField>
-<ParamField path="pieces" type="GridPiece[]" required>
+<ParamField path="spaces" type="Readonly<Record<string, GeneratedSquareSpaceStateLike>>">
+  `spaces` value
+</ParamField>
+<ParamField path="pieces" type="readonly GridPiece[]">
   `pieces` value
 </ParamField>
-<ParamField path="edges" type="SquareGridEdge[]">
+<ParamField path="edges" type="readonly SquareGridEdge[]">
   `edges` value
 </ParamField>
-<ParamField path="vertices" type="SquareGridVertex[]">
+<ParamField path="vertices" type="readonly SquareGridVertex[]">
   `vertices` value
 </ParamField>
 <ParamField path="cellSize" type="number">

@@ -46,6 +46,10 @@
       "types": "./src/types/player-state.ts",
       "import": "./src/types/player-state.ts"
     },
+    "./internal/tiled-board": {
+      "types": "./src/types/tiled-board.ts",
+      "import": "./src/types/tiled-board.ts"
+    },
     "./internal/plugin-state": {
       "types": "./src/types/plugin-state.ts",
       "import": "./src/types/plugin-state.ts"
@@ -72,6 +76,7 @@
     "cosmos:export": "cosmos-export",
     "lint": "eslint src --ext .ts,.tsx",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
+    "test": "bun test",
     "clean": "rm -rf dist"
   },
   "dependencies": {

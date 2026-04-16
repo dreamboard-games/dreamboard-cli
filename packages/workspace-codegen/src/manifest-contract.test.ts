@@ -1,6 +1,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { expect, test } from "bun:test";
 import type { GameTopologyManifest } from "@dreamboard/sdk-types";
 import { generateManifestContractSource } from "./manifest-contract.js";
@@ -534,6 +535,28 @@ async function expectGeneratedContractTypechecks(options: {
   }
 }
 
+async function withGeneratedContractModule<Result>(options: {
+  tempPrefix: string;
+  manifest: GameTopologyManifest;
+  run: (module: Record<string, any>) => Promise<Result> | Result;
+}): Promise<Result> {
+  const tempRoot = await mkdtemp(
+    path.join(cliWorkspaceRoot, options.tempPrefix),
+  );
+  const source = generateManifestContractSource(options.manifest);
+
+  try {
+    const contractPath = path.join(tempRoot, "manifest-contract.ts");
+    await writeFile(contractPath, source, "utf8");
+    const module = (await import(
+      `${pathToFileURL(contractPath).href}?t=${Date.now()}`
+    )) as Record<string, any>;
+    return await options.run(module);
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+}
+
 test("generateManifestContractSource emits typed topology fields and helper literals", () => {
   const source = generateManifestContractSource(TEST_MANIFEST);
 
@@ -545,6 +568,10 @@ test("generateManifestContractSource emits typed topology fields and helper lite
   expect(source).toContain("export type HexMapSpaceFields = {");
   expect(source).toContain("export type HexMapEdgeFields = {");
   expect(source).toContain("export type HexMapVertexFields = {");
+  expect(source).toContain("export type HexAuthoredEdgeRef<");
+  expect(source).toContain("export type HexAuthoredEdgeState<");
+  expect(source).toContain("export type HexAuthoredVertexRef<");
+  expect(source).toContain("export type HexAuthoredVertexState<");
   expect(source).toContain("export type SquareGridRelationFields = {");
   expect(source).toContain("export type SquareGridContainerFields = {");
   expect(source).toContain("export type SquareGridEdgeFields = {");
@@ -557,6 +584,10 @@ test("generateManifestContractSource emits typed topology fields and helper lite
   expect(source).toContain(
     'edgeTypeIds: ["three-to-one", "wall-slot"] as const',
   );
+  expect(source).toContain("authoredHexEdges<");
+  expect(source).toContain("authoredHexVertices<");
+  expect(source).toContain("resolveHexEdgeId<");
+  expect(source).toContain("resolveHexVertexId<");
   expect(source).toContain(
     'vertexTypeIds: ["crossing", "settlement-slot"] as const',
   );
@@ -597,8 +628,17 @@ test("generateManifestContractSource emits typed topology fields and helper lite
   expect(source).toContain("boardIdsForLayout<");
   expect(source).toContain("boardIdsForType<TypeIdValue");
   expect(source).toContain("spaceKinds<BoardIdValue");
+  expect(source).toContain("export const records = {");
+  expect(source).toContain("export const idGuards = {");
+  expect(source).toContain("expectEdgeId(value: string): EdgeId");
+  expect(source).toContain("spaceRecord<");
+  expect(source).toContain("isSpaceId<");
+  expect(source).toContain("expectSpaceId<");
+  expect(source).toContain("edgeRecord<");
+  expect(source).toContain("vertexRecord<");
   expect(source).toContain("containerHost<");
-  expect(source).toContain("function buildPerPlayerComponentIds(");
+  expect(source).toContain("function buildPerPlayerCardIds(");
+  expect(source).toContain("export type CardIdsBySharedZoneId = {");
   expect(source).toContain("function buildPlayerResources(");
   expect(source).toContain(
     'from "@dreamboard/app-sdk/reducer/setup-bootstrap-helpers";',
@@ -640,6 +680,10 @@ test("generateManifestContractSource emits typed topology fields and helper lite
   expect(source).toContain(
     '"CARD_A": CardStateRecord<"CARD_A", "standard-deck", "CARD_A", StandardDeckCardProperties>;',
   );
+  expect(source).toContain("name: z.string().optional()");
+  expect(source).toContain("text: z.string().optional()");
+  expect(source).not.toContain("cardName: z.string().optional()");
+  expect(source).not.toContain("description: z.string().optional()");
   expect(source).toContain(
     "const cardPropertiesSchemaByCardSetId: Record<string, z.ZodTypeAny> = {",
   );
@@ -656,6 +700,50 @@ test("generateManifestContractSource emits typed topology fields and helper lite
   expect(source).not.toContain("export type SpaceFieldsBySpaceId =");
 });
 
+test("generateManifestContractSource defaults omitted die sides to 6 in createInitialTable", async () => {
+  await withGeneratedContractModule({
+    tempPrefix: ".tmp-die-default-sides-contract-",
+    manifest: {
+      players: {
+        minPlayers: 2,
+        maxPlayers: 4,
+        optimalPlayers: 3,
+      },
+      cardSets: [],
+      zones: [],
+      boardTemplates: [],
+      boards: [],
+      pieceTypes: [],
+      pieceSeeds: [],
+      dieTypes: [
+        {
+          id: "d6",
+          name: "D6",
+        },
+      ],
+      dieSeeds: [
+        {
+          id: "d6-a",
+          typeId: "d6",
+        },
+      ],
+      resources: [],
+      setupOptions: [],
+      setupProfiles: [],
+    } satisfies GameTopologyManifest,
+    run: (module) => {
+      const table = module.createInitialTable({
+        playerIds: ["player-1", "player-2"],
+      });
+
+      expect(table.dice["d6-a"]).toMatchObject({
+        id: "d6-a",
+        sides: 6,
+      });
+    },
+  });
+});
+
 test("generateManifestContractSource renders optional nullable and record schemas", () => {
   const source = generateManifestContractSource(TEST_MANIFEST);
 
@@ -667,6 +755,56 @@ test("generateManifestContractSource renders optional nullable and record schema
   );
   expect(source).toContain('"note": z.string().nullable().optional()');
   expect(source).toContain("z.record(z.string(), z.number().int())");
+});
+
+test("generateManifestContractSource preserves enum literal unions inside array items", async () => {
+  const manifest = structuredClone(TEST_MANIFEST);
+  const manualCardSet = manifest.cardSets?.[0];
+
+  if (!manualCardSet || manualCardSet.type !== "manual") {
+    throw new Error("Expected TEST_MANIFEST to include a manual card set.");
+  }
+
+  manualCardSet.cardSchema = {
+    properties: {
+      ...manualCardSet.cardSchema?.properties,
+      tags: {
+        type: "array",
+        optional: true,
+        items: {
+          type: "enum",
+          enums: ["intel", "timed", "public", "secret"],
+        },
+      },
+    },
+  };
+  manualCardSet.cards = manualCardSet.cards.map((card) => ({
+    ...card,
+    properties: {
+      ...card.properties,
+      tags: ["intel"],
+    },
+  }));
+
+  const source = generateManifestContractSource(manifest);
+
+  expect(source).toContain(
+    '  "tags"?: Array<"intel" | "timed" | "public" | "secret">;',
+  );
+
+  await expectGeneratedContractTypechecks({
+    tempPrefix: ".tmp-enum-array-contract-",
+    manifest,
+    usageSource: `import { type StandardDeckCardProperties } from "./manifest-contract";
+
+declare const metadata: StandardDeckCardProperties;
+
+const firstTag: "intel" | "timed" | "public" | "secret" | undefined =
+  metadata.tags?.[0];
+
+void firstTag;
+`,
+  });
 });
 
 test("generateManifestContractSource uses safe empty component state maps", () => {
@@ -709,11 +847,17 @@ test("generateManifestContractSource typechecks ergonomic board aliases", async 
     manifest: perPlayerManifest,
     usageSource: `import {
   boardHelpers,
+  idGuards,
   literals,
+  records,
   type BoardFields,
   type BoardSpaceFields,
   type BoardSpaceState,
   type BoardState,
+  type HexAuthoredEdgeRef,
+  type HexAuthoredEdgeState,
+  type HexAuthoredVertexRef,
+  type HexAuthoredVertexState,
   type HexEdgeFields,
   type HexEdgeState,
   type SquareEdgeFields,
@@ -727,6 +871,10 @@ type SharedBoardState = BoardState<typeof sharedBoardId>;
 type SharedBoardFields = BoardFields<typeof sharedBoardId>;
 type SharedSpaceState = BoardSpaceState<typeof sharedBoardId>;
 type SharedSpaceFields = BoardSpaceFields<typeof sharedBoardId>;
+type SharedHexAuthoredEdgeRef = HexAuthoredEdgeRef<"hex-map">;
+type SharedHexAuthoredEdgeState = HexAuthoredEdgeState<"hex-map">;
+type SharedHexAuthoredVertexRef = HexAuthoredVertexRef<"hex-map">;
+type SharedHexAuthoredVertexState = HexAuthoredVertexState<"hex-map">;
 type SharedHexEdgeState = HexEdgeState<"hex-map">;
 type SharedHexEdgeFields = HexEdgeFields<"hex-map">;
 type SharedSquareEdgeState = SquareEdgeState<"square-grid">;
@@ -742,8 +890,54 @@ const firstPerPlayerSpaceId =
   boardHelpers.spaceIds(firstPerPlayerBoardId)[0];
 const perPlayerSpaceType =
   boardHelpers.spaceKinds(firstPerPlayerBoardId)[firstPerPlayerSpaceId];
-const firstHexRouteId =
-  boardHelpers.edgeIds("hex-map", "three-to-one")[0];
+const authoredHexEdgeRef: SharedHexAuthoredEdgeRef = {
+  spaces: ["hex-a", "hex-b"],
+};
+const authoredHexVertexRef: SharedHexAuthoredVertexRef = {
+  spaces: ["hex-a", "hex-b", "hex-c"],
+};
+const firstHexEdgeState = boardHelpers.authoredHexEdges("hex-map")[0];
+const firstHexVertexState = boardHelpers.authoredHexVertices("hex-map")[0];
+const firstHexRouteId = boardHelpers.resolveHexEdgeId(
+  "hex-map",
+  authoredHexEdgeRef,
+);
+const firstHexSettlementId = boardHelpers.resolveHexVertexId(
+  "hex-map",
+  authoredHexVertexRef,
+);
+const edgeOwnerById = records.edgeIds(null);
+const vertexOwnerById = records.vertexIds((vertexId) => vertexId);
+const squareSpaceLabelById = boardHelpers.spaceRecord("square-grid", (spaceId) =>
+  spaceId,
+);
+const squareContainerStateById = boardHelpers.containerRecord(
+  "square-grid",
+  false,
+);
+const squareRelationStateById = boardHelpers.relationTypeRecord(
+  "square-grid",
+  true,
+);
+const squareEdgeStateById = boardHelpers.edgeRecord("square-grid", null);
+const squareVertexStateById = boardHelpers.vertexRecord("square-grid", null);
+const maybeSpaceId = "cell-a1";
+if (boardHelpers.isSpaceId("square-grid", maybeSpaceId)) {
+  void maybeSpaceId;
+}
+const ensuredSpaceId = boardHelpers.expectSpaceId("square-grid", "cell-a1");
+const ensuredEdgeId = boardHelpers.expectEdgeId(
+  "square-grid",
+  boardHelpers.edgeIds("square-grid", "wall-slot")[0],
+);
+const ensuredVertexId = boardHelpers.expectVertexId(
+  "square-grid",
+  boardHelpers.vertexIds("square-grid", "crossing")[0],
+);
+const manifestEdgeId = idGuards.expectEdgeId(firstHexRouteId);
+if (idGuards.isVertexId(firstHexSettlementId)) {
+  void firstHexSettlementId;
+}
 const firstSquareCheckpointId =
   boardHelpers.vertexIds("square-grid", "crossing")[0];
 const hexBoardIds = boardHelpers.boardIdsForLayout("hex");
@@ -751,6 +945,10 @@ const genericBoardBaseIds = boardHelpers.boardBaseIdsForLayout("generic");
 
 const squareContainerHost =
   boardHelpers.containerHost("square-grid", "cache");
+const authoredHexEdgeRate =
+  (null as unknown as SharedHexAuthoredEdgeState).fields.rate;
+const authoredHexVertexCost =
+  (null as unknown as SharedHexAuthoredVertexState).fields.buildCost;
 const hexEdgeRate = (null as unknown as SharedHexEdgeState).fields.rate;
 const squareEdgeDurability =
   (null as unknown as SharedSquareEdgeState).fields.durability;
@@ -761,22 +959,252 @@ const tiledVertexValue =
 void literals.boardIds;
 void literals.boardTemplateIds;
 void perPlayerSpaceType;
+void firstHexEdgeState.ref;
+void firstHexVertexState.ref;
 void firstHexRouteId;
+void firstHexSettlementId;
+void edgeOwnerById;
+void vertexOwnerById;
+void squareSpaceLabelById;
+void squareContainerStateById;
+void squareRelationStateById;
+void squareEdgeStateById;
+void squareVertexStateById;
+void ensuredSpaceId;
+void ensuredEdgeId;
+void ensuredVertexId;
+void manifestEdgeId;
 void firstSquareCheckpointId;
 void hexBoardIds;
 void genericBoardBaseIds;
 void boardHelpers.boardBaseIdsForTemplate;
 void boardHelpers.boardTemplateLayout;
 void squareContainerHost;
+void authoredHexEdgeRate;
+void authoredHexVertexCost;
 void hexEdgeRate;
 void squareEdgeDurability;
 void tiledEdgeRate;
 void tiledVertexValue;
 void (null as SharedBoardState | SharedBoardFields | SharedSpaceState | SharedSpaceFields | null);
+void (null as SharedHexAuthoredEdgeState | SharedHexAuthoredVertexState | null);
 void (null as SharedHexEdgeState | SharedHexEdgeFields | null);
 void (null as SharedSquareEdgeState | SharedSquareEdgeFields | null);
 void (null as PerPlayerBoardState | PerPlayerSpaceState | PerPlayerSpaceFields | null);
 `,
+  });
+});
+
+test("generated boardHelpers expose authored hex lookups and resolvers", async () => {
+  await withGeneratedContractModule({
+    tempPrefix: ".tmp-authored-hex-runtime-",
+    manifest: TEST_MANIFEST,
+    async run(module) {
+      const authoredEdges = module.boardHelpers.authoredHexEdges("hex-map");
+      const authoredVertices =
+        module.boardHelpers.authoredHexVertices("hex-map");
+
+      expect(authoredEdges).toEqual([
+        {
+          ref: { spaces: ["hex-a", "hex-b"] },
+          typeId: "three-to-one",
+          fields: { rate: 3 },
+        },
+      ]);
+      expect(authoredVertices).toEqual([
+        {
+          ref: { spaces: ["hex-a", "hex-b", "hex-c"] },
+          typeId: "settlement-slot",
+          fields: { buildCost: 2 },
+        },
+      ]);
+      expect(
+        module.boardHelpers.resolveHexEdgeId("hex-map", authoredEdges[0]!.ref),
+      ).toBe(module.boardHelpers.edgeIds("hex-map", "three-to-one")[0]);
+      expect(
+        module.boardHelpers.resolveHexVertexId(
+          "hex-map",
+          authoredVertices[0]!.ref,
+        ),
+      ).toBe(module.boardHelpers.vertexIds("hex-map", "settlement-slot")[0]);
+      expect(() =>
+        module.boardHelpers.resolveHexEdgeId(
+          "missing-board" as never,
+          authoredEdges[0]!.ref,
+        ),
+      ).toThrow("Unknown hex board");
+      expect(() =>
+        module.boardHelpers.resolveHexEdgeId("hex-map", {
+          spaces: ["hex-b", "hex-c"],
+        } as never),
+      ).toThrow("Unknown authored hex edge ref");
+    },
+  });
+});
+
+test("generated boardHelpers support authored hex resolvers for per-player boards", async () => {
+  const perPlayerHexManifest: GameTopologyManifest = {
+    ...structuredClone(TEST_MANIFEST),
+    boards: [
+      ...structuredClone(TEST_MANIFEST.boards),
+      {
+        id: "player-hex-map",
+        name: "Player Hex Map",
+        layout: "hex",
+        scope: "perPlayer",
+        orientation: "pointy-top",
+        edgeFieldsSchema: {
+          properties: {
+            rate: {
+              type: "integer",
+              description: "Edge trade rate",
+            },
+          },
+        },
+        vertexFieldsSchema: {
+          properties: {
+            buildCost: {
+              type: "integer",
+              description: "Vertex build cost",
+            },
+          },
+        },
+        spaces: [
+          {
+            id: "player-hex-a",
+            q: 0,
+            r: 0,
+          },
+          {
+            id: "player-hex-b",
+            q: 1,
+            r: 0,
+          },
+          {
+            id: "player-hex-c",
+            q: 0,
+            r: 1,
+          },
+        ],
+        edges: [
+          {
+            ref: {
+              spaces: ["player-hex-a", "player-hex-b"],
+            },
+            typeId: "three-to-one",
+            fields: {
+              rate: 2,
+            },
+          },
+        ],
+        vertices: [
+          {
+            ref: {
+              spaces: ["player-hex-a", "player-hex-b", "player-hex-c"],
+            },
+            typeId: "settlement-slot",
+            fields: {
+              buildCost: 4,
+            },
+          },
+        ],
+      },
+    ],
+  };
+
+  await withGeneratedContractModule({
+    tempPrefix: ".tmp-authored-hex-per-player-runtime-",
+    manifest: perPlayerHexManifest,
+    async run(module) {
+      const playerHexBoardId = module.boardHelpers.boardIdForPlayer(
+        "player-hex-map",
+        "player-1",
+      );
+      const authoredEdgeRef =
+        module.boardHelpers.authoredHexEdges(playerHexBoardId)[0]!.ref;
+      const authoredVertexRef =
+        module.boardHelpers.authoredHexVertices(playerHexBoardId)[0]!.ref;
+
+      expect(playerHexBoardId).toBe("player-hex-map:player-1");
+      expect(
+        module.boardHelpers.resolveHexEdgeId(playerHexBoardId, authoredEdgeRef),
+      ).toBe(module.boardHelpers.edgeIds(playerHexBoardId, "three-to-one")[0]);
+      expect(
+        module.boardHelpers.resolveHexVertexId(
+          playerHexBoardId,
+          authoredVertexRef,
+        ),
+      ).toBe(
+        module.boardHelpers.vertexIds(playerHexBoardId, "settlement-slot")[0],
+      );
+    },
+  });
+});
+
+test("generated records and idGuards preserve exact manifest ids", async () => {
+  await withGeneratedContractModule({
+    tempPrefix: ".tmp-generated-id-helpers-",
+    manifest: TEST_MANIFEST,
+    async run(module) {
+      const expectedEdgeRecord = Object.fromEntries(
+        module.literals.edgeIds.map((edgeId: string) => [edgeId, null]),
+      );
+      const expectedVertexRecord = Object.fromEntries(
+        module.literals.vertexIds.map((vertexId: string) => [vertexId, vertexId]),
+      );
+      const expectedSquareEdgeRecord = Object.fromEntries(
+        module.literals.edgeIds
+          .filter((edgeId: string) =>
+            module.boardHelpers.isEdgeId("square-grid", edgeId),
+          )
+          .map((edgeId: string) => [edgeId, false]),
+      );
+      const expectedSquareVertexRecord = Object.fromEntries(
+        module.literals.vertexIds
+          .filter((vertexId: string) =>
+            module.boardHelpers.isVertexId("square-grid", vertexId),
+          )
+          .map((vertexId: string) => [vertexId, null]),
+      );
+      const firstHexEdgeId = module.boardHelpers.resolveHexEdgeId("hex-map", {
+        spaces: ["hex-a", "hex-b"],
+      });
+
+      expect(module.records.edgeIds(null)).toEqual(expectedEdgeRecord);
+      expect(module.records.vertexIds((vertexId: string) => vertexId)).toEqual(
+        expectedVertexRecord,
+      );
+      expect(module.boardHelpers.spaceRecord("square-grid", 0)).toEqual({
+        "cell-a1": 0,
+        "cell-a2": 0,
+        "cell-b1": 0,
+        "cell-b2": 0,
+      });
+      expect(module.boardHelpers.edgeRecord("square-grid", false)).toEqual(
+        expectedSquareEdgeRecord,
+      );
+      expect(module.boardHelpers.vertexRecord("square-grid", null)).toEqual(
+        expectedSquareVertexRecord,
+      );
+      expect(module.idGuards.isEdgeId(firstHexEdgeId)).toBe(true);
+      expect(module.idGuards.isEdgeId("missing-edge")).toBe(false);
+      expect(module.idGuards.expectEdgeId(firstHexEdgeId)).toBe(firstHexEdgeId);
+      expect(() => module.idGuards.expectEdgeId("missing-edge")).toThrow(
+        "Unknown edge id 'missing-edge'.",
+      );
+      expect(module.boardHelpers.isSpaceId("square-grid", "cell-a1")).toBe(
+        true,
+      );
+      expect(module.boardHelpers.isSpaceId("square-grid", "missing")).toBe(
+        false,
+      );
+      expect(module.boardHelpers.expectSpaceId("square-grid", "cell-a1")).toBe(
+        "cell-a1",
+      );
+      expect(() =>
+        module.boardHelpers.expectSpaceId("square-grid", "missing"),
+      ).toThrow("Unknown space id 'missing' on board 'square-grid'.");
+    },
   });
 });
 
@@ -811,6 +1239,41 @@ test("generateManifestContractSource typechecks preset standard deck contracts",
     usageSource: `export {};`,
   });
 });
+
+test("generateManifestContractSource typechecks typed zone card helpers against card state names", async () => {
+  await expectGeneratedContractTypechecks({
+    tempPrefix: ".tmp-zone-card-helper-contract-",
+    manifest: TEST_MANIFEST,
+    usageSource: `import { getPlayerZoneCards, getSharedZoneCards } from "@dreamboard/app-sdk/reducer";
+import { createInitialTable } from "./manifest-contract";
+
+const table = createInitialTable({
+  playerIds: ["player-1", "player-2"],
+});
+
+const sharedCardId = getSharedZoneCards(table, "draw-deck")[0];
+const sharedCardName: string | undefined = sharedCardId
+  ? table.cards[sharedCardId].name
+  : undefined;
+const sharedCardText: string | undefined = sharedCardId
+  ? table.cards[sharedCardId].text
+  : undefined;
+
+const handCardId = getPlayerZoneCards(table, "player-1", "main-hand")[0];
+const handCardName: string | undefined = handCardId
+  ? table.cards[handCardId].name
+  : undefined;
+const handCardText: string | undefined = handCardId
+  ? table.cards[handCardId].text
+  : undefined;
+
+void sharedCardName;
+void sharedCardText;
+void handCardName;
+void handCardText;
+`,
+  });
+}, 20_000);
 
 test("generateManifestContractSource typechecks manifest-bound setup bootstrap helpers", async () => {
   await expectGeneratedContractTypechecks({

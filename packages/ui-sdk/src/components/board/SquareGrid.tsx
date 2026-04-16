@@ -6,6 +6,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { clsx } from "clsx";
 import { usePanZoom } from "../../hooks/usePanZoom.js";
+import type { GeneratedSquareSpaceStateLike } from "../../types/tiled-board.js";
 
 // ============================================================================
 // Types
@@ -33,20 +34,26 @@ export interface GridPiece {
 
 export interface SquareGridEdge {
   id: string;
-  spaceIds: string[];
+  spaceIds: readonly string[];
   type?: string;
+  typeId?: string | null;
   owner?: string;
+  ownerId?: string | null;
   label?: string;
   data?: Record<string, unknown>;
+  fields?: Record<string, unknown>;
 }
 
 export interface SquareGridVertex {
   id: string;
-  spaceIds: string[];
+  spaceIds: readonly string[];
   type?: string;
+  typeId?: string | null;
   owner?: string;
+  ownerId?: string | null;
   label?: string;
   data?: Record<string, unknown>;
+  fields?: Record<string, unknown>;
 }
 
 export interface SquareEdgePosition {
@@ -66,23 +73,24 @@ export interface SquareVertexPosition {
 
 export interface InteractiveSquareEdge {
   id: string;
-  spaceIds: string[];
+  spaceIds: readonly string[];
   position: SquareEdgePosition;
 }
 
 export interface InteractiveSquareVertex {
   id: string;
-  spaceIds: string[];
+  spaceIds: readonly string[];
   position: SquareVertexPosition;
 }
 
 export interface SquareGridProps {
-  rows: number;
-  cols: number;
-  cells?: GridCell[];
-  pieces: GridPiece[];
-  edges?: SquareGridEdge[];
-  vertices?: SquareGridVertex[];
+  rows?: number;
+  cols?: number;
+  cells?: readonly GridCell[];
+  spaces?: Readonly<Record<string, GeneratedSquareSpaceStateLike>>;
+  pieces?: readonly GridPiece[];
+  edges?: readonly SquareGridEdge[];
+  vertices?: readonly SquareGridVertex[];
   cellSize?: number;
   /** Receives row/col with transform centered at cell position */
   renderCell: (row: number, col: number) => ReactNode;
@@ -536,9 +544,10 @@ function vertexPositionForCells(
 // ============================================================================
 
 export function SquareGrid({
-  rows,
-  cols,
+  rows = 0,
+  cols = 0,
   cells: providedCells,
+  spaces,
   pieces = [],
   edges = [],
   vertices = [],

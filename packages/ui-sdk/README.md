@@ -13,6 +13,8 @@ Supported authored hooks:
 - `useGameView()`
 - `useGameSelector(selector)`
 - `useActions()`
+- `usePrompt(promptId)`
+- `useChoicePrompt(promptId)`
 - `useGameplayPrompts()`
 - `useGameplayWindows()`
 - `usePluginSession()`
@@ -36,8 +38,14 @@ Scaffolded local components include:
 - `SquareGrid`
 - `ZoneMap`
 - `SlotSystem`
+- top-level board helper exports such as `DefaultNetworkNode`,
+  `DefaultNetworkEdge`, `DefaultZone`, `DefaultTrackSpace`, and
+  `DefaultSlotItem`
 - action/status primitives such as `ActionButton`, `ActionPanel`,
   `PhaseIndicator`, `ResourceCounter`, and `CostDisplay`
+
+`ActionButton` accepts normal React `children` as its primary label surface and
+keeps `label` as an accessibility fallback.
 
 Raw gameplay state hooks, raw board hooks, and runtime bootstrap internals are
 not part of the authored surface anymore.
@@ -53,7 +61,133 @@ Reducer-native plugins receive:
 - windows
 - lobby/session metadata
 
+For simple reducer-owned prompt flows, prefer `usePrompt()` or
+`useChoicePrompt()` over manual `useGameplayPrompts(...)[0]` handling.
+
 They do not receive raw table-state snapshots.
+
+Preferred authored reducer-native types:
+
+- `ViewCard`
+- `CardCollection`
+- `HexTileState`
+- `HexEdgeState`
+- `HexVertexState`
+- `ViewSlotOccupant`
+
+Use `typeId` for reducer-native tile, edge, vertex, and piece rendering
+discrimination.
+
+## Reducer-Native Patterns
+
+### Cards
+
+Project card collections directly from reducer queries:
+
+```ts
+const q = createTableQueries(state.table);
+
+return {
+  hand: q.zone.playerCardCollection(playerId, "captain-hand"),
+};
+```
+
+Read them in UI without remapping:
+
+```tsx
+const view = useGameView();
+const handCards = useCards(view.hand);
+```
+
+### Tiled Boards
+
+Project reducer board state directly into the view and pass it through to the
+board hook or component unchanged:
+
+```tsx
+const view = useGameView();
+const board = useHexBoard(view.board);
+
+return (
+  <HexGrid
+    {...view.board}
+    renderTile={(tile) => (
+      <DefaultHexTile size={48} fill={palette[tile.typeId ?? "plain"]} />
+    )}
+    renderEdge={(edge, position) => (
+      <DefaultHexEdge
+        position={position}
+        color={edge.owner ? "#2563eb" : "#94a3b8"}
+      />
+    )}
+    renderVertex={(vertex, position) => (
+      <DefaultHexVertex
+        position={position}
+        color={vertex.owner ? "#16a34a" : "#94a3b8"}
+      />
+    )}
+  />
+);
+```
+
+Interactive edge and vertex callbacks preserve the board's reducer-derived ID
+types instead of widening to `string`.
+
+`HexGrid` uses one coordinate model for edges and vertices:
+
+- `renderTile` still renders with the tile centered at `(0, 0)`.
+- `renderEdge`, `renderInteractiveEdge`, `renderVertex`, and
+  `renderInteractiveVertex` all receive absolute SVG coordinates.
+- For edges, `position.edgeAngle` follows the visible edge line and
+  `position.centerAngle` follows the hex-center-to-hex-center line.
+
+```tsx
+<HexGrid
+  {...view.board}
+  interactiveEdges={true}
+  renderInteractiveEdge={(edge, position, isHovered) => (
+    <rect
+      x={position.midX - 18}
+      y={position.midY - 4}
+      width={36}
+      height={8}
+      rx={4}
+      fill={isHovered ? "#f97316" : "#cbd5e1"}
+      transform={`rotate(${position.edgeAngle} ${position.midX} ${position.midY})`}
+    />
+  )}
+/>
+```
+
+### Slots
+
+Reducer views should expose slot occupants directly as `ViewSlotOccupant[]`:
+
+```ts
+return {
+  occupants: [{ pieceId: "worker-1", playerId: null, slotId: "market" }],
+};
+```
+
+```tsx
+<SlotSystem
+  slots={view.slots}
+  occupants={view.occupants}
+  renderSlot={(slot, occupants) => <MySlot slot={slot} occupants={occupants} />}
+/>
+```
+
+### Track Boards
+
+`TrackBoard` remains the explicit presentation adapter exception. Convert a
+reducer-projected generic board with `toTrackBoardData(...)`:
+
+```tsx
+const track = toTrackBoardData(view.board, {
+  layout: { type: "linear" },
+  pieces: view.pieces,
+});
+```
 
 ## Example
 
@@ -108,6 +242,8 @@ createRoot(document.getElementById("root")!).render(
 4. Submit gameplay through `useActions()`.
 5. Feed board/card/resource components from reducer view data, not from raw
    engine state.
+6. For one-prompt flows, prefer the additive prompt-flow helpers in
+   `@dreamboard/app-sdk/reducer` plus `usePrompt()` / `useChoicePrompt()`.
 
 ## References
 

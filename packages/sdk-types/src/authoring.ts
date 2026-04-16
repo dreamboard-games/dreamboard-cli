@@ -1,10 +1,19 @@
 import type {
   BoardEdgeRef,
   BoardVertexRef,
-  GameTopologyManifest,
+  DieTypeSpec as ApiDieTypeSpec,
+  GameTopologyManifest as ApiGameTopologyManifest,
   JsonValue,
   PropertySchema,
 } from "@dreamboard/api-client/types.gen";
+
+type DieTypeSpec = Omit<ApiDieTypeSpec, "sides"> & {
+  sides?: ApiDieTypeSpec["sides"];
+};
+
+type GameTopologyManifest = Omit<ApiGameTopologyManifest, "dieTypes"> & {
+  dieTypes?: Array<DieTypeSpec>;
+};
 
 type ArrayItem<T> = T extends readonly (infer Item)[] ? Item : never;
 type EntryId<T> = T extends { id: infer Id extends string } ? Id : never;
@@ -1204,7 +1213,7 @@ export type TypedTopologyManifest<Manifest extends GameTopologyManifest> = Omit<
   zones?: Manifest["zones"] extends readonly unknown[]
     ? ReadonlyArray<TypedZone<ArrayItem<Manifest["zones"]>, Manifest>>
     : Manifest["zones"];
-  boardTemplates: Manifest["boardTemplates"] extends readonly unknown[]
+  boardTemplates?: Manifest["boardTemplates"] extends readonly unknown[]
     ? ReadonlyArray<
         TypedBoardLikeEntry<ArrayItem<Manifest["boardTemplates"]>, Manifest>
       >

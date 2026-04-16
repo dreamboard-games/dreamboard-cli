@@ -50,9 +50,20 @@ export function shortHash(value: string): string {
 }
 
 export function isLocalMaintainerRegistryEnabled(apiBaseUrl: string): boolean {
+  let isLocalLoopbackUrl = false;
+  try {
+    const parsed = new URL(apiBaseUrl);
+    isLocalLoopbackUrl =
+      parsed.protocol === "http:" &&
+      (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1");
+  } catch {
+    isLocalLoopbackUrl = false;
+  }
+
   return (
     !IS_PUBLISHED_BUILD &&
-    apiBaseUrl === ENVIRONMENT_CONFIGS.local?.apiBaseUrl &&
+    (apiBaseUrl === ENVIRONMENT_CONFIGS.local?.apiBaseUrl ||
+      isLocalLoopbackUrl) &&
     BUILD_CHANNEL === "development"
   );
 }

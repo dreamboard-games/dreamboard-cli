@@ -39,6 +39,8 @@ export {
   type HexGridProps,
   type HexOrientation,
   type EdgePosition,
+  type InteractiveVertex,
+  type InteractiveEdge,
   type DefaultHexTileProps,
   type DefaultHexEdgeProps,
   type DefaultHexVertexProps,

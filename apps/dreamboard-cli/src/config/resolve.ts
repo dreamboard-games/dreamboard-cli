@@ -30,17 +30,21 @@ export function resolveConfig(
   const hasExplicitEnvironmentOverride =
     !IS_PUBLISHED_BUILD && Boolean(flags.env);
 
-  const apiBaseUrl = IS_PUBLISHED_BUILD
+  const resolvedApiBaseUrl = IS_PUBLISHED_BUILD
     ? (publishedEnvConfig?.apiBaseUrl ?? DEFAULT_API_BASE_URL)
     : hasExplicitEnvironmentOverride
       ? envConfig?.apiBaseUrl || DEFAULT_API_BASE_URL
       : project?.apiBaseUrl || envConfig?.apiBaseUrl || DEFAULT_API_BASE_URL;
+  const apiBaseUrl =
+    valueOrUndefined(process.env.DREAMBOARD_API_BASE_URL) ?? resolvedApiBaseUrl;
 
-  const webBaseUrl = IS_PUBLISHED_BUILD
+  const resolvedWebBaseUrl = IS_PUBLISHED_BUILD
     ? (publishedEnvConfig?.webBaseUrl ?? DEFAULT_WEB_BASE_URL)
     : hasExplicitEnvironmentOverride
       ? envConfig?.webBaseUrl || DEFAULT_WEB_BASE_URL
       : project?.webBaseUrl || envConfig?.webBaseUrl || DEFAULT_WEB_BASE_URL;
+  const webBaseUrl =
+    valueOrUndefined(process.env.DREAMBOARD_WEB_BASE_URL) ?? resolvedWebBaseUrl;
 
   const supabaseUrl = envConfig?.supabaseUrl;
   const supabaseAnonKey = envConfig?.supabaseAnonKey;

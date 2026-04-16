@@ -63,6 +63,30 @@ test("defineTopologyManifest accepts valid player-scoped seed homes with ownerId
   }
 });
 
+test("defineTopologyManifest accepts omitted boardTemplates", () => {
+  const result = runTypecheck(
+    path.join(fixtureRoot, "valid-manifest-omits-board-templates.ts"),
+  );
+  const decoder = new TextDecoder();
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `Typecheck failed for valid-manifest-omits-board-templates.ts\nstdout:\n${decoder.decode(result.stdout)}\nstderr:\n${decoder.decode(result.stderr)}`,
+    );
+  }
+});
+
+test("defineTopologyManifest accepts die types that omit sides", () => {
+  const result = runTypecheck(
+    path.join(fixtureRoot, "valid-die-type-omits-sides.ts"),
+  );
+  const decoder = new TextDecoder();
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `Typecheck failed for valid-die-type-omits-sides.ts\nstdout:\n${decoder.decode(result.stdout)}\nstderr:\n${decoder.decode(result.stderr)}`,
+    );
+  }
+});
+
 test("defineTopologyManifest rejects invalid typed references", () => {
   const result = runTypecheck(path.join(fixtureRoot, "invalid-manifest.ts"));
   const decoder = new TextDecoder();

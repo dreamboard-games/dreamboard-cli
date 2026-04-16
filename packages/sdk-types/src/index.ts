@@ -1,3 +1,8 @@
+import type {
+  DieTypeSpec as ApiDieTypeSpec,
+  GameTopologyManifest as ApiGameTopologyManifest,
+} from "@dreamboard/api-client/types.gen";
+
 export type {
   ActionDefinition,
   ActionParameterDefinition,
@@ -31,8 +36,6 @@ export type {
   ComponentVisibilitySpec,
   DetachedHomeSpec,
   DieSeedSpec,
-  DieTypeSpec,
-  GameTopologyManifest,
   ManualCardSetDefinition,
   ObjectSchema,
   ParameterType,
@@ -63,5 +66,20 @@ export type {
   ZoneVisibility,
 } from "@dreamboard/api-client/types.gen";
 
+export type DieTypeSpec = Omit<ApiDieTypeSpec, "sides"> & {
+  sides?: ApiDieTypeSpec["sides"];
+};
+
+export type GameTopologyManifest = Omit<ApiGameTopologyManifest, "dieTypes"> & {
+  dieTypes?: Array<DieTypeSpec>;
+};
+
+export type { CardCollection, ViewCard } from "./cards.js";
+export type { ViewSlotOccupant } from "./slots.js";
 export { defineTopologyManifest } from "./authoring.js";
 export type { TypedTopologyManifest } from "./authoring.js";
+export {
+  buildTypedRecord,
+  expectTypedId,
+  isTypedId,
+} from "./generated-helpers.js";

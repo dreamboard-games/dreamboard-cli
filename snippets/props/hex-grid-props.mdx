@@ -1,13 +1,16 @@
 {/* Generated from packages/ui-sdk/src/components/board/HexGrid.tsx */}
 {/* Run `pnpm docs:gen-props` to regenerate. Do not edit directly. */}
 
-<ParamField path="tiles" type="HexTileState[]" required>
+<ParamField path="tiles" type="readonly HexTileState[]">
   `tiles` value
 </ParamField>
-<ParamField path="edges" type="HexEdgeState[]" required>
+<ParamField path="spaces" type="Readonly<Record<string, GeneratedHexSpaceStateLike>>">
+  `spaces` value
+</ParamField>
+<ParamField path="edges" type="readonly (HexEdgeState | GeneratedTiledEdgeStateLike)[]">
   `edges` value
 </ParamField>
-<ParamField path="vertices" type="HexVertexState[]" required>
+<ParamField path="vertices" type="readonly (HexVertexState | GeneratedTiledVertexStateLike)[]">
   `vertices` value
 </ParamField>
 <ParamField path="orientation" type="HexOrientation">
@@ -20,7 +23,7 @@
   Receives tile data centered at (0,0)
 </ParamField>
 <ParamField path="renderEdge" type="(edge: HexEdgeState, position: EdgePosition) => ReactNode" required>
-  `renderEdge` value
+  Receives edge geometry in absolute SVG coordinates. Use `position.edgeAngle` to align artwork with the visible edge.
 </ParamField>
 <ParamField path="renderVertex" type="(vertex: HexVertexState, position: { x: number; y: number }) => ReactNode" required>
   `renderVertex` value
@@ -70,11 +73,11 @@
 <ParamField path="onInteractiveEdgeLeave" type="(edge: InteractiveEdge) => void">
   `onInteractiveEdgeLeave` value
 </ParamField>
-<ParamField path="renderInteractiveVertex" type="(vertex: InteractiveVertex, isHovered: boolean) => ReactNode">
-  `renderInteractiveVertex` value
+<ParamField path="renderInteractiveVertex" type="(vertex: InteractiveVertex, position: { x: number; y: number }, isHovered: boolean) => ReactNode">
+  Receives vertex geometry in absolute SVG coordinates.
 </ParamField>
-<ParamField path="renderInteractiveEdge" type="(edge: InteractiveEdge, isHovered: boolean) => ReactNode">
-  `renderInteractiveEdge` value
+<ParamField path="renderInteractiveEdge" type="(edge: InteractiveEdge, position: EdgePosition, isHovered: boolean) => ReactNode">
+  Receives edge geometry in the same absolute SVG coordinates as `renderEdge`.
 </ParamField>
 <ParamField path="interactiveVertexSize" type="number">
   `interactiveVertexSize` value

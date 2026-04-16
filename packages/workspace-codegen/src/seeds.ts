@@ -28,6 +28,7 @@ const UI_SDK_COMPONENT_IMPORT_REWRITES = new Map<string, string>([
   ["../../hooks/usePanZoom.js", "@dreamboard/ui-sdk/internal/usePanZoom"],
   ["../../hooks/useIsMobile.js", "@dreamboard/ui-sdk/internal/useIsMobile"],
   ["../../types/player-state.js", "@dreamboard/ui-sdk/internal/player-state"],
+  ["../../types/tiled-board.js", "@dreamboard/ui-sdk/internal/tiled-board"],
 ]);
 
 export const SETUP_PROFILES_SEED_MARKER =

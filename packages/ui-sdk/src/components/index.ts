@@ -2,7 +2,14 @@
 
 // Presentational components (no hooks, receive data as props)
 export { Card, type CardProps, type CardItem } from "./Card.js";
-export { Hand, type HandProps } from "./Hand.js";
+export {
+  Hand,
+  type HandProps,
+  type HandCardRenderProps,
+  type HandDrawerRenderProps,
+  type HandEmptyRenderProps,
+  type HandContainerRenderProps,
+} from "./Hand.js";
 export { PlayArea, type PlayAreaProps } from "./PlayArea.js";
 
 // Other UI components
@@ -47,7 +54,11 @@ export {
   type ActionPanelProps,
   type ActionGroupProps,
 } from "./ActionPanel.js";
-export { DiceRoller, type DiceRollerProps } from "./DiceRoller.js";
+export {
+  DiceRoller,
+  type DiceRollerProps,
+  type DiceRollerRenderProps,
+} from "./DiceRoller.js";
 export { PhaseIndicator, type PhaseIndicatorProps } from "./PhaseIndicator.js";
 export {
   GameEndDisplay,
@@ -117,6 +128,8 @@ export {
   type HexGridProps,
   type HexOrientation,
   type EdgePosition,
+  type InteractiveVertex,
+  type InteractiveEdge,
   type DefaultHexTileProps,
   type DefaultHexEdgeProps,
   type DefaultHexVertexProps,

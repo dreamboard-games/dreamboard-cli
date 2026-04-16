@@ -10,6 +10,11 @@ import { usePanZoom, calculateViewBox } from "../../hooks/usePanZoom.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import type { HexTileState, HexVertexState } from "../../types/player-state.js";
 import type { HexEdgeState } from "../../types/player-state.js";
+import type {
+  GeneratedHexSpaceStateLike,
+  GeneratedTiledEdgeStateLike,
+  GeneratedTiledVertexStateLike,
+} from "../../types/tiled-board.js";
 
 // ============================================================================
 // Types
@@ -18,13 +23,22 @@ import type { HexEdgeState } from "../../types/player-state.js";
 export type HexOrientation = "pointy-top" | "flat-top";
 
 export interface EdgePosition {
+  /** Absolute SVG start point of the visible edge line. */
   x1: number;
   y1: number;
+  /** Absolute SVG end point of the visible edge line. */
   x2: number;
   y2: number;
+  /** Absolute SVG midpoint of the edge. */
   midX: number;
   midY: number;
-  angle: number;
+  /**
+   * Angle in degrees from hex1 center to hex2 center.
+   * This is perpendicular to the visible edge line.
+   */
+  centerAngle: number;
+  /** Angle in degrees of the visible edge line itself. */
+  edgeAngle: number;
 }
 
 /** Auto-generated corner point where 1-3 hexes meet (for settlement placement). */
@@ -44,14 +58,19 @@ export interface InteractiveEdge {
 }
 
 export interface HexGridProps {
-  tiles: HexTileState[];
-  edges: HexEdgeState[];
-  vertices: HexVertexState[];
+  tiles?: readonly HexTileState[];
+  spaces?: Readonly<Record<string, GeneratedHexSpaceStateLike>>;
+  edges?: readonly (HexEdgeState | GeneratedTiledEdgeStateLike)[];
+  vertices?: readonly (HexVertexState | GeneratedTiledVertexStateLike)[];
   orientation?: HexOrientation;
   /** Hex radius in pixels */
   hexSize?: number;
   /** Receives tile data centered at (0,0) */
   renderTile: (tile: HexTileState) => ReactNode;
+  /**
+   * Receives edge geometry in absolute SVG coordinates.
+   * Use `position.edgeAngle` to align artwork with the visible edge.
+   */
   renderEdge: (edge: HexEdgeState, position: EdgePosition) => ReactNode;
   renderVertex: (
     vertex: HexVertexState,
@@ -77,12 +96,18 @@ export interface HexGridProps {
   onInteractiveEdgeClick?: (edge: InteractiveEdge) => void;
   onInteractiveEdgeEnter?: (edge: InteractiveEdge) => void;
   onInteractiveEdgeLeave?: (edge: InteractiveEdge) => void;
+  /** Receives vertex geometry in absolute SVG coordinates. */
   renderInteractiveVertex?: (
     vertex: InteractiveVertex,
+    position: { x: number; y: number },
     isHovered: boolean,
   ) => ReactNode;
+  /**
+   * Receives edge geometry in the same absolute SVG coordinates as `renderEdge`.
+   */
   renderInteractiveEdge?: (
     edge: InteractiveEdge,
+    position: EdgePosition,
     isHovered: boolean,
   ) => ReactNode;
   interactiveVertexSize?: number;
@@ -349,7 +374,7 @@ export function DefaultHexVertex({
 // ============================================================================
 
 export interface DefaultInteractiveVertexProps {
-  vertex: InteractiveVertex;
+  position: { x: number; y: number };
   isHovered: boolean;
   size?: number;
   color?: string;
@@ -357,7 +382,7 @@ export interface DefaultInteractiveVertexProps {
   className?: string;
 }
 export function DefaultInteractiveVertex({
-  vertex,
+  position,
   isHovered,
   size = 8,
   color = "rgba(255, 255, 255, 0.2)",
@@ -366,8 +391,8 @@ export function DefaultInteractiveVertex({
 }: DefaultInteractiveVertexProps) {
   return (
     <circle
-      cx={vertex.position.x}
-      cy={vertex.position.y}
+      cx={position.x}
+      cy={position.y}
       r={isHovered ? size * 1.5 : size}
       fill={isHovered ? hoverColor : color}
       stroke={isHovered ? "#22c55e" : "rgba(255,255,255,0.4)"}
@@ -378,7 +403,7 @@ export function DefaultInteractiveVertex({
 }
 
 export interface DefaultInteractiveEdgeProps {
-  edge: InteractiveEdge;
+  position: EdgePosition;
   isHovered: boolean;
   strokeWidth?: number;
   color?: string;
@@ -386,7 +411,7 @@ export interface DefaultInteractiveEdgeProps {
   className?: string;
 }
 export function DefaultInteractiveEdge({
-  edge,
+  position,
   isHovered,
   strokeWidth = 4,
   color = "rgba(255, 255, 255, 0.15)",
@@ -395,10 +420,10 @@ export function DefaultInteractiveEdge({
 }: DefaultInteractiveEdgeProps) {
   return (
     <line
-      x1={edge.position.x1}
-      y1={edge.position.y1}
-      x2={edge.position.x2}
-      y2={edge.position.y2}
+      x1={position.x1}
+      y1={position.y1}
+      x2={position.x2}
+      y2={position.y2}
       stroke={isHovered ? hoverColor : color}
       strokeWidth={isHovered ? strokeWidth * 1.5 : strokeWidth}
       strokeLinecap="round"
@@ -484,20 +509,26 @@ export const hexUtils = {
   ): EdgePosition {
     const midX = (hex1Pos.x + hex2Pos.x) / 2;
     const midY = (hex1Pos.y + hex2Pos.y) / 2;
-    const angle = Math.atan2(hex2Pos.y - hex1Pos.y, hex2Pos.x - hex1Pos.x);
+    const centerAngleRad = Math.atan2(
+      hex2Pos.y - hex1Pos.y,
+      hex2Pos.x - hex1Pos.x,
+    );
 
     // Calculate edge endpoints perpendicular to the line between hex centers
-    const perpAngle = angle + Math.PI / 2;
+    const edgeAngleRad = centerAngleRad + Math.PI / 2;
     const edgeLength = size * 0.8;
+    const centerAngle = (centerAngleRad * 180) / Math.PI;
+    const edgeAngle = (edgeAngleRad * 180) / Math.PI;
 
     return {
-      x1: midX - (edgeLength / 2) * Math.cos(perpAngle),
-      y1: midY - (edgeLength / 2) * Math.sin(perpAngle),
-      x2: midX + (edgeLength / 2) * Math.cos(perpAngle),
-      y2: midY + (edgeLength / 2) * Math.sin(perpAngle),
+      x1: midX - (edgeLength / 2) * Math.cos(edgeAngleRad),
+      y1: midY - (edgeLength / 2) * Math.sin(edgeAngleRad),
+      x2: midX + (edgeLength / 2) * Math.cos(edgeAngleRad),
+      y2: midY + (edgeLength / 2) * Math.sin(edgeAngleRad),
       midX,
       midY,
-      angle: (angle * 180) / Math.PI,
+      centerAngle,
+      edgeAngle,
     };
   },
 
@@ -630,7 +661,7 @@ export const hexUtils = {
 // ============================================================================
 
 export function HexGrid({
-  tiles,
+  tiles = [],
   edges = [],
   vertices = [],
   orientation = "pointy-top",
@@ -913,10 +944,10 @@ export function HexGrid({
                 />
                 {/* Visible edge */}
                 {renderInteractiveEdge ? (
-                  renderInteractiveEdge(edge, isHovered)
+                  renderInteractiveEdge(edge, edge.position, isHovered)
                 ) : (
                   <DefaultInteractiveEdge
-                    edge={edge}
+                    position={edge.position}
                     isHovered={isHovered}
                     strokeWidth={interactiveEdgeSize * 0.6}
                   />
@@ -954,10 +985,10 @@ export function HexGrid({
                 />
                 {/* Visible vertex */}
                 {renderInteractiveVertex ? (
-                  renderInteractiveVertex(vertex, isHovered)
+                  renderInteractiveVertex(vertex, vertex.position, isHovered)
                 ) : (
                   <DefaultInteractiveVertex
-                    vertex={vertex}
+                    position={vertex.position}
                     isHovered={isHovered}
                     size={interactiveVertexSize * 0.6}
                   />

@@ -35,8 +35,8 @@ export interface SlotOccupant {
 }
 
 export interface SlotSystemProps {
-  slots: SlotDefinition[];
-  occupants: SlotOccupant[];
+  slots: readonly SlotDefinition[];
+  occupants: readonly SlotOccupant[];
   renderSlot: (slot: SlotDefinition, occupants: SlotOccupant[]) => ReactNode;
   layout?: "grid" | "list" | "grouped";
   width?: number | string;

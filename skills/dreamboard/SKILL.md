@@ -17,7 +17,7 @@ compile, run, and test against the current reducer-native scaffold.
 
 - Dreamboard CLI installed and available as `dreamboard`
   Install with `npm install -g dreamboard`
-- Authenticated via `dreamboard login`
+- Authenticated via `dreamboard auth status` or log in via `dreamboard login`
 
 ## New game workflow
 

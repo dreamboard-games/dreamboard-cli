@@ -7,7 +7,7 @@ import { clsx } from "clsx";
 import { Card, type CardProps, type CardItem } from "./Card.js";
 
 export interface PlayAreaProps {
-  cards: CardItem[];
+  cards: readonly CardItem[];
   filter?: (card: CardItem) => boolean;
   cardSize?: CardProps["size"];
   renderCard?: CardProps["renderContent"];

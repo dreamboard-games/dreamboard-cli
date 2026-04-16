@@ -87,9 +87,9 @@ export default defineBase({
 ```
 
 The base `seed` drives runtime-owned randomness. Effects such as
-`effects.rollDie(...)`, `effects.randomInt(...)`, `effects.sample(...)`, and
-`effects.shuffleSharedZone(...)` consume the seeded reducer RNG, so repeated
-test runs with the same base seed are reproducible.
+`fx.rollDie(...)`, `fx.randomInt(...)`, `fx.sample(...)`, and
+`fx.shuffleSharedZone(...)` consume the seeded reducer RNG, so repeated test
+runs with the same base seed are reproducible.
 
 Checked-in test startup state belongs on the base via `setupProfileId`.
 When a base omits it, Dreamboard uses the manifest default resolution order:

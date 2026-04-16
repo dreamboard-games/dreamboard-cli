@@ -55,11 +55,8 @@ The reducer is where the rules live. It decides what a player is allowed to do, 
 
 ```ts
 import { z } from "zod";
-import {
-  defineAction,
-  definePhase,
-  setActivePlayers,
-} from "@dreamboard/app-sdk/reducer";
+import { defineAction, definePhase } from "@dreamboard/app-sdk/reducer";
+import { ops, pipe } from "../reducer-support";
 
 const choosePairing = defineAction<GameContract>()({
   params: z.object({
@@ -81,7 +78,7 @@ const choosePairing = defineAction<GameContract>()({
 
     return null;
   },
-  reduce({ state, input, accept, effects }) {
+  reduce({ state, input, accept, fx }) {
     return accept(
       {
         ...state,
@@ -93,7 +90,7 @@ const choosePairing = defineAction<GameContract>()({
           ],
         },
       },
-      [effects.transition("rollOrStop")],
+      [fx.transition("rollOrStop")],
     );
   },
 });
@@ -103,7 +100,9 @@ export const turn = definePhase<GameContract>()({
   state: z.object({}),
   initialState: () => ({}),
   enter({ state, accept }) {
-    return accept(setActivePlayers(state, [state.publicState.currentPlayerId]));
+    return accept(
+      pipe(state, ops.setActivePlayers([state.publicState.currentPlayerId])),
+    );
   },
   actions: {
     choosePairing,

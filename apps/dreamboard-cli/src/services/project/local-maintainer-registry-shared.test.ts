@@ -5,6 +5,7 @@ import { expect, test } from "bun:test";
 import {
   didLocalMaintainerSnapshotChange,
   getLocalMaintainerNpmrcContent,
+  isLocalMaintainerRegistryEnabled,
   isLocalMaintainerRegistryUrl,
   readWorkspaceLocalMaintainerRegistryFromPackageJson,
 } from "./local-maintainer-registry-shared.js";
@@ -113,4 +114,10 @@ test("local maintainer helper utilities preserve local registry semantics", () =
       "@dreamboard:registry=https://registry.npmjs.org\n",
     ),
   ).toBe(false);
+  expect(isLocalMaintainerRegistryEnabled("http://localhost:8080")).toBe(true);
+  expect(isLocalMaintainerRegistryEnabled("http://127.0.0.1:8080")).toBe(true);
+  expect(isLocalMaintainerRegistryEnabled("http://127.0.0.1:8081")).toBe(true);
+  expect(isLocalMaintainerRegistryEnabled("https://api.dreamboard.games")).toBe(
+    false,
+  );
 });

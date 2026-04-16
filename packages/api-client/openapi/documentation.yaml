@@ -3392,7 +3392,6 @@ components:
       required:
         - id
         - name
-        - sides
     DieSeedSpec:
       type: object
       description: Authored seeded die inventory or supply definition

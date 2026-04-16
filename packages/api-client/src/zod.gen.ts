@@ -709,7 +709,7 @@ export const zPieceSeedSpec = z.object({
 export const zDieTypeSpec = z.object({
     id: z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]*$/),
     name: z.string(),
-    sides: z.int().gte(2).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }).default(6),
+    sides: z.optional(z.int().gte(2).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })).default(6),
     fieldsSchema: z.optional(zObjectSchema),
     slots: z.optional(z.array(zComponentSlotSpec))
 });

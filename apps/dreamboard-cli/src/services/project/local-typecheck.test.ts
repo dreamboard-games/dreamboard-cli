@@ -453,9 +453,11 @@ async function seedDynamicFilesForTypecheck(
 ): Promise<void> {
   const generatedFiles = generateDynamicGeneratedFiles(manifest);
   const extraFixtureFiles = [
+    "app/game.ts",
     "app/manifest-contract-smoke.ts",
     "shared/manifest.ts",
     "shared/ui-args.ts",
+    "ui/prompt-flow-smoke.tsx",
   ] as const;
 
   for (const [relativePath, content] of Object.entries(generatedFiles)) {

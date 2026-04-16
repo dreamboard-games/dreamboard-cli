@@ -162,8 +162,8 @@ const cardStateSchema = z.object({
   id: ids.cardId,
   cardSetId: ids.cardSetId,
   cardType: ids.cardType,
-  cardName: z.string().optional(),
-  description: z.string().optional(),
+  name: z.string().optional(),
+  text: z.string().optional(),
   properties: cardPropertiesSchema,
 });
 

@@ -25,8 +25,8 @@ export interface HandCardRenderProps {
 }
 
 export interface HandDrawerRenderProps {
-  cards: CardItem[];
-  selectedIds: string[];
+  cards: readonly CardItem[];
+  selectedIds: readonly string[];
   cardCount: number;
   selectedCount: number;
   disabled: boolean;
@@ -47,8 +47,8 @@ export interface HandContainerRenderProps {
 }
 
 export interface HandProps {
-  cards: CardItem[];
-  selectedIds?: string[];
+  cards: readonly CardItem[];
+  selectedIds?: readonly string[];
   disabled?: boolean;
   cardSize?: CardSize;
   layout?: HandLayout;

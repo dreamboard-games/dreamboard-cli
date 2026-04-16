@@ -61,6 +61,20 @@ interface AnalyzedHexBoard {
   edgeFieldsSchema?: ObjectSchema | null;
   vertexFieldsSchema?: ObjectSchema | null;
   spaces: HexSpaceSpec[];
+  authoredEdges: Array<{
+    id: string;
+    ref: HexEdgeRef;
+    typeId?: string | null;
+    label?: string | null;
+    fields?: Record<string, unknown> | null;
+  }>;
+  authoredVertices: Array<{
+    id: string;
+    ref: HexVertexRef;
+    typeId?: string | null;
+    label?: string | null;
+    fields?: Record<string, unknown> | null;
+  }>;
   edges: Array<{
     id: string;
     spaceIds: string[];
@@ -259,6 +273,209 @@ function renderReadonlyArrayRecord(
 
 function renderJsonConst(value: unknown): string {
   return `${JSON.stringify(value, null, 2)} as const`;
+}
+
+interface GeneratedIdFamily {
+  literalKey: string;
+  typeName: string;
+  guardName: string;
+  description: string;
+}
+
+const GENERATED_ID_FAMILIES: readonly GeneratedIdFamily[] = [
+  {
+    literalKey: "playerIds",
+    typeName: "PlayerId",
+    guardName: "PlayerId",
+    description: "player id",
+  },
+  {
+    literalKey: "boardLayouts",
+    typeName: "BoardLayout",
+    guardName: "BoardLayout",
+    description: "board layout",
+  },
+  {
+    literalKey: "setupOptionIds",
+    typeName: "SetupOptionId",
+    guardName: "SetupOptionId",
+    description: "setup option id",
+  },
+  {
+    literalKey: "setupProfileIds",
+    typeName: "SetupProfileId",
+    guardName: "SetupProfileId",
+    description: "setup profile id",
+  },
+  {
+    literalKey: "cardSetIds",
+    typeName: "CardSetId",
+    guardName: "CardSetId",
+    description: "card set id",
+  },
+  {
+    literalKey: "cardTypes",
+    typeName: "CardType",
+    guardName: "CardType",
+    description: "card type",
+  },
+  {
+    literalKey: "cardIds",
+    typeName: "CardId",
+    guardName: "CardId",
+    description: "card id",
+  },
+  {
+    literalKey: "deckIds",
+    typeName: "DeckId",
+    guardName: "DeckId",
+    description: "deck id",
+  },
+  {
+    literalKey: "handIds",
+    typeName: "HandId",
+    guardName: "HandId",
+    description: "hand id",
+  },
+  {
+    literalKey: "sharedZoneIds",
+    typeName: "SharedZoneId",
+    guardName: "SharedZoneId",
+    description: "shared zone id",
+  },
+  {
+    literalKey: "playerZoneIds",
+    typeName: "PlayerZoneId",
+    guardName: "PlayerZoneId",
+    description: "player zone id",
+  },
+  {
+    literalKey: "zoneIds",
+    typeName: "ZoneId",
+    guardName: "ZoneId",
+    description: "zone id",
+  },
+  {
+    literalKey: "resourceIds",
+    typeName: "ResourceId",
+    guardName: "ResourceId",
+    description: "resource id",
+  },
+  {
+    literalKey: "pieceTypeIds",
+    typeName: "PieceTypeId",
+    guardName: "PieceTypeId",
+    description: "piece type id",
+  },
+  {
+    literalKey: "pieceIds",
+    typeName: "PieceId",
+    guardName: "PieceId",
+    description: "piece id",
+  },
+  {
+    literalKey: "dieTypeIds",
+    typeName: "DieTypeId",
+    guardName: "DieTypeId",
+    description: "die type id",
+  },
+  {
+    literalKey: "dieIds",
+    typeName: "DieId",
+    guardName: "DieId",
+    description: "die id",
+  },
+  {
+    literalKey: "boardTypeIds",
+    typeName: "BoardTypeId",
+    guardName: "BoardTypeId",
+    description: "board type id",
+  },
+  {
+    literalKey: "boardBaseIds",
+    typeName: "BoardBaseId",
+    guardName: "BoardBaseId",
+    description: "board base id",
+  },
+  {
+    literalKey: "boardIds",
+    typeName: "BoardId",
+    guardName: "BoardId",
+    description: "board id",
+  },
+  {
+    literalKey: "boardContainerIds",
+    typeName: "BoardContainerId",
+    guardName: "BoardContainerId",
+    description: "board container id",
+  },
+  {
+    literalKey: "relationTypeIds",
+    typeName: "RelationTypeId",
+    guardName: "RelationTypeId",
+    description: "relation type id",
+  },
+  {
+    literalKey: "edgeIds",
+    typeName: "EdgeId",
+    guardName: "EdgeId",
+    description: "edge id",
+  },
+  {
+    literalKey: "edgeTypeIds",
+    typeName: "EdgeTypeId",
+    guardName: "EdgeTypeId",
+    description: "edge type id",
+  },
+  {
+    literalKey: "vertexIds",
+    typeName: "VertexId",
+    guardName: "VertexId",
+    description: "vertex id",
+  },
+  {
+    literalKey: "vertexTypeIds",
+    typeName: "VertexTypeId",
+    guardName: "VertexTypeId",
+    description: "vertex type id",
+  },
+  {
+    literalKey: "spaceIds",
+    typeName: "SpaceId",
+    guardName: "SpaceId",
+    description: "space id",
+  },
+  {
+    literalKey: "spaceTypeIds",
+    typeName: "SpaceTypeId",
+    guardName: "SpaceTypeId",
+    description: "space type id",
+  },
+] as const;
+
+function renderGeneratedRecordsHelpers(): string {
+  return `export const records = {
+${GENERATED_ID_FAMILIES.map(
+  ({ literalKey, typeName }) => `  ${literalKey}<Value>(
+    initial: Value | ((${literalKey.slice(0, -1)}: ${typeName}) => Value),
+  ): Record<${typeName}, Value> {
+    return buildTypedRecord(literals.${literalKey}, initial);
+  },`,
+).join("\n")}
+} as const;`;
+}
+
+function renderGeneratedIdGuards(): string {
+  return `export const idGuards = {
+${GENERATED_ID_FAMILIES.map(
+  ({ literalKey, typeName, guardName, description }) => `  is${guardName}(value: string): value is ${typeName} {
+    return isTypedId(literals.${literalKey}, value);
+  },
+  expect${guardName}(value: string): ${typeName} {
+    return expectTypedId(literals.${literalKey}, value, ${quote(description)});
+  },`,
+).join("\n")}
+} as const;`;
 }
 
 function sortedObject<Value>(
@@ -781,32 +998,44 @@ function indexHexVertexMetadata(
   return metadataByKey;
 }
 
-function resolveHexEdges(
+function resolveAuthoredHexEdges(
   board: HexBoardSpec,
   template: HexBoardTemplateSpec | undefined,
   spaces: readonly HexSpaceSpec[],
-): ResolvedHexEdge[] {
+): AnalyzedHexBoard["authoredEdges"] {
   const spacesById = new Map(spaces.map((space) => [space.id, space] as const));
-  const derived = deriveHexEdges(spaces);
-  const edgesByGeometryKey = new Map(
-    derived.map((edge) => [edge.geometryKey, edge] as const),
+  const derivedByGeometryKey = new Map(
+    deriveHexEdges(spaces).map((edge) => [edge.geometryKey, edge] as const),
   );
-  const templateMetadata = template
-    ? indexHexEdgeMetadata(
+  const collectSpecsByGeometryKey = (
+    specs: readonly HexEdgeSpec[],
+    ownerLabel: string,
+  ) => {
+    const specsByGeometryKey = new Map<string, HexEdgeSpec>();
+    for (const spec of specs) {
+      const geometryKey = geometryKeyFromEdgeRef(spec.ref, spacesById);
+      if (specsByGeometryKey.has(geometryKey)) {
+        throw new Error(`${ownerLabel} contains duplicate hex edge refs.`);
+      }
+      specsByGeometryKey.set(geometryKey, spec);
+    }
+    return specsByGeometryKey;
+  };
+
+  const templateSpecsByGeometryKey = template
+    ? collectSpecsByGeometryKey(
         template.edges ?? [],
-        spacesById,
         `Hex board template '${template.id}'`,
       )
-    : new Map();
-  const overrideMetadata = indexHexEdgeMetadata(
+    : new Map<string, HexEdgeSpec>();
+  const overrideSpecsByGeometryKey = collectSpecsByGeometryKey(
     board.edges ?? [],
-    spacesById,
     `Hex board '${board.id}'`,
   );
 
   if (template) {
-    for (const overrideKey of overrideMetadata.keys()) {
-      if (!templateMetadata.has(overrideKey)) {
+    for (const overrideKey of overrideSpecsByGeometryKey.keys()) {
+      if (!templateSpecsByGeometryKey.has(overrideKey)) {
         throw new Error(
           `Hex board '${board.id}' overrides unknown edge ref from template '${template.id}'.`,
         );
@@ -814,35 +1043,132 @@ function resolveHexEdges(
     }
   }
 
-  const mergedMetadata = template
-    ? new Map(
-        [...templateMetadata.entries()].map(([key, metadata]) => [
-          key,
-          {
-            ...metadata,
-            ...(overrideMetadata.get(key) ?? {}),
-            geometryKey: key,
-          },
-        ]),
+  const mergedSpecs = template
+    ? Array.from(templateSpecsByGeometryKey.entries()).map(
+        ([geometryKey, templateSpec]) =>
+          [
+            geometryKey,
+            overrideSpecsByGeometryKey.get(geometryKey) ?? templateSpec,
+          ] as const,
       )
-    : overrideMetadata;
+    : Array.from(overrideSpecsByGeometryKey.entries());
 
-  for (const [geometryKey, metadata] of mergedMetadata.entries()) {
-    const edge = edgesByGeometryKey.get(geometryKey);
+  return mergedSpecs.map(([geometryKey, spec]) => {
+    const derivedEdge = derivedByGeometryKey.get(geometryKey);
+    if (!derivedEdge) {
+      throw new Error(
+        `Hex edge ref on board '${board.id}' does not resolve to a derived edge.`,
+      );
+    }
+    return {
+      id: derivedEdge.id,
+      ref: cloneJson(spec.ref),
+      typeId: spec.typeId ?? null,
+      label: spec.label ?? null,
+      fields:
+        (spec.fields as Record<string, unknown> | null | undefined) ?? null,
+    };
+  });
+}
+
+function resolveAuthoredHexVertices(
+  board: HexBoardSpec,
+  template: HexBoardTemplateSpec | undefined,
+  spaces: readonly HexSpaceSpec[],
+): AnalyzedHexBoard["authoredVertices"] {
+  const spacesById = new Map(spaces.map((space) => [space.id, space] as const));
+  const derivedByGeometryKey = new Map(
+    deriveHexVertices(spaces).map(
+      (vertex) => [vertex.geometryKey, vertex] as const,
+    ),
+  );
+  const collectSpecsByGeometryKey = (
+    specs: readonly HexVertexSpec[],
+    ownerLabel: string,
+  ) => {
+    const specsByGeometryKey = new Map<string, HexVertexSpec>();
+    for (const spec of specs) {
+      const geometryKey = geometryKeyFromVertexRef(spec.ref, spacesById);
+      if (specsByGeometryKey.has(geometryKey)) {
+        throw new Error(`${ownerLabel} contains duplicate hex vertex refs.`);
+      }
+      specsByGeometryKey.set(geometryKey, spec);
+    }
+    return specsByGeometryKey;
+  };
+
+  const templateSpecsByGeometryKey = template
+    ? collectSpecsByGeometryKey(
+        template.vertices ?? [],
+        `Hex board template '${template.id}'`,
+      )
+    : new Map<string, HexVertexSpec>();
+  const overrideSpecsByGeometryKey = collectSpecsByGeometryKey(
+    board.vertices ?? [],
+    `Hex board '${board.id}'`,
+  );
+
+  if (template) {
+    for (const overrideKey of overrideSpecsByGeometryKey.keys()) {
+      if (!templateSpecsByGeometryKey.has(overrideKey)) {
+        throw new Error(
+          `Hex board '${board.id}' overrides unknown vertex ref from template '${template.id}'.`,
+        );
+      }
+    }
+  }
+
+  const mergedSpecs = template
+    ? Array.from(templateSpecsByGeometryKey.entries()).map(
+        ([geometryKey, templateSpec]) =>
+          [
+            geometryKey,
+            overrideSpecsByGeometryKey.get(geometryKey) ?? templateSpec,
+          ] as const,
+      )
+    : Array.from(overrideSpecsByGeometryKey.entries());
+
+  return mergedSpecs.map(([geometryKey, spec]) => {
+    const derivedVertex = derivedByGeometryKey.get(geometryKey);
+    if (!derivedVertex) {
+      throw new Error(
+        `Hex vertex ref on board '${board.id}' does not resolve to a derived vertex.`,
+      );
+    }
+    return {
+      id: derivedVertex.id,
+      ref: cloneJson(spec.ref),
+      typeId: spec.typeId ?? null,
+      label: spec.label ?? null,
+      fields:
+        (spec.fields as Record<string, unknown> | null | undefined) ?? null,
+    };
+  });
+}
+
+function resolveHexEdges(
+  board: HexBoardSpec,
+  template: HexBoardTemplateSpec | undefined,
+  spaces: readonly HexSpaceSpec[],
+): ResolvedHexEdge[] {
+  const derived = deriveHexEdges(spaces);
+  const edgesById = new Map(derived.map((edge) => [edge.id, edge] as const));
+  for (const authoredEdge of resolveAuthoredHexEdges(board, template, spaces)) {
+    const edge = edgesById.get(authoredEdge.id);
     if (!edge) {
       throw new Error(
         `Hex edge ref on board '${board.id}' does not resolve to a derived edge.`,
       );
     }
-    edgesByGeometryKey.set(geometryKey, {
+    edgesById.set(authoredEdge.id, {
       ...edge,
-      typeId: metadata.typeId ?? null,
-      label: metadata.label ?? null,
-      fields: metadata.fields ?? null,
+      typeId: authoredEdge.typeId ?? null,
+      label: authoredEdge.label ?? null,
+      fields: authoredEdge.fields ?? null,
     });
   }
 
-  return [...edgesByGeometryKey.values()].sort((left, right) =>
+  return [...edgesById.values()].sort((left, right) =>
     left.id.localeCompare(right.id),
   );
 }
@@ -852,63 +1178,30 @@ function resolveHexVertices(
   template: HexBoardTemplateSpec | undefined,
   spaces: readonly HexSpaceSpec[],
 ): ResolvedHexVertex[] {
-  const spacesById = new Map(spaces.map((space) => [space.id, space] as const));
   const derived = deriveHexVertices(spaces);
-  const verticesByGeometryKey = new Map(
-    derived.map((vertex) => [vertex.geometryKey, vertex] as const),
+  const verticesById = new Map(
+    derived.map((vertex) => [vertex.id, vertex] as const),
   );
-  const templateMetadata = template
-    ? indexHexVertexMetadata(
-        template.vertices ?? [],
-        spacesById,
-        `Hex board template '${template.id}'`,
-      )
-    : new Map();
-  const overrideMetadata = indexHexVertexMetadata(
-    board.vertices ?? [],
-    spacesById,
-    `Hex board '${board.id}'`,
-  );
-
-  if (template) {
-    for (const overrideKey of overrideMetadata.keys()) {
-      if (!templateMetadata.has(overrideKey)) {
-        throw new Error(
-          `Hex board '${board.id}' overrides unknown vertex ref from template '${template.id}'.`,
-        );
-      }
-    }
-  }
-
-  const mergedMetadata = template
-    ? new Map(
-        [...templateMetadata.entries()].map(([key, metadata]) => [
-          key,
-          {
-            ...metadata,
-            ...(overrideMetadata.get(key) ?? {}),
-            geometryKey: key,
-          },
-        ]),
-      )
-    : overrideMetadata;
-
-  for (const [geometryKey, metadata] of mergedMetadata.entries()) {
-    const vertex = verticesByGeometryKey.get(geometryKey);
+  for (const authoredVertex of resolveAuthoredHexVertices(
+    board,
+    template,
+    spaces,
+  )) {
+    const vertex = verticesById.get(authoredVertex.id);
     if (!vertex) {
       throw new Error(
         `Hex vertex ref on board '${board.id}' does not resolve to a derived vertex.`,
       );
     }
-    verticesByGeometryKey.set(geometryKey, {
+    verticesById.set(authoredVertex.id, {
       ...vertex,
-      typeId: metadata.typeId ?? null,
-      label: metadata.label ?? null,
-      fields: metadata.fields ?? null,
+      typeId: authoredVertex.typeId ?? null,
+      label: authoredVertex.label ?? null,
+      fields: authoredVertex.fields ?? null,
     });
   }
 
-  return [...verticesByGeometryKey.values()].sort((left, right) =>
+  return [...verticesById.values()].sort((left, right) =>
     left.id.localeCompare(right.id),
   );
 }
@@ -1249,6 +1542,12 @@ function analyzeBoards(manifest: GameTopologyManifest, playerIds: string[]) {
         vertexFieldsSchema:
           hexBoard.vertexFieldsSchema ?? template?.vertexFieldsSchema,
         spaces,
+        authoredEdges: resolveAuthoredHexEdges(hexBoard, template, spaces),
+        authoredVertices: resolveAuthoredHexVertices(
+          hexBoard,
+          template,
+          spaces,
+        ),
         edges: resolveHexEdges(hexBoard, template, spaces),
         vertices: resolveHexVertices(hexBoard, template, spaces),
       };
@@ -2027,8 +2326,8 @@ export function materializeManifestTable(options: {
           id: cardId,
           cardSetId: materializedCardSet.id,
           cardType: card.type,
-          cardName: card.name,
-          description: card.text,
+          name: card.name,
+          text: card.text,
           properties: card.properties ?? {},
         };
       }
@@ -2622,7 +2921,7 @@ function renderTypeForPropertySchema(
           : "string";
       break;
     case "array":
-      rendered = `${renderTypeForPropertySchema(schema.items)}[]`;
+      rendered = `Array<${renderTypeForPropertySchema(schema.items)}>`;
       break;
     case "object":
       rendered = renderTypeForObjectSchema(
@@ -3467,6 +3766,110 @@ function renderBoardLiteralHelpers(analysis: ManifestAnalysis): string {
   const vertexIdsByBoardIdAndTypeId = renderJsonConst(
     sortedObject(analysis.vertexIdsByBoardIdAndTypeId),
   );
+  const authoredHexEdgesByBoardId = renderJsonConst(
+    sortedObject(
+      analysis.analyzedBoards
+        .filter((board): board is AnalyzedHexBoard => board.layout === "hex")
+        .flatMap((board) =>
+          board.runtimeBoardIds.map((runtimeBoardId) => [
+            runtimeBoardId,
+            board.authoredEdges.map((edge) => {
+              const renderedSite: {
+                ref: HexEdgeRef;
+                typeId?: string;
+                label?: string;
+                fields: Record<string, unknown>;
+              } = {
+                ref: cloneJson(edge.ref),
+                fields: {
+                  ...materializeObjectSchemaDefaults(
+                    board.edgeFieldsSchema,
+                    analysis,
+                  ),
+                  ...(edge.fields ?? {}),
+                },
+              };
+              if (edge.typeId != null) {
+                renderedSite.typeId = edge.typeId;
+              }
+              if (edge.label != null) {
+                renderedSite.label = edge.label;
+              }
+              return renderedSite;
+            }),
+          ]),
+        ),
+    ),
+  );
+  const authoredHexVerticesByBoardId = renderJsonConst(
+    sortedObject(
+      analysis.analyzedBoards
+        .filter((board): board is AnalyzedHexBoard => board.layout === "hex")
+        .flatMap((board) =>
+          board.runtimeBoardIds.map((runtimeBoardId) => [
+            runtimeBoardId,
+            board.authoredVertices.map((vertex) => {
+              const renderedSite: {
+                ref: HexVertexRef;
+                typeId?: string;
+                label?: string;
+                fields: Record<string, unknown>;
+              } = {
+                ref: cloneJson(vertex.ref),
+                fields: {
+                  ...materializeObjectSchemaDefaults(
+                    board.vertexFieldsSchema,
+                    analysis,
+                  ),
+                  ...(vertex.fields ?? {}),
+                },
+              };
+              if (vertex.typeId != null) {
+                renderedSite.typeId = vertex.typeId;
+              }
+              if (vertex.label != null) {
+                renderedSite.label = vertex.label;
+              }
+              return renderedSite;
+            }),
+          ]),
+        ),
+    ),
+  );
+  const authoredHexEdgeIdsByBoardIdAndRef = renderJsonConst(
+    sortedObject(
+      analysis.analyzedBoards
+        .filter((board): board is AnalyzedHexBoard => board.layout === "hex")
+        .flatMap((board) =>
+          board.runtimeBoardIds.map((runtimeBoardId) => [
+            runtimeBoardId,
+            sortedObject(
+              board.authoredEdges.map((edge) => [
+                boardSpaceRefKey(edge.ref.spaces),
+                edge.id,
+              ]),
+            ),
+          ]),
+        ),
+    ),
+  );
+  const authoredHexVertexIdsByBoardIdAndRef = renderJsonConst(
+    sortedObject(
+      analysis.analyzedBoards
+        .filter((board): board is AnalyzedHexBoard => board.layout === "hex")
+        .flatMap((board) =>
+          board.runtimeBoardIds.map((runtimeBoardId) => [
+            runtimeBoardId,
+            sortedObject(
+              board.authoredVertices.map((vertex) => [
+                boardSpaceRefKey(vertex.ref.spaces),
+                vertex.id,
+              ]),
+            ),
+          ]),
+        ),
+    ),
+  );
   const perPlayerBoardIdsByBaseIdAndPlayerId = renderJsonConst(
     sortedObject(
       analysis.analyzedBoards
@@ -3500,7 +3903,31 @@ const edgeIdsByTypeIdLookup = ${edgeIdsByTypeId};
 const edgeIdsByBoardIdAndTypeIdLookup = ${edgeIdsByBoardIdAndTypeId};
 const vertexIdsByTypeIdLookup = ${vertexIdsByTypeId};
 const vertexIdsByBoardIdAndTypeIdLookup = ${vertexIdsByBoardIdAndTypeId};
+const authoredHexEdgesByBoardIdLookup = ${authoredHexEdgesByBoardId};
+const authoredHexVerticesByBoardIdLookup = ${authoredHexVerticesByBoardId};
+const authoredHexEdgeIdsByBoardIdAndRefLookup = ${authoredHexEdgeIdsByBoardIdAndRef};
+const authoredHexVertexIdsByBoardIdAndRefLookup = ${authoredHexVertexIdsByBoardIdAndRef};
 const perPlayerBoardIdsByBaseIdAndPlayerIdLookup = ${perPlayerBoardIdsByBaseIdAndPlayerId};
+
+function authoredHexRefKey(spaceIds: readonly string[]): string {
+  return [...spaceIds]
+    .sort((left, right) => left.localeCompare(right))
+    .join("$$");
+}
+
+type BoardLookupIdValue<
+  Lookup extends Record<string, Record<string, readonly string[]>>,
+  Key extends keyof Lookup,
+> = Extract<Lookup[Key][keyof Lookup[Key]], readonly string[]>[number];
+
+function flattenBoardScopedIds<
+  Lookup extends Record<string, Record<string, readonly string[]>>,
+  Key extends keyof Lookup,
+>(lookup: Lookup, key: Key): ReadonlyArray<BoardLookupIdValue<Lookup, Key>> {
+  return Object.values(lookup[key] ?? {}).flat() as ReadonlyArray<
+    BoardLookupIdValue<Lookup, Key>
+  >;
+}
 
 export const boardHelpers = {
   boardIdsForLayout<
@@ -3549,6 +3976,45 @@ export const boardHelpers = {
   ): (typeof spaceIdsByBoardIdLookup)[BoardIdValue] {
     return spaceIdsByBoardIdLookup[boardId];
   },
+  spaceRecord<
+    BoardIdValue extends keyof typeof spaceIdsByBoardIdLookup,
+    Value,
+  >(
+    boardId: BoardIdValue,
+    initial:
+      | Value
+      | ((
+          spaceId: (typeof spaceIdsByBoardIdLookup)[BoardIdValue][number],
+        ) => Value),
+  ): Record<(typeof spaceIdsByBoardIdLookup)[BoardIdValue][number], Value> {
+    const spaceIds = spaceIdsByBoardIdLookup[boardId];
+    if (!spaceIds) {
+      throw new Error(\`Unknown board '\${String(boardId)}'.\`);
+    }
+    return buildTypedRecord(spaceIds, initial) as Record<
+      (typeof spaceIdsByBoardIdLookup)[BoardIdValue][number],
+      Value
+    >;
+  },
+  isSpaceId<BoardIdValue extends keyof typeof spaceIdsByBoardIdLookup>(
+    boardId: BoardIdValue,
+    value: string,
+  ): value is (typeof spaceIdsByBoardIdLookup)[BoardIdValue][number] {
+    const spaceIds = spaceIdsByBoardIdLookup[boardId];
+    return spaceIds ? isTypedId(spaceIds, value) : false;
+  },
+  expectSpaceId<BoardIdValue extends keyof typeof spaceIdsByBoardIdLookup>(
+    boardId: BoardIdValue,
+    value: string,
+  ): (typeof spaceIdsByBoardIdLookup)[BoardIdValue][number] {
+    const spaceIds = spaceIdsByBoardIdLookup[boardId];
+    if (!spaceIds || !isTypedId(spaceIds, value)) {
+      throw new Error(
+        \`Unknown space id '\${value}' on board '\${String(boardId)}'.\`,
+      );
+    }
+    return value as (typeof spaceIdsByBoardIdLookup)[BoardIdValue][number];
+  },
   spaceKinds<BoardIdValue extends keyof typeof spaceTypeIdByBoardIdLookup>(
     boardId: BoardIdValue,
   ): (typeof spaceTypeIdByBoardIdLookup)[BoardIdValue] {
@@ -3563,6 +4029,52 @@ export const boardHelpers = {
     boardId: BoardIdValue,
   ): (typeof containerIdsByBoardIdLookup)[BoardIdValue] {
     return containerIdsByBoardIdLookup[boardId];
+  },
+  containerRecord<
+    BoardIdValue extends keyof typeof containerIdsByBoardIdLookup,
+    Value,
+  >(
+    boardId: BoardIdValue,
+    initial:
+      | Value
+      | ((
+          containerId: (typeof containerIdsByBoardIdLookup)[BoardIdValue][number],
+        ) => Value),
+  ): Record<
+    (typeof containerIdsByBoardIdLookup)[BoardIdValue][number],
+    Value
+  > {
+    const containerIds = containerIdsByBoardIdLookup[boardId];
+    if (!containerIds) {
+      throw new Error(\`Unknown board '\${String(boardId)}'.\`);
+    }
+    return buildTypedRecord(containerIds, initial) as Record<
+      (typeof containerIdsByBoardIdLookup)[BoardIdValue][number],
+      Value
+    >;
+  },
+  isContainerId<
+    BoardIdValue extends keyof typeof containerIdsByBoardIdLookup,
+  >(
+    boardId: BoardIdValue,
+    value: string,
+  ): value is (typeof containerIdsByBoardIdLookup)[BoardIdValue][number] {
+    const containerIds = containerIdsByBoardIdLookup[boardId];
+    return containerIds ? isTypedId(containerIds, value) : false;
+  },
+  expectContainerId<
+    BoardIdValue extends keyof typeof containerIdsByBoardIdLookup,
+  >(
+    boardId: BoardIdValue,
+    value: string,
+  ): (typeof containerIdsByBoardIdLookup)[BoardIdValue][number] {
+    const containerIds = containerIdsByBoardIdLookup[boardId];
+    if (!containerIds || !isTypedId(containerIds, value)) {
+      throw new Error(
+        \`Unknown container id '\${value}' on board '\${String(boardId)}'.\`,
+      );
+    }
+    return value as (typeof containerIdsByBoardIdLookup)[BoardIdValue][number];
   },
   containerHost<
     BoardIdValue extends keyof typeof containerHostByBoardIdLookup,
@@ -3587,10 +4099,185 @@ export const boardHelpers = {
   ): (typeof relationTypeIdsByBoardIdLookup)[BoardIdValue] {
     return relationTypeIdsByBoardIdLookup[boardId];
   },
+  relationTypeRecord<
+    BoardIdValue extends keyof typeof relationTypeIdsByBoardIdLookup,
+    Value,
+  >(
+    boardId: BoardIdValue,
+    initial:
+      | Value
+      | ((
+          relationTypeId: (typeof relationTypeIdsByBoardIdLookup)[BoardIdValue][number],
+        ) => Value),
+  ): Record<
+    (typeof relationTypeIdsByBoardIdLookup)[BoardIdValue][number],
+    Value
+  > {
+    const relationTypeIds = relationTypeIdsByBoardIdLookup[boardId];
+    if (!relationTypeIds) {
+      throw new Error(\`Unknown board '\${String(boardId)}'.\`);
+    }
+    return buildTypedRecord(relationTypeIds, initial) as Record<
+      (typeof relationTypeIdsByBoardIdLookup)[BoardIdValue][number],
+      Value
+    >;
+  },
+  isRelationTypeId<
+    BoardIdValue extends keyof typeof relationTypeIdsByBoardIdLookup,
+  >(
+    boardId: BoardIdValue,
+    value: string,
+  ): value is (typeof relationTypeIdsByBoardIdLookup)[BoardIdValue][number] {
+    const relationTypeIds = relationTypeIdsByBoardIdLookup[boardId];
+    return relationTypeIds ? isTypedId(relationTypeIds, value) : false;
+  },
+  expectRelationTypeId<
+    BoardIdValue extends keyof typeof relationTypeIdsByBoardIdLookup,
+  >(
+    boardId: BoardIdValue,
+    value: string,
+  ): (typeof relationTypeIdsByBoardIdLookup)[BoardIdValue][number] {
+    const relationTypeIds = relationTypeIdsByBoardIdLookup[boardId];
+    if (!relationTypeIds || !isTypedId(relationTypeIds, value)) {
+      throw new Error(
+        \`Unknown relation type id '\${value}' on board '\${String(boardId)}'.\`,
+      );
+    }
+    return value as (typeof relationTypeIdsByBoardIdLookup)[BoardIdValue][number];
+  },
+  authoredHexEdges<
+    BoardIdValue extends keyof typeof authoredHexEdgesByBoardIdLookup,
+  >(
+    boardId: BoardIdValue,
+  ): (typeof authoredHexEdgesByBoardIdLookup)[BoardIdValue] {
+    const authoredHexEdges = authoredHexEdgesByBoardIdLookup[boardId];
+    if (!authoredHexEdges) {
+      throw new Error(\`Unknown hex board '\${String(boardId)}'.\`);
+    }
+    return authoredHexEdges;
+  },
+  authoredHexVertices<
+    BoardIdValue extends keyof typeof authoredHexVerticesByBoardIdLookup,
+  >(
+    boardId: BoardIdValue,
+  ): (typeof authoredHexVerticesByBoardIdLookup)[BoardIdValue] {
+    const authoredHexVertices = authoredHexVerticesByBoardIdLookup[boardId];
+    if (!authoredHexVertices) {
+      throw new Error(\`Unknown hex board '\${String(boardId)}'.\`);
+    }
+    return authoredHexVertices;
+  },
+  resolveHexEdgeId<
+    BoardIdValue extends keyof typeof authoredHexEdgeIdsByBoardIdAndRefLookup,
+  >(
+    boardId: BoardIdValue,
+    ref: HexAuthoredEdgeRef<BoardIdValue>,
+  ): HexEdgeState<BoardIdValue>["id"] {
+    const boardEdges = authoredHexEdgeIdsByBoardIdAndRefLookup[boardId];
+    if (!boardEdges) {
+      throw new Error(\`Unknown hex board '\${String(boardId)}'.\`);
+    }
+    const edgeRef = ref as { spaces: readonly string[] };
+    const edgeId = (boardEdges as Record<string, HexEdgeState<BoardIdValue>["id"]>)[
+      authoredHexRefKey(edgeRef.spaces)
+    ];
+    if (!edgeId) {
+      throw new Error(
+        \`Unknown authored hex edge ref '\${edgeRef.spaces.join(", ")}' on board '\${String(boardId)}'.\`,
+      );
+    }
+    return edgeId as HexEdgeState<BoardIdValue>["id"];
+  },
+  resolveHexVertexId<
+    BoardIdValue extends keyof typeof authoredHexVertexIdsByBoardIdAndRefLookup,
+  >(
+    boardId: BoardIdValue,
+    ref: HexAuthoredVertexRef<BoardIdValue>,
+  ): HexVertexState<BoardIdValue>["id"] {
+    const boardVertices = authoredHexVertexIdsByBoardIdAndRefLookup[boardId];
+    if (!boardVertices) {
+      throw new Error(\`Unknown hex board '\${String(boardId)}'.\`);
+    }
+    const vertexRef = ref as { spaces: readonly string[] };
+    const vertexId = (
+      boardVertices as Record<string, HexVertexState<BoardIdValue>["id"]>
+    )[authoredHexRefKey(vertexRef.spaces)];
+    if (!vertexId) {
+      throw new Error(
+        \`Unknown authored hex vertex ref '\${vertexRef.spaces.join(", ")}' on board '\${String(boardId)}'.\`,
+      );
+    }
+    return vertexId as HexVertexState<BoardIdValue>["id"];
+  },
   edgeIdsForType<TypeIdValue extends keyof typeof edgeIdsByTypeIdLookup>(
     typeId: TypeIdValue,
   ): (typeof edgeIdsByTypeIdLookup)[TypeIdValue] {
     return edgeIdsByTypeIdLookup[typeId];
+  },
+  edgeRecord<
+    BoardIdValue extends keyof typeof edgeIdsByBoardIdAndTypeIdLookup,
+    Value,
+  >(
+    boardId: BoardIdValue,
+    initial:
+      | Value
+      | ((
+          edgeId: BoardLookupIdValue<
+            typeof edgeIdsByBoardIdAndTypeIdLookup,
+            BoardIdValue
+          >,
+        ) => Value),
+  ): Record<
+    BoardLookupIdValue<typeof edgeIdsByBoardIdAndTypeIdLookup, BoardIdValue>,
+    Value
+  > {
+    const boardEdges = edgeIdsByBoardIdAndTypeIdLookup[boardId];
+    const edgeIds = boardEdges
+      ? flattenBoardScopedIds(edgeIdsByBoardIdAndTypeIdLookup, boardId)
+      : undefined;
+    if (!edgeIds) {
+      throw new Error(\`Unknown board '\${String(boardId)}'.\`);
+    }
+    return buildTypedRecord(edgeIds, initial) as Record<
+      BoardLookupIdValue<typeof edgeIdsByBoardIdAndTypeIdLookup, BoardIdValue>,
+      Value
+    >;
+  },
+  isEdgeId<BoardIdValue extends keyof typeof edgeIdsByBoardIdAndTypeIdLookup>(
+    boardId: BoardIdValue,
+    value: string,
+  ): value is BoardLookupIdValue<
+    typeof edgeIdsByBoardIdAndTypeIdLookup,
+    BoardIdValue
+  > {
+    const boardEdges = edgeIdsByBoardIdAndTypeIdLookup[boardId];
+    const edgeIds = boardEdges
+      ? flattenBoardScopedIds(edgeIdsByBoardIdAndTypeIdLookup, boardId)
+      : undefined;
+    return edgeIds ? isTypedId(edgeIds, value) : false;
+  },
+  expectEdgeId<
+    BoardIdValue extends keyof typeof edgeIdsByBoardIdAndTypeIdLookup,
+  >(
+    boardId: BoardIdValue,
+    value: string,
+  ): BoardLookupIdValue<
+    typeof edgeIdsByBoardIdAndTypeIdLookup,
+    BoardIdValue
+  > {
+    const boardEdges = edgeIdsByBoardIdAndTypeIdLookup[boardId];
+    const edgeIds = boardEdges
+      ? flattenBoardScopedIds(edgeIdsByBoardIdAndTypeIdLookup, boardId)
+      : undefined;
+    if (!edgeIds || !isTypedId(edgeIds, value)) {
+      throw new Error(
+        \`Unknown edge id '\${value}' on board '\${String(boardId)}'.\`,
+      );
+    }
+    return value as BoardLookupIdValue<
+      typeof edgeIdsByBoardIdAndTypeIdLookup,
+      BoardIdValue
+    >;
   },
   edgeIds<
     BoardIdValue extends keyof typeof edgeIdsByBoardIdAndTypeIdLookup,
@@ -3612,6 +4299,73 @@ export const boardHelpers = {
     typeId: TypeIdValue,
   ): (typeof vertexIdsByTypeIdLookup)[TypeIdValue] {
     return vertexIdsByTypeIdLookup[typeId];
+  },
+  vertexRecord<
+    BoardIdValue extends keyof typeof vertexIdsByBoardIdAndTypeIdLookup,
+    Value,
+  >(
+    boardId: BoardIdValue,
+    initial:
+      | Value
+      | ((
+          vertexId: BoardLookupIdValue<
+            typeof vertexIdsByBoardIdAndTypeIdLookup,
+            BoardIdValue
+          >,
+        ) => Value),
+  ): Record<
+    BoardLookupIdValue<typeof vertexIdsByBoardIdAndTypeIdLookup, BoardIdValue>,
+    Value
+  > {
+    const boardVertices = vertexIdsByBoardIdAndTypeIdLookup[boardId];
+    const vertexIds = boardVertices
+      ? flattenBoardScopedIds(vertexIdsByBoardIdAndTypeIdLookup, boardId)
+      : undefined;
+    if (!vertexIds) {
+      throw new Error(\`Unknown board '\${String(boardId)}'.\`);
+    }
+    return buildTypedRecord(vertexIds, initial) as Record<
+      BoardLookupIdValue<typeof vertexIdsByBoardIdAndTypeIdLookup, BoardIdValue>,
+      Value
+    >;
+  },
+  isVertexId<
+    BoardIdValue extends keyof typeof vertexIdsByBoardIdAndTypeIdLookup,
+  >(
+    boardId: BoardIdValue,
+    value: string,
+  ): value is BoardLookupIdValue<
+    typeof vertexIdsByBoardIdAndTypeIdLookup,
+    BoardIdValue
+  > {
+    const boardVertices = vertexIdsByBoardIdAndTypeIdLookup[boardId];
+    const vertexIds = boardVertices
+      ? flattenBoardScopedIds(vertexIdsByBoardIdAndTypeIdLookup, boardId)
+      : undefined;
+    return vertexIds ? isTypedId(vertexIds, value) : false;
+  },
+  expectVertexId<
+    BoardIdValue extends keyof typeof vertexIdsByBoardIdAndTypeIdLookup,
+  >(
+    boardId: BoardIdValue,
+    value: string,
+  ): BoardLookupIdValue<
+    typeof vertexIdsByBoardIdAndTypeIdLookup,
+    BoardIdValue
+  > {
+    const boardVertices = vertexIdsByBoardIdAndTypeIdLookup[boardId];
+    const vertexIds = boardVertices
+      ? flattenBoardScopedIds(vertexIdsByBoardIdAndTypeIdLookup, boardId)
+      : undefined;
+    if (!vertexIds || !isTypedId(vertexIds, value)) {
+      throw new Error(
+        \`Unknown vertex id '\${value}' on board '\${String(boardId)}'.\`,
+      );
+    }
+    return value as BoardLookupIdValue<
+      typeof vertexIdsByBoardIdAndTypeIdLookup,
+      BoardIdValue
+    >;
   },
   vertexIds<
     BoardIdValue extends keyof typeof vertexIdsByBoardIdAndTypeIdLookup,
@@ -3674,6 +4428,34 @@ function renderManifestContractSource(manifest: GameTopologyManifest): string {
   const defaultOwnerTemplate = Object.fromEntries(
     analysis.cardIds.map((cardId) => [cardId, null]),
   );
+  const cardIdsByCardSetId = new Map<string, string[]>();
+  for (const cardId of analysis.cardIds) {
+    const cardSetId = analysis.cardSetIdByCardId.get(cardId);
+    if (!cardSetId) {
+      continue;
+    }
+    const cardIds = cardIdsByCardSetId.get(cardSetId) ?? [];
+    cardIds.push(cardId);
+    cardIdsByCardSetId.set(cardSetId, cardIds);
+  }
+  const renderZoneCardIdArrayType = (cardSetIds: readonly string[]) =>
+    `Array<${renderStringUnion(
+      cardSetIds.flatMap(
+        (cardSetId) => cardIdsByCardSetId.get(cardSetId) ?? [],
+      ),
+    )}>`;
+  const sharedZoneCardIdEntries = sharedZoneIds
+    .map((zoneId) => {
+      const allowedCardSetIds = analysis.sharedZoneCardSetIds.get(zoneId) ?? [];
+      return `  ${quote(zoneId)}: ${renderZoneCardIdArrayType(allowedCardSetIds)};`;
+    })
+    .join("\n");
+  const playerZoneCardIdEntries = playerZoneIds
+    .map((zoneId) => {
+      const allowedCardSetIds = analysis.playerZoneCardSetIds.get(zoneId) ?? [];
+      return `  ${quote(zoneId)}: PlayerRecord<${renderZoneCardIdArrayType(allowedCardSetIds)}>;`;
+    })
+    .join("\n");
 
   const perCardStateEntries = analysis.cardIds
     .map((cardId) => {
@@ -3780,6 +4562,11 @@ function renderManifestContractSource(manifest: GameTopologyManifest): string {
  */
 
 import { z } from "zod";
+import {
+  buildTypedRecord,
+  expectTypedId,
+  isTypedId,
+} from "@dreamboard/sdk-types";
 import {
   assumeManifestSchema,
   cloneManifestDefault,
@@ -3971,6 +4758,10 @@ export type VertexTypeId = z.infer<typeof vertexTypeIdSchema>;
 export type SpaceId = z.infer<typeof spaceIdSchema>;
 export type SpaceTypeId = z.infer<typeof spaceTypeIdSchema>;
 
+${renderGeneratedRecordsHelpers()}
+
+${renderGeneratedIdGuards()}
+
 export type PlayerRecord<T> = Record<PlayerId, T>;
 export type SharedZoneRecord<T> = Record<SharedZoneId, T>;
 export type PlayerZoneRecord<T> = Record<PlayerZoneId, PlayerRecord<T>>;
@@ -4067,8 +4858,12 @@ export type DieStateById = ${
       ? `{\n${perDieStateEntries}\n}`
       : "Record<string, never>"
   };
-export type CardIdsBySharedZoneId = ComponentIdsBySharedZoneId;
-export type CardIdsByPlayerZoneId = ComponentIdsByPlayerZoneId;
+export type CardIdsBySharedZoneId = {
+${sharedZoneCardIdEntries}
+};
+export type CardIdsByPlayerZoneId = {
+${playerZoneCardIdEntries}
+};
 export type CardIdsByDeckId = CardIdsBySharedZoneId;
 
 export interface BoardSpaceStateRecord<
@@ -4349,6 +5144,31 @@ export type BoardContainerFields<BoardIdValue extends BoardId = BoardId> =
     ? Fields
     : never;
 
+type HexAuthoredEdgesByBoardId = typeof authoredHexEdgesByBoardIdLookup;
+type HexAuthoredVerticesByBoardId = typeof authoredHexVerticesByBoardIdLookup;
+
+export type HexAuthoredEdgeState<
+  BoardIdValue extends keyof HexAuthoredEdgesByBoardId = keyof HexAuthoredEdgesByBoardId,
+> = BoardIdValue extends keyof HexAuthoredEdgesByBoardId
+  ? ManifestArrayElement<HexAuthoredEdgesByBoardId[BoardIdValue]>
+  : never;
+
+export type HexAuthoredEdgeRef<
+  BoardIdValue extends keyof HexAuthoredEdgesByBoardId = keyof HexAuthoredEdgesByBoardId,
+> = HexAuthoredEdgeState<BoardIdValue> extends { ref: infer Ref } ? Ref : never;
+
+export type HexAuthoredVertexState<
+  BoardIdValue extends keyof HexAuthoredVerticesByBoardId = keyof HexAuthoredVerticesByBoardId,
+> = BoardIdValue extends keyof HexAuthoredVerticesByBoardId
+  ? ManifestArrayElement<HexAuthoredVerticesByBoardId[BoardIdValue]>
+  : never;
+
+export type HexAuthoredVertexRef<
+  BoardIdValue extends keyof HexAuthoredVerticesByBoardId = keyof HexAuthoredVerticesByBoardId,
+> = HexAuthoredVertexState<BoardIdValue> extends { ref: infer Ref }
+  ? Ref
+  : never;
+
 export type HexEdgeState<
   BoardIdValue extends keyof HexBoardStateById = keyof HexBoardStateById,
 > = BoardIdValue extends keyof HexBoardStateById
@@ -4432,13 +5252,13 @@ export type BoardStateRecord = ${
 export interface TableState extends RuntimeTableRecord {
   playerOrder: PlayerId[];
   zones: {
-    shared: ComponentIdsBySharedZoneId;
-    perPlayer: ComponentIdsByPlayerZoneId;
+    shared: CardIdsBySharedZoneId;
+    perPlayer: CardIdsByPlayerZoneId;
     visibility: Record<ZoneId, RuntimeHandVisibilityMode>;
     cardSetIdsByZoneId?: Record<ZoneId, readonly CardSetId[]>;
   };
-  decks: ComponentIdsBySharedZoneId;
-  hands: ComponentIdsByPlayerZoneId;
+  decks: CardIdsBySharedZoneId;
+  hands: CardIdsByPlayerZoneId;
   handVisibility: Record<PlayerZoneId, RuntimeHandVisibilityMode>;
   cards: CardStateById;
   pieces: PieceStateById;
@@ -4466,8 +5286,8 @@ const cardStateSchema = z.object({
   id: ids.cardId,
   cardSetId: ids.cardSetId,
   cardType: ids.cardType,
-  cardName: z.string().optional(),
-  description: z.string().optional(),
+  name: z.string().optional(),
+  text: z.string().optional(),
   properties: unknownRecordSchema,
 });
 ${renderCardPropertiesSchemaByCardSetId(analysis.cardSets)}
@@ -4673,15 +5493,15 @@ function buildPlayerRecord<Value>(
   ) as PlayerRecord<Value>;
 }
 
-function buildPerPlayerComponentIds(
+function buildPerPlayerCardIds(
   playerIds: readonly PlayerId[],
-): ComponentIdsByPlayerZoneId {
+): CardIdsByPlayerZoneId {
   return Object.fromEntries(
     literals.playerZoneIds.map((zoneId) => [
       zoneId,
-      buildPlayerRecord(playerIds, () => [] as ComponentId[]),
+      buildPlayerRecord(playerIds, () => [] as CardId[]),
     ]),
-  ) as ComponentIdsByPlayerZoneId;
+  ) as CardIdsByPlayerZoneId;
 }
 
 function buildPlayerResources(
@@ -4700,7 +5520,7 @@ function buildPlayerResources(
 export const defaults = {
   zones: (playerIds?: readonly string[]) => ({
     shared: cloneManifestDefault(${JSON.stringify(emptySharedZonesTemplate)}),
-    perPlayer: buildPerPlayerComponentIds(resolveDefaultPlayerIds(playerIds)),
+    perPlayer: buildPerPlayerCardIds(resolveDefaultPlayerIds(playerIds)),
     visibility: cloneManifestDefault(${JSON.stringify(zoneVisibilityById)}),
     cardSetIdsByZoneId: cloneManifestDefault(${JSON.stringify(
       Object.fromEntries(
@@ -4712,7 +5532,7 @@ export const defaults = {
   }) as TableState["zones"],
   decks: () => cloneManifestDefault(${JSON.stringify(emptySharedZonesTemplate)}) as TableState["decks"],
   hands: (playerIds?: readonly string[]) =>
-    buildPerPlayerComponentIds(resolveDefaultPlayerIds(playerIds)) as TableState["hands"],
+    buildPerPlayerCardIds(resolveDefaultPlayerIds(playerIds)) as TableState["hands"],
   handVisibility: () => cloneManifestDefault(${JSON.stringify(
     Object.fromEntries(
       playerZoneIds.map((zoneId) => [

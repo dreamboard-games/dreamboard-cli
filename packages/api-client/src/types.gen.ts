@@ -1016,7 +1016,7 @@ export type PieceSeedSpec = {
 export type DieTypeSpec = {
     id: string;
     name: string;
-    sides: number;
+    sides?: number;
     fieldsSchema?: ObjectSchema;
     slots?: Array<ComponentSlotSpec>;
 };
