@@ -3,17 +3,17 @@
 Reference for using Dreamboard official UI Library for building board games.
 
 `@dreamboard/ui-sdk` is Dreamboard's headless UI package. Use it for projected
-game view reads, typed player actions, prompts, windows, and runtime state.
-Dreamboard also scaffolds a local component library into
-`ui/components/dreamboard/*` so each game can own and edit its visuals.
+game view reads, typed player actions, prompts, and runtime state. Dreamboard
+also scaffolds a local component library into `ui/components/dreamboard/*` so
+each game can own and edit its visuals.
 
-## Package boundary
+## What's in the UI package
 
 Use `@dreamboard/ui-sdk` for:
 
 - runtime and plugin-state helpers
 - reducer-view reads for the controlling seat
-- typed action, prompt, and window submission
+- typed action and prompt submission
 - lobby and session metadata
 - headless layout, geometry, and topology helpers
 
@@ -39,7 +39,6 @@ import {
   useGameSelector,
   useGameView,
   useGameplayPrompts,
-  useGameplayWindows,
   useLobby,
   useMe,
   useBoardTopology,
@@ -248,22 +247,21 @@ const judge = players.get("player-1");
 Use it when the reducer view contains player IDs and the UI needs labels,
 colours, or host markers.
 
-## Actions, prompts, and windows
+## Actions and prompts
 
 ### `useActions()`
 
 `useActions()` is the typed reducer action surface for the current phase.
 
-| Field                                 | Notes                                                |
-| ------------------------------------- | ---------------------------------------------------- |
-| `phase`                               | Current runtime phase                                |
-| `commands`                            | Typed reducer action factories for the current phase |
-| `availableActions`                    | `ReadonlySet` of currently available action names    |
-| `can(name)`                           | Whether an action is currently available             |
-| `dispatch(command)`                   | Submit one action                                    |
-| `validate(command)`                   | Validate one action without submitting it            |
-| `respondToPrompt(prompt, response)`   | Submit a prompt response                             |
-| `submitWindowAction(window, command)` | Submit a gameplay-window action                      |
+| Field                               | Notes                                                |
+| ----------------------------------- | ---------------------------------------------------- |
+| `phase`                             | Current runtime phase                                |
+| `commands`                          | Typed reducer action factories for the current phase |
+| `availableActions`                  | `ReadonlySet` of currently available action names    |
+| `can(name)`                         | Whether an action is currently available             |
+| `dispatch(command)`                 | Submit one action                                    |
+| `validate(command)`                 | Validate one action without submitting it            |
+| `respondToPrompt(prompt, response)` | Submit a prompt response                             |
 
 ```ts
 const phase = useActions();
@@ -281,8 +279,8 @@ if (phase.phase === "placeThing") {
 Use `phase.commands.<action>(...)` instead of hand-writing `{ type, params }`
 objects. The command and phase types come from the generated UI contract.
 
-`dispatch(...)`, `validate(...)`, `respondToPrompt(...)`, and
-`submitWindowAction(...)` reject when runtime validation or submission fails.
+`dispatch(...)`, `validate(...)`, and `respondToPrompt(...)` reject when
+runtime validation or submission fails.
 
 ### `usePrompt(promptId)`
 
@@ -410,66 +408,6 @@ export function JudgePromptActions() {
 }
 ```
 
-### `useGameplayWindows(windowId?)`
-
-Returns active gameplay windows for the controlling seat. Pass a window ID to
-filter the result.
-
-```ts
-const tradeWindows = useGameplayWindows("trade-offer");
-
-if (tradeWindows[0]) {
-  await phase.submitWindowAction(tradeWindows[0], {
-    type: "acceptTrade",
-  });
-}
-```
-
-Window actions are still reducer-defined and typed from the generated contract.
-
-Typed window action example:
-
-```tsx
-import { windowCommands } from "../shared/generated/ui-contract";
-import { useActions, useGameplayWindows } from "@dreamboard/ui-sdk";
-
-export function TradeWindowActions() {
-  const phase = useActions();
-  const windows = useGameplayWindows("trade-offer");
-  const activeWindow = windows[0];
-
-  if (!activeWindow) {
-    return null;
-  }
-
-  const acceptTrade = async () => {
-    await phase.submitWindowAction(
-      activeWindow,
-      windowCommands["trade-offer"].acceptTrade({
-        offerId: "offer-1",
-      }),
-    );
-  };
-
-  const declineTrade = async () => {
-    await phase.submitWindowAction(
-      activeWindow,
-      windowCommands["trade-offer"].declineTrade(),
-    );
-  };
-
-  return (
-    <>
-      <button onClick={() => void acceptTrade()}>Accept</button>
-      <button onClick={() => void declineTrade()}>Decline</button>
-    </>
-  );
-}
-```
-
-Import `windowCommands` from your workspace's generated
-`shared/generated/ui-contract.ts` file.
-
 ## Presentational primitives
 
 These components are presentational. Feed them from reducer view data and
@@ -592,9 +530,9 @@ views can pass `readonly ViewCard[]` without copying.
 ### Card collections
 
 Reducer views should expose card data as a `CardCollection`, typically from
-`createTableQueries(...).zone.playerCardCollection(...)` or
-`sharedCardCollection(...)`. `useCards(...)` then materializes the ordered
-`ViewCard[]` array for `Hand`, `PlayArea`, or custom layouts.
+`q.zone.playerCardCollection(...)` or `q.zone.sharedCardCollection(...)`
+inside `project({ state, playerId, q })`. `useCards(...)` then materializes
+the ordered `ViewCard[]` array for `Hand`, `PlayArea`, or custom layouts.
 
 ```tsx
 import { useCards, useGameView } from "@dreamboard/ui-sdk";
@@ -1118,34 +1056,18 @@ For edge geometry:
 
 ### Rendering strict manifest slots
 
-When reducer state projects strict slot placements, use the slot queries from
-`createTableQueries(...)` and feed the returned `ViewSlotOccupant[]` values
-directly into `SlotSystem`.
+When reducer state projects strict slot placements, use the injected `q.slot.*`
+queries and feed the returned `ViewSlotOccupant[]` values directly into
+`SlotSystem`.
 
 Project one host's slots into the reducer view:
 
 ```ts
-import { z } from "zod";
-import { createTableQueries, defineView } from "@dreamboard/app-sdk/reducer";
+import { defineView } from "@dreamboard/app-sdk/reducer";
 import type { GameContract } from "./game-contract";
 
 export const playerView = defineView<GameContract>()({
-  schema: z.object({
-    matOccupantsBySlotId: z.record(
-      z.string(),
-      z.array(
-        z.object({
-          pieceId: z.string(),
-          playerId: z.string().nullable(),
-          slotId: z.string(),
-          data: z.record(z.string(), z.unknown()).optional(),
-        }),
-      ),
-    ),
-  }),
-  project({ state }) {
-    const q = createTableQueries(state.table);
-
+  project({ state, q }) {
     return {
       matOccupantsBySlotId: q.slot.pieceOccupantsByHost("mat-alpha"),
     };
@@ -1297,7 +1219,6 @@ Use these when the UI needs to type reducer-owned runtime data.
 | `PhaseActions<Phase>`    | Current phase action API returned by `useActions()`    |
 | `ActionDefinition`       | One available action from gameplay state               |
 | `GameplayPromptInstance` | One typed active prompt instance                       |
-| `GameplayWindowInstance` | One typed active window instance                       |
 | `GameplaySnapshot`       | Transport state that sits alongside the projected view |
 | `PluginStateSnapshot`    | Complete state-sync payload delivered to the plugin    |
 | `LobbyState`             | Current lobby seats and host metadata                  |

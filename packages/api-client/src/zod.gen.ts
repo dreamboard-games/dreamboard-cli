@@ -1309,21 +1309,6 @@ export const zGameplayPromptInstance = z.object({
     options: z.array(zGameplayPromptOption)
 });
 
-export const zGameplayWindowClosePolicy = z.enum([
-    'allPassInSequence',
-    'allResponded',
-    'firstValidAction',
-    'manual'
-]);
-
-export const zGameplayWindowInstance = z.object({
-    id: z.string(),
-    windowId: z.string(),
-    closePolicy: zGameplayWindowClosePolicy,
-    addressedTo: z.array(z.string()),
-    payload: z.optional(z.string())
-});
-
 export const zGameplaySnapshot = z.object({
     version: z.int(),
     activePlayers: z.array(z.string()),
@@ -1331,8 +1316,7 @@ export const zGameplaySnapshot = z.object({
     currentPhase: z.string(),
     seatViewsByPlayerId: z.record(z.string(), z.string()),
     availableActions: z.array(zPlayerAvailableActions),
-    prompts: z.array(zGameplayPromptInstance),
-    windows: z.array(zGameplayWindowInstance)
+    prompts: z.array(zGameplayPromptInstance)
 });
 
 /**
@@ -1563,14 +1547,6 @@ export const zPromptResponseGameInput = z.object({
     response: z.string()
 });
 
-export const zWindowActionGameInput = z.object({
-    kind: z.enum(['windowAction']),
-    playerId: z.string(),
-    windowId: z.string(),
-    actionType: z.string(),
-    params: z.optional(z.string())
-});
-
 export const zSystemGameInput = z.object({
     kind: z.enum(['system']),
     event: z.string(),
@@ -1584,9 +1560,6 @@ export const zGameInput = z.union([
     z.object({
         kind: z.literal('promptResponse')
     }).and(zPromptResponseGameInput),
-    z.object({
-        kind: z.literal('windowAction')
-    }).and(zWindowActionGameInput),
     z.object({
         kind: z.literal('system')
     }).and(zSystemGameInput)

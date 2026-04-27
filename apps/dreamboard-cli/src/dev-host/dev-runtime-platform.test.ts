@@ -43,7 +43,12 @@ describe("createDevRuntimePlatform", () => {
       projectRoot,
       platform.repoRoot,
     ]);
-    expect(platform.resolveDedupe).toEqual(["react", "react-dom"]);
+    expect(platform.resolveDedupe).toEqual([
+      "react",
+      "react-dom",
+      "@dreamboard/ui-sdk",
+      "@dreamboard/sdk-types",
+    ]);
     expect(findAliasReplacement(platform, "^react$")).toMatch(
       /react\/index\.js$/,
     );
@@ -62,7 +67,6 @@ describe("createDevRuntimePlatform", () => {
     expect(findAliasReplacement(platform, "^tailwindcss$")).toBe(
       tailwindCssEntry,
     );
-
     const ignoredPatterns = platform.serverConfig.watch?.ignored;
     expect(Array.isArray(ignoredPatterns)).toBe(true);
     expect(ignoredPatterns).toHaveLength(1);

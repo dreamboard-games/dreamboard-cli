@@ -1129,7 +1129,7 @@ paths:
       - $ref: "#/components/parameters/SessionId"
     post:
       summary: Submit generic gameplay input
-      description: Submit a gameplay input during gameplay phase. Supports action, promptResponse, and windowAction for clients.
+      description: Submit a gameplay input during gameplay phase. Supports action and promptResponse for clients.
       operationId: submitInput
       security:
         - BearerAuth: []
@@ -4832,35 +4832,6 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/GameplayPromptOption"
-    GameplayWindowClosePolicy:
-      type: string
-      enum:
-        - allPassInSequence
-        - allResponded
-        - firstValidAction
-        - manual
-    GameplayWindowInstance:
-      type: object
-      required:
-        - id
-        - windowId
-        - closePolicy
-        - addressedTo
-      properties:
-        id:
-          type: string
-        windowId:
-          type: string
-        closePolicy:
-          $ref: "#/components/schemas/GameplayWindowClosePolicy"
-        addressedTo:
-          type: array
-          items:
-            type: string
-        payload:
-          type: string
-          nullable: true
-          description: JSON-serialized window payload
     GameplaySnapshot:
       type: object
       required:
@@ -4871,7 +4842,6 @@ components:
         - seatViewsByPlayerId
         - availableActions
         - prompts
-        - windows
       properties:
         version:
           type: integer
@@ -4903,10 +4873,6 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/GameplayPromptInstance"
-        windows:
-          type: array
-          items:
-            $ref: "#/components/schemas/GameplayWindowInstance"
     HistoryEntrySummary:
       type: object
       description: Summary of a game state history entry
@@ -5457,28 +5423,6 @@ components:
         response:
           type: string
           description: JSON-serialized prompt response payload
-    WindowActionGameInput:
-      type: object
-      required:
-        - kind
-        - playerId
-        - windowId
-        - actionType
-      properties:
-        kind:
-          type: string
-          enum:
-            - windowAction
-        playerId:
-          type: string
-        windowId:
-          type: string
-        actionType:
-          type: string
-        params:
-          type: string
-          nullable: true
-          description: Optional JSON-serialized window action parameters
     SystemGameInput:
       type: object
       required:
@@ -5499,14 +5443,12 @@ components:
       oneOf:
         - $ref: "#/components/schemas/ActionGameInput"
         - $ref: "#/components/schemas/PromptResponseGameInput"
-        - $ref: "#/components/schemas/WindowActionGameInput"
         - $ref: "#/components/schemas/SystemGameInput"
       discriminator:
         propertyName: kind
         mapping:
           action: "#/components/schemas/ActionGameInput"
           promptResponse: "#/components/schemas/PromptResponseGameInput"
-          windowAction: "#/components/schemas/WindowActionGameInput"
           system: "#/components/schemas/SystemGameInput"
     SubmitInputRequest:
       type: object

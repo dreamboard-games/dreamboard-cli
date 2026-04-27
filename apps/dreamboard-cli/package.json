@@ -29,6 +29,7 @@
     "copy:static-scaffold-assets": "tsx scripts/copy-static-scaffold-assets.ts",
     "dev": "$HOME/.bun/bin/bun run scripts/dev.ts",
     "test": "bun run scripts/test.ts",
+    "test:unit": "bun run scripts/test.ts",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
     "build:bundle-deps": "pnpm --dir ../../packages/workspace-codegen build",
     "build": "tsc -p tsconfig.build.json --noEmit && tsup && pnpm run copy:static-scaffold-assets",

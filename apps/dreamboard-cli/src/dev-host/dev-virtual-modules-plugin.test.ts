@@ -29,13 +29,10 @@ test("project entry virtual module bootstraps App under PluginRuntime", async ()
 
   const source = await plugin.load?.(resolvedId as string);
   expect(source).toContain(
-    'import { RuntimeProvider } from "@dreamboard/ui-sdk/internal/runtime-context";',
-  );
-  expect(source).toContain(
-    'import { usePluginRuntime } from "@dreamboard/ui-sdk/internal/usePluginRuntime";',
+    'import { ErrorBoundary, PluginRuntime } from "/@fs//tmp/project/ui/components/dreamboard/index.ts";',
   );
   expect(source).toContain('import "/@fs//tmp/project/ui/style.css";');
   expect(source).toContain('import App from "/@fs//tmp/project/ui/App.tsx";');
-  expect(source).toContain("function DreamboardPluginRoot()");
-  expect(source).toContain("createElement(DreamboardPluginRoot)");
+  expect(source).toContain("createElement(\n    ErrorBoundary,");
+  expect(source).toContain("createElement(\n      PluginRuntime,");
 });

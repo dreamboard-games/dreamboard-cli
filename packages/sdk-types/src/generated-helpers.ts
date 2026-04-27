@@ -1,6 +1,4 @@
-type RecordInitializer<Id extends string, Value> =
-  | Value
-  | ((id: Id) => Value);
+type RecordInitializer<Id extends string, Value> = Value | ((id: Id) => Value);
 
 export function buildTypedRecord<Id extends string, Value>(
   ids: readonly Id[],

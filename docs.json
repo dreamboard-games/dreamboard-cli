@@ -16,7 +16,8 @@
             "group": "Getting started",
             "pages": [
               "docs/index",
-              "docs/quickstart"
+              "docs/quickstart",
+              "docs/concepts"
             ]
           },
           {
@@ -29,7 +30,6 @@
             "group": "Reference",
             "pages": [
               "docs/reference/cli",
-              "docs/reference/dependency-setup",
               "docs/reference/rule-authoring",
               "docs/reference/manifest-authoring",
               "docs/reference/tiled-board-topology",
@@ -52,12 +52,12 @@
       "destination": "/docs/quickstart"
     },
     {
-      "source": "/reference/cli",
-      "destination": "/docs/reference/cli"
+      "source": "/concepts",
+      "destination": "/docs/concepts"
     },
     {
-      "source": "/reference/dependency-setup",
-      "destination": "/docs/reference/dependency-setup"
+      "source": "/reference/cli",
+      "destination": "/docs/reference/cli"
     },
     {
       "source": "/reference/manifest-authoring",

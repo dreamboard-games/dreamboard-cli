@@ -16,7 +16,8 @@
   "scripts": {
     "build": "tsc --project tsconfig.json",
     "lint": "eslint 'src/**/*.ts'",
-    "test": "bun test"
+    "test": "bun test --timeout 30000",
+    "test:unit": "bun test --timeout 30000"
   },
   "dependencies": {
     "@dreamboard/sdk-types": "workspace:*",

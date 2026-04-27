@@ -1,25 +1,8 @@
-import { mkdtemp, mkdir, rm, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { expect, test } from "bun:test";
-
-const TYPECHECK_FIXTURE_ROOT = path.resolve(
-  import.meta.dir,
-  "__fixtures__/static-typecheck",
-);
-/** Package deps (e.g. zod) resolve from the CLI workspace, not the monorepo root. */
-const WORKSPACE_NODE_MODULES = path.join(
-  path.resolve(import.meta.dir, "../../.."),
-  "node_modules",
-);
-const UI_SDK_NODE_MODULES = path.join(
-  path.resolve(import.meta.dir, "../../../../../packages/ui-sdk"),
-  "node_modules",
-);
-const REQUIRE = createRequire(import.meta.url);
-const TSC_BIN = REQUIRE.resolve("typescript/bin/tsc");
 
 async function loadStaticScaffold() {
   return import(`./static-scaffold.ts?test=${Math.random()}`);
@@ -34,43 +17,6 @@ function renderManifestSource(manifest: Record<string, unknown>): string {
     ");",
     "",
   ].join("\n");
-}
-
-async function seedDynamicFilesForTypecheck(tempRoot: string): Promise<void> {
-  const fixtureFiles = [
-    "shared/manifest.ts",
-    "shared/ui-args.ts",
-    "app/generated/guards.ts",
-    "ui/App.tsx",
-  ] as const;
-
-  for (const relativePath of fixtureFiles) {
-    const sourcePath = path.join(TYPECHECK_FIXTURE_ROOT, relativePath);
-    const targetPath = path.join(tempRoot, relativePath);
-    await mkdir(path.dirname(targetPath), { recursive: true });
-    await Bun.write(targetPath, await Bun.file(sourcePath).text());
-  }
-
-  await symlink(WORKSPACE_NODE_MODULES, path.join(tempRoot, "node_modules"));
-  await symlink(UI_SDK_NODE_MODULES, path.join(tempRoot, "ui", "node_modules"));
-}
-
-function runTypecheck(tempRoot: string, projectPath: string): void {
-  const result = Bun.spawnSync({
-    cmd: [TSC_BIN, "--noEmit", "-p", projectPath],
-    cwd: tempRoot,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-
-  if (result.exitCode === 0) {
-    return;
-  }
-
-  const decoder = new TextDecoder();
-  throw new Error(
-    `Typecheck failed for ${projectPath}\nstdout:\n${decoder.decode(result.stdout)}\nstderr:\n${decoder.decode(result.stderr)}`,
-  );
 }
 
 test("scaffolds static framework files locally", async () => {
@@ -506,17 +452,8 @@ test("update keeps the canonical scaffold scenario content intact", async () => 
   }
 });
 
-test("materialized static scaffold typechecks for app and ui targets", async () => {
-  const { scaffoldStaticWorkspace } = await loadStaticScaffold();
-  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "db-static-scaffold-"));
-
-  try {
-    await scaffoldStaticWorkspace(tempRoot, "new");
-    await seedDynamicFilesForTypecheck(tempRoot);
-
-    runTypecheck(tempRoot, "app/tsconfig.json");
-    runTypecheck(tempRoot, "ui/tsconfig.json");
-  } finally {
-    await rm(tempRoot, { recursive: true, force: true });
-  }
-}, 20_000);
+// End-to-end typecheck of a materialized scaffold is covered by
+// `local-typecheck.test.ts`'s empty-manifest case (which exercises the same
+// `scaffoldStaticWorkspace` + `generateDynamicGeneratedFiles` + `tsc --noEmit`
+// pathway through the real `runLocalTypecheck` entry point). Keep this file
+// focused on scaffold-file correctness to keep the suite fast.

@@ -16,6 +16,7 @@ const createSupabaseClient = mock(() => ({
     setSession,
   },
 }));
+const parseLoginCommandArgs = mock((args: Record<string, unknown>) => args);
 const parseAuthCommandArgs = mock((args: Record<string, unknown>) => args);
 const consolaLog = mock(() => undefined);
 const consolaWarn = mock(() => undefined);
@@ -52,6 +53,7 @@ mock.module("../build-target.js", () => ({
 }));
 
 mock.module("../config/global-config.js", () => ({
+  getGlobalAuthPath: () => "/tmp/.dreamboard/auth.json",
   getGlobalConfigPath: () => "/tmp/.dreamboard/config.json",
   loadGlobalConfig,
   saveGlobalConfig,
@@ -63,6 +65,7 @@ mock.module("../auth/auth-server.js", () => ({
 }));
 
 mock.module("../flags.js", () => ({
+  parseLoginCommandArgs,
   parseAuthCommandArgs,
 }));
 
@@ -85,6 +88,7 @@ beforeEach(() => {
   saveGlobalConfig.mockClear();
   setSession.mockClear();
   createSupabaseClient.mockClear();
+  parseLoginCommandArgs.mockClear();
   parseAuthCommandArgs.mockClear();
   consolaLog.mockClear();
   consolaWarn.mockClear();
@@ -163,5 +167,29 @@ test("auth status refreshes an expired stored session and persists the rotated t
   });
   expect(consolaSuccess).toHaveBeenCalledWith(
     "Access token was expired and has been refreshed.",
+  );
+});
+
+test("auth set replaces the access token and clears any stored refresh token", async () => {
+  loadGlobalConfig.mockImplementation(async () => ({
+    environment: "local",
+    authToken: "old-access-token",
+    refreshToken: "stale-refresh-token",
+  }));
+
+  await authCommand.run({
+    args: {
+      action: "set",
+      tokenValue: "new-access-token",
+    },
+  });
+
+  expect(saveGlobalConfig).toHaveBeenCalledWith({
+    environment: "local",
+    authToken: "new-access-token",
+    refreshToken: undefined,
+  });
+  expect(consolaSuccess).toHaveBeenCalledWith(
+    "Auth token saved to /tmp/.dreamboard/auth.json.",
   );
 });

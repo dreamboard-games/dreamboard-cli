@@ -63,12 +63,6 @@ let lastGatewayConfig: {
     promptId: string,
     response: unknown,
   ) => Promise<void>;
-  onWindowAction: (
-    playerId: string,
-    windowId: string,
-    actionType: string,
-    params?: Record<string, unknown>,
-  ) => Promise<void>;
   onValidateAction: (
     playerId: string,
     actionType: string,
@@ -138,7 +132,6 @@ function createStore() {
       controllingPlayerId: "",
       availableActions: [] as Array<Record<string, unknown>>,
       prompts: [] as Array<Record<string, unknown>>,
-      windows: [] as Array<Record<string, unknown>>,
       seatViewsByPlayerId: {} as Record<string, unknown>,
     },
     history: null,
@@ -184,7 +177,6 @@ function createStore() {
         currentPhase: state.gameplay.currentPhase,
         availableActions: [],
         prompts: [],
-        windows: [],
       },
       lobby: state.lobby,
       notifications: [],

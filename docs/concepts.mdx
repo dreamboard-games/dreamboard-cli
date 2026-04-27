@@ -1,0 +1,203 @@
+---
+title: "Core concepts"
+description: "Dreamboard's mental model and glossary of the terms used across the docs."
+---
+
+Dreamboard is built around a small vocabulary. This page explains how the
+pieces fit together and defines each term you will see in the rest of the
+docs.
+
+## How the pieces fit together
+
+A Dreamboard game is three aligned layers that stay in sync as your design
+changes:
+
+- **`manifest.ts`** declares the components: players, boards, pieces, dice,
+  cards, zones, and setup options.
+- **The reducer** (everything under `app/`) owns the rules: phases, actions,
+  prompts, views, and state. It is a pure function.
+- **The UI** (everything under `ui/`) presents projected views and dispatches
+  typed actions. It never re-implements rules.
+
+`rule.md` sits above all three as the plain-language source of intent. It
+does not execute — you and your coding agent edit it to agree on what the
+game is.
+
+The **CLI** (`dreamboard`) orchestrates the authoring loop against the
+Dreamboard backend. The **runtime** executes your compiled reducer and
+applies queued effects (randomness, prompts, phase transitions).
+
+### The iteration loop
+
+1. You describe a change in `rule.md` or in chat with your coding agent.
+2. The agent updates `manifest.ts`, reducer code, and UI to match.
+3. `dreamboard sync` pushes authored changes to the backend and regenerates
+   scaffolded types locally.
+4. `dreamboard compile` builds the reducer bundle for the runtime.
+5. `dreamboard dev` runs the game in a local browser; `dreamboard test run`
+   replays the scenarios under `test/`.
+6. Dreamboard keeps the three layers aligned as rules and components change.
+
+### What happens on every action
+
+1. The UI dispatches a typed action from `useActions()`.
+2. Dreamboard routes it to the active phase's matching `action.validate(...)`.
+3. If legal, `action.reduce(...)` composes state transitions with
+   `pipe(state, ...ops)` and queues any runtime effects with `fx.*`.
+4. The runtime executes queued `fx.*` effects outside the pure reducer.
+5. `project(...)` produces a player-facing view and the UI re-renders.
+
+Everything else in the docs is either a detail inside one of those layers or
+a helper in the surrounding toolchain.
+
+## Glossary
+
+### Action
+A single player move defined with `defineAction(...)`. Lives inside a phase.
+Has typed params, a `validate(...)` callback that gates legality, and a
+`reduce(...)` callback that returns the next state. See
+[Reducer](/docs/reference/reducer).
+
+### Authored head
+The committed snapshot of your `rule.md`, `manifest.ts`, reducer, UI, and
+tests on the Dreamboard backend. `dreamboard sync` advances the authored
+head from your local changes; `dreamboard pull` brings the head into your
+workspace.
+
+### Base / scenario
+Testing primitives. A **base** (`test/bases/*.base.ts`) is a reusable seeded
+starting state. A **scenario** (`test/scenarios/*.scenario.ts`) replays
+actions from a base and asserts on the result. See
+[Testing](/docs/reference/testing).
+
+### Compile
+`dreamboard compile` runs a local typecheck, then produces a reducer bundle
+and related artifacts from the current authored head. The bundle is what
+`dreamboard dev` runs.
+
+### Component
+A typed game object declared in the manifest — a piece, die, card, or
+zone. Components have typed IDs generated from the manifest and can be moved
+between spaces, containers, edges, vertices, or zones via `ops.*`.
+
+### Flow (and continuation)
+A typed reducer callback that reacts to an observable outcome: an effect
+result (`rollDie`, `shuffleSharedZone`) or a prompt response. Defined with
+`defineFlow(...)` and attached to an effect or prompt through a `resume`
+token. The SDK types `input.response` from the declared `type`, so forgetting
+to react to an effect is a compile error. `defineFlow({ type: "prompt", ... })`
+and `defineFlow({ type: "choicePrompt", ... })` are the prompt-flavored
+entry points.
+
+### Derived
+Computed aggregates exposed to reducer callbacks as `derived`, defined with
+`defineDerived(...)`. Keep raw inputs in state and express aggregates through
+`derived`. Do not cache aggregates back into `publicState`. See
+[Reducer](/docs/reference/reducer).
+
+### Effect (`fx`)
+An injected helper for queuing runtime side effects such as
+`fx.transition("nextPhase")`, `fx.shuffleSharedZone(zoneId, { resume? })`,
+`fx.rollDie(dieId, { resume })`, and `fx.open(flow, options)` for opening a
+registered flow instance (including prompt flows). `fx.close(flow, { to })`
+closes every matching open instance for a player. `fx.*` calls return effect
+descriptors; the runtime executes them after the pure reducer step. Effects
+that produce a value (for example a die roll) take a **typed flow** as their
+`resume` token so the follow-up reducer runs automatically with the new
+state.
+
+### Manifest
+The `manifest.ts` file and its `defineTopologyManifest(...)` call. Declares
+players, card sets, zones, boards, piece types, die types, resources, and
+setup options. See [Manifest authoring](/docs/reference/manifest-authoring).
+
+### Op (`ops`)
+An injected curried writer namespace that creates `Op<GameState>`
+transformers: `ops.patchPublicState`, `ops.patchHiddenState`,
+`ops.setActivePlayers`, `ops.moveCardBetweenSharedZones`, and more. Compose
+ops with `pipe(state, ...)` inside `reduce(...)` and `enter(...)`.
+
+### Phase
+A named slice of game flow defined with `definePhase(...)`. Owns its own
+`state` schema, `initialState(...)`, an optional `enter(...)` hook, and a map
+of actions. Phase `kind` is `"player"` (waits for a player action) or
+`"auto"` (resolves immediately from reducer logic).
+
+### Pipe
+A utility imported from `@dreamboard/app-sdk/reducer` that threads a state
+value through a sequence of `Op<State>` transformers. Use
+`pipe(state, op1, op2, ...)` inside `reduce(...)` and `enter(...)`.
+
+### Player view
+The player-facing payload produced by `defineView(...)`'s `project(...)`
+callback. The UI reads the view; it never reads raw reducer state. The
+projected payload type is inferred from `project(...)`'s return value.
+
+### Prompt
+A reducer-owned question to a specific player, opened with
+`fx.open(promptFlow, { to, ... })` and resolved by the flow's typed
+continuation. Prompts let one action pause for input (choose a card, pick a
+space) without leaving the phase. Responses are authorized by `prompt.to`,
+not `state.flow.activePlayers`, so prompts are also the sanctioned
+mechanism for out-of-turn interactions such as trade offers, reactions,
+and interrupts — open one (or fan it out to several players at once) and
+resume when each target responds.
+
+### Query (`q`)
+An injected read-only accessor namespace for reducer state and the table:
+`q.zone.*`, `q.card.*`, `q.board.*`, `q.component.*`, `q.player.*`. Prefer
+`q.*` over direct `state.table` reads.
+
+### Reducer
+Your game's pure-function rule engine under `app/*`. Owns phases, actions,
+prompts, views, and setup flows. Wired together with `defineGame(...)` and
+helpers from `@dreamboard/app-sdk/reducer`.
+
+### `reducer-support.ts`
+A project-owned module for helpers that accept injected `ops` or `q` as
+arguments and return `Op<GameState>` or derived values. Scaffolded to export
+`type Ops = ReducerOps<GameState>` and `type Q = TableQueriesOfState<GameState>`
+so helpers share a single source of truth.
+
+### Rule (`rule.md`)
+The game-design source of intent. Describes objective, setup, turn flow,
+actions, scoring, visibility, and edge cases in plain language. See
+[Rule authoring](/docs/reference/rule-authoring).
+
+### Setup profile / setup option
+Manifest-declared configurations. A **setup option** is a tunable knob (for
+example, number of dice). A **setup profile** is a named preset that selects
+values for each option.
+
+### State
+Reducer state has four authored slices plus a runtime-maintained table:
+
+- **`publicState`** — visible to every player and the UI.
+- **`privateState`** — per-player secret state (hands, hidden objectives).
+- **`hiddenState`** — game-owned secret state nobody sees directly (shuffle
+  counts, deck order, pending randomness).
+- **`phase`** — the typed payload for the current phase, shaped by that
+  phase's `state` schema.
+- **`table`** — runtime-maintained record of component locations, zone
+  contents, die values, and resource counts. Read through `q.*`; mutate
+  through `ops.*`.
+
+### Sync / pull
+`dreamboard sync` pushes local authored changes to the backend and
+regenerates scaffolded types. `dreamboard pull` brings remote authored
+changes into the workspace. See [CLI](/docs/reference/cli).
+
+### Zone
+A declared container for cards. Two kinds: **shared zones** (one global
+pile, such as a deck) and **player zones** (one instance per player, such as
+a hand). Read zone contents with `q.zone.*` and move cards with
+`ops.moveCard...` / `ops.dealCardsToPlayerZone` helpers.
+
+## Where to go next
+
+- [Quickstart](/docs/quickstart) to install the CLI and create a game.
+- [Building your first game](/docs/tutorials/building-your-first-game) for
+  a full end-to-end walkthrough.
+- [Reducer](/docs/reference/reducer),
+  [Manifest authoring](/docs/reference/manifest-authoring), and
+  [UI library](/docs/reference/ui-library) once you have a workspace to iterate on.

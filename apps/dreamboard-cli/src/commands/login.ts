@@ -6,6 +6,7 @@ import { IS_PUBLISHED_BUILD, PUBLISHED_ENVIRONMENT } from "../build-target.js";
 import { resolveConfig } from "../config/resolve.js";
 import { parseLoginCommandArgs } from "../flags.js";
 import {
+  getGlobalAuthPath,
   getGlobalConfigPath,
   loadGlobalConfig,
   saveGlobalConfig,
@@ -54,7 +55,7 @@ export default defineCommand({
           : parsedArgs.env || globalConfig.environment,
       });
       consola.success(
-        `Login successful. Session saved to ${getGlobalConfigPath()}.`,
+        `Login successful. Session saved to ${getGlobalAuthPath()}.`,
       );
     } finally {
       server.close();

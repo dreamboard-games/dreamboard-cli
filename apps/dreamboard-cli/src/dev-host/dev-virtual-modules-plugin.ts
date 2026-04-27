@@ -12,6 +12,10 @@ export function createVirtualDevModulesPlugin(options: {
   const projectEntryModuleId = "virtual:dreamboard-project-entry";
   const resolvedProjectEntryModuleId = `\0${projectEntryModuleId}`;
   const projectAppPath = path.resolve(options.projectRoot, "ui/App.tsx");
+  const projectComponentsPath = path.resolve(
+    options.projectRoot,
+    "ui/components/dreamboard/index.ts",
+  );
   const projectStylePath = path.resolve(options.projectRoot, "ui/style.css");
 
   return {
@@ -35,28 +39,9 @@ export function createVirtualDevModulesPlugin(options: {
           : "";
         return `${fallbackImport}import { createElement } from "react";
 import { createRoot } from "react-dom/client";
-import { RuntimeProvider } from "@dreamboard/ui-sdk/internal/runtime-context";
-import { usePluginRuntime } from "@dreamboard/ui-sdk/internal/usePluginRuntime";
 import "/@fs/${normalizePath(projectStylePath)}";
+import { ErrorBoundary, PluginRuntime } from "/@fs/${normalizePath(projectComponentsPath)}";
 import App from "/@fs/${normalizePath(projectAppPath)}";
-
-function DreamboardPluginRoot() {
-  const { runtime, isReady, error } = usePluginRuntime();
-
-  if (error) {
-    return createElement("div", { role: "alert" }, error);
-  }
-
-  if (!isReady) {
-    return createElement("div", null, "Waiting for game state...");
-  }
-
-  return createElement(
-    RuntimeProvider,
-    { runtime },
-    createElement(App),
-  );
-}
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {
@@ -64,7 +49,15 @@ if (!rootElement) {
 }
 
 createRoot(rootElement).render(
-  createElement(DreamboardPluginRoot),
+  createElement(
+    ErrorBoundary,
+    null,
+    createElement(
+      PluginRuntime,
+      null,
+      createElement(App),
+    ),
+  ),
 );
 `;
       }

@@ -22,6 +22,7 @@ export interface DevRuntimePlatform {
   serverConfig: ServerOptions;
   resolveDedupe: string[];
   resolveAlias: Alias[];
+  optimizeDepsExclude: string[];
 }
 
 export function createDevRuntimePlatform(
@@ -54,7 +55,12 @@ export function createDevRuntimePlatform(
         allow: [options.projectRoot, repoRoot],
       },
     },
-    resolveDedupe: ["react", "react-dom"],
+    resolveDedupe: [
+      "react",
+      "react-dom",
+      "@dreamboard/ui-sdk",
+      "@dreamboard/sdk-types",
+    ],
     resolveAlias: [
       {
         find: /^react$/,
@@ -102,6 +108,84 @@ export function createDevRuntimePlatform(
         ),
       },
       {
+        find: /^@dreamboard\/ui-sdk$/,
+        replacement: path.resolve(repoRoot, "packages/ui-sdk/src/index.ts"),
+      },
+      {
+        find: /^@dreamboard\/ui-sdk\/reducer$/,
+        replacement: path.resolve(repoRoot, "packages/ui-sdk/src/reducer.ts"),
+      },
+      {
+        find: /^@dreamboard\/ui-sdk\/internal\/runtime-context$/,
+        replacement: path.resolve(
+          repoRoot,
+          "packages/ui-sdk/src/context/RuntimeContext.tsx",
+        ),
+      },
+      {
+        find: /^@dreamboard\/ui-sdk\/internal\/usePluginRuntime$/,
+        replacement: path.resolve(
+          repoRoot,
+          "packages/ui-sdk/src/hooks/usePluginRuntime.ts",
+        ),
+      },
+      {
+        find: /^@dreamboard\/ui-sdk\/internal\/createPluginRuntimeAPI$/,
+        replacement: path.resolve(
+          repoRoot,
+          "packages/ui-sdk/src/runtime/createPluginRuntimeAPI.ts",
+        ),
+      },
+      {
+        find: /^@dreamboard\/ui-sdk\/internal\/useHandLayout$/,
+        replacement: path.resolve(
+          repoRoot,
+          "packages/ui-sdk/src/hooks/useHandLayout.ts",
+        ),
+      },
+      {
+        find: /^@dreamboard\/ui-sdk\/internal\/usePanZoom$/,
+        replacement: path.resolve(
+          repoRoot,
+          "packages/ui-sdk/src/hooks/usePanZoom.ts",
+        ),
+      },
+      {
+        find: /^@dreamboard\/ui-sdk\/internal\/useIsMobile$/,
+        replacement: path.resolve(
+          repoRoot,
+          "packages/ui-sdk/src/hooks/useIsMobile.ts",
+        ),
+      },
+      {
+        find: /^@dreamboard\/ui-sdk\/internal\/player-state$/,
+        replacement: path.resolve(
+          repoRoot,
+          "packages/ui-sdk/src/types/player-state.ts",
+        ),
+      },
+      {
+        find: /^@dreamboard\/ui-sdk\/internal\/tiled-board$/,
+        replacement: path.resolve(
+          repoRoot,
+          "packages/ui-sdk/src/types/tiled-board.ts",
+        ),
+      },
+      {
+        find: /^@dreamboard\/ui-sdk\/internal\/plugin-state$/,
+        replacement: path.resolve(
+          repoRoot,
+          "packages/ui-sdk/src/types/plugin-state.ts",
+        ),
+      },
+      {
+        find: /^@dreamboard\/ui-sdk\/types\/runtime-api$/,
+        replacement: path.resolve(
+          repoRoot,
+          "packages/ui-sdk/src/types/runtime-api.ts",
+        ),
+      },
+      {
         find: /^@dreamboard\/manifest-contract$/,
         replacement: path.resolve(
           options.projectRoot,
@@ -116,6 +200,15 @@ export function createDevRuntimePlatform(
         ),
       },
       {
+        find: /^@dreamboard\/ui-sdk\/plugin-styles\.css$/,
+        replacement: resolveCliDependency(
+          require,
+          cliRoot,
+          "@dreamboard/ui-sdk/plugin-styles.css",
+          "packages/ui-sdk/src/plugin-styles.css",
+        ),
+      },
+      {
         find: /^@shared\/(.*)$/,
         replacement: path.resolve(options.projectRoot, "shared/$1"),
       },
@@ -124,6 +217,7 @@ export function createDevRuntimePlatform(
         replacement: options.tailwindCssEntry,
       },
     ],
+    optimizeDepsExclude: ["@dreamboard/ui-sdk", "@dreamboard/sdk-types"],
   };
 }
 

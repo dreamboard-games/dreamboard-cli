@@ -63,6 +63,9 @@ export async function startDreamboardDevServer(options: {
       dedupe: platform.resolveDedupe,
       alias: platform.resolveAlias,
     },
+    optimizeDeps: {
+      exclude: platform.optimizeDepsExclude,
+    },
     server: platform.serverConfig,
   });
 

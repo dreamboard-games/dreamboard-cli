@@ -6,7 +6,7 @@ Dreamboard's scaffolded test workspace is reducer-native. It uses typed base
 definitions and typed scenarios that run against your compiled reducer and
 generated contracts.
 
-## Responsibility
+## What the test harness does
 
 Use the scaffolded test workspace for:
 
@@ -86,9 +86,8 @@ export default defineBase({
 ```
 
 The base `seed` drives runtime-owned randomness. Effects such as
-`fx.rollDie(...)`, `fx.randomInt(...)`, `fx.sample(...)`, and
-`fx.shuffleSharedZone(...)` consume the seeded reducer RNG, so repeated test
-runs with the same base seed are reproducible.
+`fx.rollDie(...)` and `fx.shuffleSharedZone(...)` consume the seeded reducer
+RNG, so repeated test runs with the same base seed are reproducible.
 
 Checked-in test startup state belongs on the base via `setupProfileId`.
 When a base omits it, Dreamboard uses the manifest default resolution order:
@@ -156,9 +155,8 @@ Use it to:
 - `start()` the game inside base setup
 - `action(playerId, actionType, params)` for reducer actions
 - `action(playerId, command)` for generated command objects
-- `respond(...)` for prompts
-- `windowAction(...)` for reducer-owned window actions
-- `expectPrompt(...)` and `expectWindow(...)` when testing prompt/window flow
+- `respond(...)` for prompt responses
+- `expectPrompt(...)` to wait for a prompt addressed to a player
 
 ### Shared state helpers
 
@@ -170,7 +168,6 @@ Use these in `when(...)` and `then(...)`:
 | `view(playerId)`    | Projected `GameView` for one player                |
 | `players()`         | Ordered `PlayerId[]` for the session               |
 | `prompts(playerId)` | Active `PromptInstance[]` addressed to that player |
-| `windows(playerId)` | Active `WindowInstance[]` visible to that player   |
 | `expect(value)`     | Built-in assertion API (see matchers below)        |
 
 `state()` returns the phase name, not the raw reducer state. Assert game-specific
@@ -197,8 +194,8 @@ It re-exports:
 
 - `defineBase(...)`
 - `defineScenario(...)`
-- `phaseCommands`, `windowCommands`
-- Types: `GameView`, `ActionName`, `ActionParams<Name>`, `ActionCommandForPhase<Name>`, `StateName`, `PlayerId`, `PromptId`, `PromptResponse<Name>`, `WindowId`, `WindowActionName<Name>`, `WindowActionParams<Name, Action>`
+- `phaseCommands`
+- Types: `GameView`, `ActionName`, `ActionParams<Name>`, `ActionCommandForPhase<Name>`, `StateName`, `PlayerId`, `PromptId`, `PromptResponse<Name>`
 - `TestRunner` (`"reducer" | "embedded" | "browser"`)
 
 Generated zero-param command factories stay zero-arg in tests, so prefer:
@@ -222,8 +219,8 @@ Every game should have at least:
 - one winning-condition scenario
 - one rejection scenario for out-of-turn or otherwise illegal input
 
-When the game uses prompts or windows, add at least one scenario that exercises
-that continuation path end to end.
+When the game uses prompts, add at least one scenario that exercises that
+prompt flow end to end.
 
 ## Rejection-path coverage
 

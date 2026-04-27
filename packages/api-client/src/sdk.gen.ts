@@ -456,7 +456,7 @@ export const startGame = <ThrowOnError extends boolean = false>(options: Options
 /**
  * Submit generic gameplay input
  *
- * Submit a gameplay input during gameplay phase. Supports action, promptResponse, and windowAction for clients.
+ * Submit a gameplay input during gameplay phase. Supports action and promptResponse for clients.
  */
 export const submitInput = <ThrowOnError extends boolean = false>(options: Options<SubmitInputData, ThrowOnError>) => (options.client ?? client).post<SubmitInputResponses, SubmitInputErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],

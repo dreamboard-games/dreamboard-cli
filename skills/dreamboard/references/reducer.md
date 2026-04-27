@@ -5,33 +5,37 @@ Reference for authoring Dreamboard reducer-native games with @dreamboard/app-sdk
 `@dreamboard/app-sdk/reducer` is Dreamboard's reducer-native authoring surface that enforces game logic.
 Use it to define state schemas, phases, actions, prompts, views and setup profiles.
 
-## Package boundary
+## What the reducer owns
 
 Use the reducer framework for:
 
 - manifest-backed reducer state schemas
 - phase flow and player action handling
-- prompts, continuations, and reducer-owned windows
+- prompts and reducer-owned flows
 - player-facing view projection
 - setup bootstrap steps
 
 ## Purity
 
-Reducer is pure-function that takes game state as input and produces a deterministic output.
+The reducer is a pure function: it takes reducer state plus the current input
+and returns a deterministic next state. `enter(...)`, `validate(...)`,
+`reduce(...)`, and flow `reduce(...)` callbacks must derive their output
+only from reducer state and the callback arguments Dreamboard injects.
 
-`enter(...)`, `validate(...)`, `reduce(...)`, prompt continuations, and system
-handlers should derive results only from input plus reducer state.
-Do not call ambient sources of nondeterminism such as:
+<Warning>
+  Reducer callbacks must stay deterministic. Do not call ambient sources of
+  nondeterminism:
 
-- `Math.random()`
-- `Date.now()`
-- network I/O
-- filesystem I/O
-- mutable process-global state
+  - `Math.random()`
+  - `Date.now()`
+  - network I/O
+  - filesystem I/O
+  - mutable process-global state
 
-When gameplay needs side effects, queue them through the `fx` helper and let
-the runtime execute them. This keeps reducer behavior replayable, testable,
-and compatible with seeded runtime state.
+  When gameplay needs side effects, queue them through `fx.*` and let the
+  runtime execute them. This keeps reducer behavior replayable, testable, and
+  compatible with seeded runtime state.
+</Warning>
 
 `fx.*` calls return runtime effect descriptors, not direct imperative APIs.
 Reducer callbacks emit them, and the reducer bundle/runtime interprets them
@@ -43,29 +47,37 @@ Import reducer helpers from `@dreamboard/app-sdk/reducer`.
 
 ```ts
 import {
+  createDerivedResolver,
   createReducerBundle,
-  createReducerOps,
   createStateQueries,
   createTableQueries,
   defineAction,
-  defineChoiceFlow,
-  defineChoicePrompt,
-  defineContinuation,
+  defineDerived,
+  defineFlow,
   defineGame,
   defineGameContract,
   definePhase,
-  definePrompt,
-  definePromptFlow,
-  definePromptContinuation,
   defineView,
-  defineWindowContinuation,
   pipe,
+  type Op,
+  type ReducerOps,
+  type TableQueriesOfState,
 } from "@dreamboard/app-sdk/reducer";
 ```
 
-Reducer state is always written through the curried `ops.*` namespace returned
-by `createReducerOps<GameState>()` and composed with `pipe(state, ...ops)`.
-State is read through `createStateQueries(state)` (or `createTableQueries(state.table)`).
+Reducer callbacks (`enter`, `validate`, `reduce`, flow continuations,
+view `project`, and `defineDerived.compute`) receive `ops` and `q` as injected
+arguments. Writes go through the curried `ops.*` namespace composed with
+`pipe(state, ...ops)`. Reads go through the injected `q` — the same surface
+exposed by `createStateQueries(state)` / `createTableQueries(state.table)`.
+
+Prefer the injected `ops` and `q` inside reducer callbacks. Only reach for
+`createStateQueries(state)` / `createTableQueries(state.table)` when you do
+not already have a callback context — for example, inside a helper that
+receives a bare `table` handle, or inside tests. `createReducerOps(...)` is
+rarely needed in authored code; the framework builds and injects `ops` for
+you.
+
 The older flat writer helpers (for example `setActivePlayers(state, ...)` or
 `moveCardFromPlayerZoneToSharedZone({ ... })`) have been removed from the
 public surface; use `ops.*` in their place.
@@ -78,12 +90,22 @@ public surface; use `ops.*` in their place.
 `defineGameContract(...)` binds the generated manifest contract to the reducer's
 shared, per-player, and hidden state schemas.
 
-| Field           | Required | Notes                                                       |
-| --------------- | -------- | ----------------------------------------------------------- |
-| `manifest`      | Yes      | Generated manifest contract from `shared/manifest-contract` |
-| `state.public`  | Yes      | Shared state visible to every player                        |
-| `state.private` | Yes      | Per-player server-only state                                |
-| `state.hidden`  | Yes      | Reducer-only state that never reaches clients               |
+| Field           | Required | Notes                                                                     |
+| --------------- | -------- | ------------------------------------------------------------------------- |
+| `manifest`      | Yes      | Generated manifest contract from `shared/manifest-contract`               |
+| `phaseNames`    | Yes      | Literal tuple of phase names; keep in sync with the `phases` record       |
+| `state.public`  | Yes      | Shared state visible to every player                                      |
+| `state.private` | Yes      | Per-player server-only state                                              |
+| `state.hidden`  | Yes      | Reducer-only state that never reaches clients                             |
+
+`phaseNames` must be declared as a `const` tuple of the exact phase names used
+in your `phases` record. Declaring them on the contract narrows
+`fx.transition(...)`, `phase.dispatch(...)`, and the flow state's
+`currentPhase` to the literal union of your phase names. The framework also
+cross-checks at runtime that the keys of your `phases` record (and
+`initialPhase` / `setupProfiles[*].initialPhase`) match `phaseNames`, so a
+drift between the two surfaces fails fast instead of silently producing an
+invalid transition.
 
 ```ts
 import { z } from "zod";
@@ -92,6 +114,10 @@ import { manifestContract, ids } from "../shared/manifest-contract";
 
 export const gameContract = defineGameContract({
   manifest: manifestContract,
+  // Keep this list in sync with the keys of the `phases` record in ./phases.
+  // Declaring phase names here narrows `fx.transition(...)`, `phase.dispatch`,
+  // and the flow state's `currentPhase` to a literal union.
+  phaseNames: ["setup", "play", "scoring"] as const,
   state: {
     public: z.object({
       currentJudgeId: ids.playerId,
@@ -106,6 +132,32 @@ export const gameContract = defineGameContract({
   },
 });
 ```
+
+### Sparse records keyed by manifest IDs
+
+For maps keyed by a manifest ID (player, resource, vertex, edge, space, …),
+use `z.partialRecord(ids.X, valueSchema)` instead of `z.record(z.string(),
+valueSchema)`. `z.partialRecord` produces `Partial<Record<BrandedId, Value>>`
+at the type level — sparse writes are allowed, keys are narrowed to the
+branded ID union, and raw strings are rejected at parse time.
+
+```ts
+import { z } from "zod";
+import { ids } from "../shared/manifest-contract";
+
+const resourcesPerPlayer = z.partialRecord(
+  ids.playerId,
+  z.partialRecord(ids.resourceId, z.number().int().nonnegative()),
+);
+
+// Inferred as Partial<Record<PlayerId, Partial<Record<ResourceId, number>>>>
+type Resources = z.infer<typeof resourcesPerPlayer>;
+```
+
+Reach for plain `z.record(z.string(), ...)` only when the keys are not
+manifest-scoped IDs (e.g. free-form option values). Avoid
+`z.record(z.enum([...]), ...)` for sparse data: it requires every key to be
+present, which breaks partial deltas.
 
 ## Generated `shared/manifest-contract`
 
@@ -323,18 +375,21 @@ When a value comes from your manifest, keep it typed as that manifest ID family
 in reducer schemas. Use generated `ids.*` schemas for player, board, space,
 edge, vertex, card, deck, hand, and other manifest-backed IDs.
 
-Do not default to `z.string()` for manifest-owned IDs in public state, action
-params, prompt data, or continuation data. Widening those values to `string`
-forces reducer code into `as any`, breaks `createTableQueries(...)` inference,
-and makes `ops.*` writers such as `ops.setActivePlayers(...)` or
-`ops.moveCardFromPlayerZoneToSharedZone(...)` reject otherwise valid inputs.
+<Warning>
+  Do not default to `z.string()` for manifest-owned IDs in public state,
+  action params, prompt data, or flow continuation data. Widening those values to
+  `string` forces reducer code into `as any`, breaks `q.*` inference, and
+  makes `ops.*` writers such as `ops.setActivePlayers(...)` or
+  `ops.moveCardFromPlayerZoneToSharedZone(...)` reject otherwise valid
+  inputs.
+</Warning>
 
 ```ts
 import { z } from "zod";
 import { ids } from "../shared/manifest-contract";
 
 const publicState = z.object({
-  currentPlayerId: ids.playerId,
+  longestRoadPlayerId: ids.playerId.nullable(),
   legalEdgeIds: z.array(ids.edgeId).default([]),
   ownershipBySpaceId: z.partialRecord(ids.spaceId, ids.playerId).default({}),
 });
@@ -355,27 +410,27 @@ dispatch with it.
 
 ### Preferred table reads
 
-Bind one query object per reducer read and use its namespaces for board, zone,
-card, player, and component lookups.
+Reducer callbacks receive `q` as an injected argument. Destructure it
+alongside `state`, `accept`, and `ops` and use its namespaces for board,
+zone, card, player, and component lookups.
 
 ```ts
-import { createStateQueries } from "@dreamboard/app-sdk/reducer";
+export const playerView = defineView<GameContract>()({
+  project({ state, playerId, q }) {
+    const board = q.board.tiled("arena");
 
-function projectBoard(state: GameState) {
-  const q = createStateQueries(state);
-  const board = q.board.tiled("arena");
-
-  return {
-    boardId: board.id,
-    layout: board.layout,
-    spaces: Object.values(board.spaces).map((space) => ({
-      ...space,
-      ownerId: state.publicState.ownershipBySpaceId[space.id] ?? null,
-      edgeIds: q.board.spaceEdges(board.id, space.id),
-      vertexIds: q.board.spaceVertices(board.id, space.id),
-    })),
-  };
-}
+    return {
+      boardId: board.id,
+      layout: board.layout,
+      spaces: Object.values(board.spaces).map((space) => ({
+        ...space,
+        ownerId: state.publicState.ownershipBySpaceId[space.id] ?? null,
+        edgeIds: q.board.spaceEdges(board.id, space.id),
+        vertexIds: q.board.spaceVertices(board.id, space.id),
+      })),
+    };
+  },
+});
 ```
 
 When the UI uses `HexGrid` or `SquareGrid`, prefer projecting the generated
@@ -383,9 +438,7 @@ board record whole instead of remapping it into a custom `tiles` or `cells`
 shape:
 
 ```ts
-function projectBoardView(state: GameState) {
-  const q = createStateQueries(state);
-
+project({ state, q }) {
   return {
     board: q.board.tiled("arena"),
     legalEdgeIds: state.publicState.legalEdgeIds,
@@ -401,25 +454,37 @@ Keep manifest IDs typed all the way into reducer code so the query surface can
 accept them directly. If you feel tempted to write `(q.board as any)` or parse
 data out of an ID string, the ID usually widened earlier in your schema.
 
-Use `createStateQueries(state)` when your helper already receives `GameState`.
-It keeps query typing bound to the reducer state, which avoids the inference
-loss you can hit when you extract helpers around `createTableQueries(...)`.
+For author helpers that live outside reducer callbacks, accept `q` as a
+parameter rather than constructing a fresh query from state. The
+`TableQueriesOfState<GameState>` alias exported from `app/reducer-support.ts`
+keeps the helper typed without re-creating the query object per call:
 
 ```ts
-import {
-  createStateQueries,
-  type TableQueriesOfState,
+// app/reducer-support.ts
+import type {
+  Op,
+  ReducerOps,
+  TableQueriesOfState,
 } from "@dreamboard/app-sdk/reducer";
+import type { GameState } from "./game-contract";
 
-function summarizeTrack(q: TableQueriesOfState<GameState>) {
+export type Ops = ReducerOps<GameState>;
+export type Q = TableQueriesOfState<GameState>;
+
+export function summarizeTrack(q: Q) {
   return q.board.adjacentSpaces("track-board", "space-a");
 }
+```
 
-function reducerHelper(state: GameState) {
-  const q = createStateQueries(state);
-  return summarizeTrack(q);
+```ts
+reduce({ state, input, accept, q, ops }) {
+  const neighbors = summarizeTrack(q);
+  // ...
 }
 ```
+
+When you truly have no callback context (low-level adapters, tests),
+`createStateQueries(state)` or `createTableQueries(state.table)` still works.
 
 ### Board shape and topology semantics
 
@@ -427,9 +492,11 @@ function reducerHelper(state: GameState) {
 - `board.edges` is an array of edge records.
 - `board.vertices` is an array of vertex records.
 
-Do not use `Object.keys(board.edges)` or `Object.keys(board.vertices)` expecting
-runtime IDs. That returns array indexes such as `"0"` and `"1"`, not edge or
-vertex IDs.
+<Warning>
+  Do not use `Object.keys(board.edges)` or `Object.keys(board.vertices)`
+  expecting runtime IDs. That returns array indexes such as `"0"` and `"1"`,
+  not edge or vertex IDs.
+</Warning>
 
 Use query helpers as the canonical reducer-native traversal path:
 
@@ -449,21 +516,46 @@ tiled topology. They return all tiled edges or vertices that share the same
 incident spaces as the input location. They do not apply gameplay-specific
 filters such as "only roads in the current player's network".
 
-`createStateQueries(...)` is also the reducer-native happy path for cards and
-slots:
+The injected `q` is also the reducer-native happy path for cards and slots.
+Destructure it in any reducer callback:
 
 ```ts
-const q = createStateQueries(state);
+reduce({ state, input, accept, q }) {
+  const hand = q.zone.playerCardCollection(input.playerId, "captain-hand");
+  const discard = q.zone.sharedCardCollection("discard");
+  const playedCard = q.card.get("captain-card-1");
 
-const hand = q.zone.playerCardCollection(playerId, "captain-hand");
-const discard = q.zone.sharedCardCollection("discard");
-const playedCard = q.card.get("captain-card-1");
+  const cardsById = q.card.byIds(hand.cardIds);
+  const playedCardType = playedCard.cardType;
+  const workerSlots = q.slot.pieceOccupantsByHost("mat-alpha");
+  const sharedDieSlots = q.slot.dieOccupantsByHost("supply-die");
 
-const cardsById = q.card.byIds(hand.cardIds);
-const playedCardType = playedCard.cardType;
-const workerSlots = q.slot.pieceOccupantsByHost("mat-alpha");
-const sharedDieSlots = q.slot.dieOccupantsByHost("supply-die");
+  return accept(state);
+}
 ```
+
+When reducer or view code needs every shared zone (or every per-player zone
+for one hand ID), use the aggregate readers instead of building the record
+by hand:
+
+| Helper                          | Returns                                                        |
+| ------------------------------- | -------------------------------------------------------------- |
+| `q.zone.allSharedCards()`       | `Record<SharedZoneId, CardId[]>` for every authored shared zone |
+| `q.zone.allPlayerCards(zoneId)` | `Record<PlayerId, CardId[]>` for one per-player hand / zone ID  |
+
+```ts
+const allShared = q.zone.allSharedCards();
+const thingsInRings = {
+  "ring-1": [...allShared["ring-1"]],
+  "ring-2": [...allShared["ring-2"]],
+  "ring-1-2-3": [...allShared["ring-1-2-3"]],
+};
+
+const handsByPlayer = q.zone.allPlayerCards("things-hand");
+```
+
+These helpers preserve the generated zone-ID and player-ID key types, so
+downstream records typecheck without casts.
 
 Use `q.card.get(cardId)` when you need reducer-native card metadata for one
 runtime card ID. Do not parse card IDs manually just to recover card type or
@@ -486,10 +578,12 @@ Use `q.component.*(...)` for resolved placement reads when you need to know
 where a component currently lives.
 
 ```ts
-const q = createTableQueries(state.table);
-const placedCard = q.component.space("a-dog");
-const cardInHand = q.component.hand("a-dog");
-const cardInContainer = q.component.container("sealed-ledger");
+reduce({ state, accept, q }) {
+  const placedCard = q.component.space("a-dog");
+  const cardInHand = q.component.hand("a-dog");
+  const cardInContainer = q.component.container("sealed-ledger");
+  return accept(state);
+}
 ```
 
 ### Runtime location reference
@@ -553,8 +647,6 @@ executes.
 | `initialPhase`    | No       | Default starting phase unless a setup profile overrides it |
 | `setupProfiles`   | No       | Typed setup-profile overrides and bootstrap steps          |
 | `views`           | No       | Named player-facing view projections                       |
-| `root.system`     | No       | Root-level system handlers                                 |
-| `root.selectors`  | No       | Root-level derived selectors                               |
 
 If you omit `initialPhase`, the first registered phase is used.
 
@@ -697,19 +789,14 @@ bootstrap: [
 
 `definePhase(...)` declares one reducer phase.
 
-| Field           | Required | Notes                                                           |
-| --------------- | -------- | --------------------------------------------------------------- |
-| `kind`          | No       | `auto` or `player`                                              |
-| `state`         | Yes      | Zod schema for phase-local state                                |
-| `initialState`  | No       | Initializes `state.phase` when the phase becomes current        |
-| `enter`         | No       | Runs on initialization and on transitions into the phase        |
-| `actions`       | No       | Player actions available in this phase                          |
-| `promptFlows`   | No       | Additive prompt-flow registry for one-prompt resume flows       |
-| `prompts`       | No       | Prompt registry for this phase                                  |
-| `continuations` | No       | Continuation registry for prompt or window resumes              |
-| `windows`       | No       | Window registry; `id` defaults to the object key                |
-| `system`        | No       | Handlers for `fx.dispatchSystem(...)` and scheduled inputs      |
-| `selectors`     | No       | Named derived selectors                                         |
+| Field          | Required | Notes                                                      |
+| -------------- | -------- | ---------------------------------------------------------- |
+| `kind`         | No       | `auto` or `player`                                         |
+| `state`        | Yes      | Zod schema for phase-local state                           |
+| `initialState` | No       | Initializes `state.phase` when the phase becomes current   |
+| `enter`        | No       | Runs on initialization and on transitions into the phase   |
+| `actions`      | No       | Player actions available in this phase                     |
+| `flows`        | No       | Registry of `defineFlow(...)` handlers for this phase      |
 
 `initialState(...)` receives `manifest`, `state`, `playerIds`, and `setup`.
 
@@ -738,15 +825,14 @@ turn change.
 
 ```ts
 import { z } from "zod";
-import { definePhase } from "@dreamboard/app-sdk/reducer";
+import { definePhase, pipe } from "@dreamboard/app-sdk/reducer";
 import type { GameContract } from "../game-contract";
-import { ops, pipe } from "../reducer-support";
 
 export const placeThing = definePhase<GameContract>()({
   kind: "player",
   state: z.object({}),
   initialState: () => ({}),
-  enter({ state, accept }) {
+  enter({ state, accept, ops }) {
     return accept(
       pipe(state, ops.setActivePlayers([state.publicState.currentJudgeId])),
     );
@@ -754,17 +840,13 @@ export const placeThing = definePhase<GameContract>()({
 });
 ```
 
-`ops` is the curried writer namespace from
-`createReducerOps<GameState>()` (see `app/reducer-support.ts` in a scaffolded
-project), and `pipe(state, ...ops)` threads each `State -> State` transformer
-in order.
+`ops` is the curried writer namespace injected by the framework into every
+reducer callback. Import `pipe` from `@dreamboard/app-sdk/reducer` and thread
+each `State -> State` transformer in order with `pipe(state, ...ops)`.
 
-Continuation IDs and window IDs default to their registry keys when you omit
-`id`.
-
-Prompt-flow continuations default to the prompt ID they wrap, so a single
-prompt-response flow can register through `promptFlows` without also wiring a
-separate `continuations` entry.
+Flow IDs default to their registry keys when you omit `id`. Every phase
+registers its flows in a single `flows` object — prompt flows and effect
+flows share one registry.
 
 ## `defineAction(...)`
 
@@ -809,136 +891,79 @@ const placeThing = defineAction<GameContract>()({
 });
 ```
 
-## `definePrompt(...)` and `defineChoicePrompt(...)`
+## `defineFlow(...)`
 
-Use prompts when reducer flow must pause and resume later with a typed response.
+Flows describe every observable callback the reducer cares about — an
+effect result, a prompt response, or any other `fx.open(...)`-addressable
+interaction. `defineFlow(...)` is a single, curried factory that accepts a
+flat discriminated-union config object keyed on `type`:
 
-### Prompt vs window
+| Config `type`         | Resume source                          | Typed `input.response`                          |
+| --------------------- | -------------------------------------- | ----------------------------------------------- |
+| `"rollDie"`           | `fx.rollDie(...)`                      | `{ dieId, value }`                              |
+| `"shuffleSharedZone"` | `fx.shuffleSharedZone(...)`            | `{ zoneId, orderedCardIds }`                    |
+| `"prompt"`            | `fx.open(promptFlow, { to, context })` | Prompt-typed response, plus `input.promptId`    |
+| `"choicePrompt"`      | `fx.open(choiceFlow, { to, context })` | One of the declared `options[].id` string union |
 
-Use a prompt when you want one player to answer a reducer-owned request with a
-typed response payload.
+Every flow supplies a `reduce(...)` callback. The SDK delivers the observed
+outcome as `input.response` and any authored context passed through
+`input.context` at `fx.open(...)` time. Prompt flows additionally receive
+`input.promptId` so you can close a specific prompt instance with
+`fx.close(flow, { to })` when needed.
 
-Use a window when you want the runtime to open a richer interactive session
-that can target one or more players, accept multiple action types, and close
-under a runtime close policy.
+<Warning>
+  `fx.rollDie(...)` **requires** a `resume` token. You cannot queue a die
+  roll without declaring a typed flow to react to the rolled value. This is
+  a compile-time guarantee — forgetting the follow-up reduce is a type
+  error, not a silent bug.
+</Warning>
 
-Prompts are narrower and response-focused. Windows are broader and
-session-focused.
+### Effect flows
 
-### `definePrompt(...)`
-
-| Field            | Required | Notes                               |
-| ---------------- | -------- | ----------------------------------- |
-| `id`             | Yes      | Prompt type ID                      |
-| `title`          | No       | Default title                       |
-| `responseSchema` | Yes      | Zod schema for the response payload |
-
-```ts
-const judgeNotePrompt = definePrompt<GameContract>()({
-  id: "judge-note",
-  title: "Explain the ruling",
-  responseSchema: z.object({
-    note: z.string().min(1),
-  }),
-});
-```
-
-### `defineChoicePrompt(...)`
-
-| Field     | Required | Notes                                                            |
-| --------- | -------- | ---------------------------------------------------------------- |
-| `id`      | Yes      | Prompt type ID                                                   |
-| `title`   | No       | Default title                                                    |
-| `options` | Yes      | Non-empty option list; response type is inferred from option IDs |
+Define a reducer reaction for a runtime effect:
 
 ```ts
-const judgePlacementPrompt = defineChoicePrompt<GameContract>()({
-  id: "judge-placement",
-  title: "Where should this thing actually go?",
-  options: [
-    { id: "ring-1", label: "Ring 1" },
-    { id: "ring-2", label: "Ring 2" },
-    { id: "discard", label: "Not in any ring" },
-  ] as const,
-});
-```
+import { defineFlow } from "@dreamboard/app-sdk/reducer";
 
-When you open a choice prompt, any runtime `options` override must still use the
-declared option IDs.
+const onDieRolled = defineFlow<GameContract>()({
+  id: "on-die-rolled",
+  type: "rollDie",
+  reduce({ state, input, accept, ops, q }) {
+    // input.response is { dieId, value }, typed to the effect's contract.
+    const actingPlayerId = state.flow.activePlayers[0];
+    if (actingPlayerId == null) return accept(state);
 
-## `definePromptFlow(...)` and `defineChoiceFlow(...)`
-
-Use prompt flows for the common "open one prompt and resume one continuation"
-pattern.
-
-These helpers are additive ergonomics over the lower-level prompt and
-continuation APIs. They do not change runtime prompt shape, transport, or
-effect behavior.
-
-| Helper                  | Use when                                                |
-| ----------------------- | ------------------------------------------------------- |
-| `definePromptFlow(...)` | You already have a typed prompt or need a custom schema |
-| `defineChoiceFlow(...)` | One player chooses from a typed option list             |
-
-Each flow returns:
-
-- `prompt`
-- `continuation`
-- `prompts`
-- `continuations`
-- `open(fx, { to, data, title?, payload?, options? })`
-
-Register the flow with `phase.promptFlows`, then call `flow.open(...)` instead
-of pairing `fx.openPrompt(...)` with `continuation(data)` manually.
-
-```ts
-import { ids } from "../shared/manifest-contract";
-
-const chooseBonusFlow = defineChoiceFlow<GameContract>()({
-  id: "choose-bonus",
-  title: "Choose a bonus",
-  options: [
-    { id: "energy", label: "Energy" },
-    { id: "steel", label: "Steel" },
-  ] as const,
-  data: z.object({
-    spaceId: ids.spaceId,
-  }),
-  reduce({ state, input, accept, fx }) {
+    const order = q.player.order();
+    const nextPlayerId =
+      order[(order.indexOf(actingPlayerId) + 1) % order.length]!;
     return accept(
-      {
-        ...state,
-        publicState: {
-          ...state.publicState,
-          lastBonus: {
-            spaceId: input.data.spaceId,
-            resource: input.response,
-          },
-        },
-      },
-      [fx.closePrompt(input.promptId)],
+      pipe(
+        state,
+        ops.patchPublicState({ lastRoll: input.response.value }),
+        ops.setActivePlayers([nextPlayerId]),
+      ),
     );
   },
 });
+```
 
+Register the flow on the phase that queues the effect, and pass the flow
+token as `resume`:
+
+```ts
 export const takeTurn = definePhase<GameContract>()({
   kind: "player",
   state: z.object({}),
   initialState: () => ({}),
-  promptFlows: {
-    chooseBonusFlow,
+  flows: {
+    onDieRolled,
   },
   actions: {
-    claimStation: defineAction<GameContract>()({
-      params: z.object({
-        spaceId: ids.spaceId,
-      }),
-      reduce({ state, input, accept, fx }) {
+    rollDie: defineAction<GameContract>()({
+      params: z.object({}),
+      reduce({ state, accept, fx }) {
         return accept(state, [
-          chooseBonusFlow.open(fx, {
-            to: input.playerId,
-            data: { spaceId: input.params.spaceId },
-          }),
+          fx.rollDie("turn-die", { resume: onDieRolled() }),
         ]);
       },
     }),
@@ -946,91 +971,65 @@ export const takeTurn = definePhase<GameContract>()({
 });
 ```
 
-Prefer continuation `data` for transient prompt context. Use hidden state only
-when the data must outlive the response path or be reused elsewhere.
+`fx.shuffleSharedZone(...)` accepts an optional `resume`. Use it when the
+reducer needs to react to the new card order. Omit it when you only want to
+shuffle and transition (`fx.shuffleSharedZone("draw-pile")`).
 
-## `definePromptContinuation(...)`, `defineWindowContinuation(...)`, and `defineContinuation(...)`
+### Prompt flows
 
-Continuations resume typed reducer logic after a prompt response or window
-action.
-
-| Helper                          | Resume source                                 | Typed input                                                      |
-| ------------------------------- | --------------------------------------------- | ---------------------------------------------------------------- |
-| `definePromptContinuation(...)` | One declared prompt                           | `input.promptId` and prompt-typed `input.response`               |
-| `defineWindowContinuation(...)` | Window action                                 | `input.windowId`, `input.actionType`, and typed `input.response` |
-| `defineContinuation(...)`       | Shared prompt, window, or runtime-effect flow | Union on `input.source`                                          |
-
-### `definePromptContinuation(...)`
+Use `{ type: "prompt" }` for the common "open one prompt, resume one
+reducer" flow. The flow declares the response schema directly through
+`responseSchema`, and you open it with `fx.open(flow, { to, context? })`.
 
 ```ts
+import { defineFlow } from "@dreamboard/app-sdk/reducer";
 import { ids } from "../shared/manifest-contract";
 
-const resolvePlacement = definePromptContinuation<GameContract>()({
-  prompt: judgePlacementPrompt,
-  data: z.object({
-    pendingCardId: ids.cardId,
-  }),
+const judgeNoteFlow = defineFlow<GameContract>()({
+  id: "judge-note",
+  type: "prompt",
+  title: "Explain the ruling",
+  responseSchema: z.object({ note: z.string().min(1) }),
+  contextSchema: z.object({ pendingCardId: ids.cardId }),
   reduce({ state, input, accept, fx }) {
-    return accept(state, [fx.closePrompt(input.promptId)]);
+    // input.response.note is typed from responseSchema.
+    return accept(state, [fx.close(judgeNoteFlow, { to: input.playerId })]);
   },
 });
 ```
 
-### `defineWindowContinuation(...)`
+Register the flow through `phase.flows` and open it with
+`fx.open(judgeNoteFlow, { to, context })`. `fx.close(flow, { to })` closes
+every matching open instance for that player — you never need to thread
+prompt instance IDs through authored code.
+
+### Choice prompt flows
+
+Use `{ type: "choicePrompt" }` when the response is one of a small enum of
+option IDs. The SDK infers the response type directly from `options[].id`.
 
 ```ts
+import { defineFlow } from "@dreamboard/app-sdk/reducer";
 import { ids } from "../shared/manifest-contract";
 
-const reviewWindow = {
-  id: "review-window",
-} as const;
-
-const resolveReview = defineWindowContinuation<GameContract>()({
-  data: z.object({
-    pendingCardId: ids.cardId,
-  }),
-  response: z.object({
-    actionType: z.literal("confirm"),
-    params: z.object({
-      approved: z.boolean(),
-    }),
-    windowId: z.literal("review-window"),
-  }),
-  reduce({ state, input, accept }) {
-    return accept(state);
+const chooseBonusFlow = defineFlow<GameContract>()({
+  id: "choose-bonus",
+  type: "choicePrompt",
+  title: "Choose a bonus",
+  options: [
+    { id: "energy", label: "Energy" },
+    { id: "steel", label: "Steel" },
+  ] as const,
+  contextSchema: z.object({ spaceId: ids.spaceId }),
+  reduce({ state, input, accept, fx }) {
+    // input.response is "energy" | "steel".
+    return accept(state, [fx.close(chooseBonusFlow, { to: input.playerId })]);
   },
 });
 ```
 
-### `defineContinuation(...)`
-
-Use the shared helper when one continuation should accept prompt resumes,
-window resumes, or runtime-effect resumes and branch on `input.source`.
-
-```ts
-import { ids } from "../shared/manifest-contract";
-
-const resolveSharedPlacement = defineContinuation<GameContract>()({
-  data: z.object({
-    pendingCardId: ids.cardId,
-  }),
-  response: judgePlacementPrompt.responseSchema,
-  reduce({ state, input, accept }) {
-    if (input.source !== "prompt") {
-      return accept(state);
-    }
-    return accept(state);
-  },
-});
-```
-
-Runtime-owned effects such as `fx.randomInt(...)` resume shared
-continuations with `input.source === "shared"`.
-
-For simple one-prompt flows, prefer `definePromptFlow(...)` or
-`defineChoiceFlow(...)`. Keep the lower-level continuation helpers for shared
-resume paths, multi-step flows, or when one continuation must handle multiple
-sources.
+Prefer `context` for transient flow context. Use hidden state only when the
+data must outlive the response path or be reused elsewhere.
 
 ## `defineView(...)`
 
@@ -1060,22 +1059,166 @@ export const playerView = defineView<GameContract>()({
 });
 ```
 
+## `defineDerived(...)`
+
+Use `defineDerived(...)` to describe a pure, memoized projection of
+reducer state — longest-road holder, largest-army owner, public VP per
+player, winner detection, or any aggregate derived from component
+locations, zone contents, and resource counts.
+
+| Field     | Required | Notes                                                                             |
+| --------- | -------- | --------------------------------------------------------------------------------- |
+| `name`    | No       | Optional debug label; does not affect caching                                     |
+| `compute` | Yes      | Pure function of `{ state, q, derived }` returning the derived value              |
+
+```ts
+import { defineDerived } from "@dreamboard/app-sdk/reducer";
+import type { GameContract } from "./game-contract";
+
+export const largestArmy = defineDerived<GameContract>()({
+  name: "largestArmy",
+  compute: ({ state }) => {
+    const { turnOrder, knightsPlayed } = state.publicState;
+    let ownerPlayerId: string | null = null;
+    let size = 0;
+    for (const pid of turnOrder) {
+      const knights = knightsPlayed[pid] ?? 0;
+      if (knights >= 3 && knights > size) {
+        ownerPlayerId = pid;
+        size = knights;
+      }
+    }
+    return { ownerPlayerId, size };
+  },
+});
+```
+
+Derived values compose through the injected `derived` resolver:
+
+```ts
+export const publicVpByPlayer = defineDerived<GameContract>()({
+  name: "publicVpByPlayer",
+  compute: ({ state, derived }) => {
+    const lr = derived(longestRoad);
+    const la = derived(largestArmy);
+    // ... aggregate VP per player ...
+  },
+});
+```
+
+### Resolving a derived value
+
+Reducer callbacks (`enter`, `validate`, `reduce`, flow reducers,
+and view `project(...)`) all receive a `derived` helper alongside
+`accept`, `fx`, and `q`:
+
+```ts
+const placeSettlement = defineAction<GameContract>()({
+  params: z.object({ vertexId: ids.vertexId }),
+  reduce({ state, input, accept, derived }) {
+    const winner = derived(winnerOf);
+    return accept({
+      ...state,
+      publicState: { ...state.publicState, winnerPlayerId: winner },
+    });
+  },
+});
+```
+
+Each resolver is scoped to a single engine tick or view call. Results
+are memoized by the `DerivedDefinition` object identity, so composing
+the same derived value multiple times across reducer helpers and views
+costs one `compute(...)` invocation per tick.
+
+Re-entry on an in-flight definition throws a readable error, so cycles
+surface immediately during development.
+
+### Deriving over post-reduce state
+
+The `derived` in reducer context is scoped to the state *before* the
+reducer runs. When you need to derive over the state you just built —
+for example, checking a winner after a settlement is placed — spin a
+fresh resolver over the updated state:
+
+```ts
+import { createDerivedResolver } from "@dreamboard/app-sdk/reducer";
+import { winnerOf } from "./derived";
+
+reduce({ state, input, accept }) {
+  const pub = {
+    ...state.publicState,
+    buildingsByVertexId: { ...state.publicState.buildingsByVertexId, /* ... */ },
+  };
+  const nextState = { ...state, publicState: pub };
+  const winner = createDerivedResolver(nextState)(winnerOf);
+  return accept({ ...state, publicState: { ...pub, winnerPlayerId: winner } });
+}
+```
+
+### Anti-pattern: caching aggregates in `publicState`
+
+<Warning>
+  Do not mirror derived values back into `publicState`. Cached aggregates
+  drift whenever any reducer forgets to recompute them. Keep the raw
+  inputs (component locations, zone contents, resource counts, per-player
+  counters) in state, and express the aggregate through `defineDerived`.
+</Warning>
+
+**Bad:**
+
+```ts
+const publicStateSchema = z.object({
+  roadsByEdgeId: z.record(ids.edgeId, roadSchema),
+  // Cached aggregates — every road reducer has to remember to update these.
+  longestRoadOwner: ids.playerId.nullable(),
+  longestRoadLength: z.number().int().min(0),
+});
+```
+
+**Good:**
+
+```ts
+const publicStateSchema = z.object({
+  roadsByEdgeId: z.record(ids.edgeId, roadSchema),
+});
+
+// app/derived.ts
+export const longestRoad = defineDerived<GameContract>()({
+  name: "longestRoad",
+  compute: ({ state, q }) => {
+    // walk the road graph off state.publicState.roadsByEdgeId
+  },
+});
+```
+
+The view still exposes `longestRoadOwner` and `longestRoadLength` —
+they simply come from `derived(longestRoad)` instead of the state
+schema.
+
 ## Reducer callback helpers
 
 Reducer callbacks such as `enter(...)`, `validate(...)`, `reduce(...)`,
-continuation reducers, and view projectors receive shared runtime helpers.
+flow reducers, and view projectors receive shared runtime helpers.
 
-| Helper                         | Notes                                              |
-| ------------------------------ | -------------------------------------------------- |
-| `accept(state, effects?)`      | Successful reducer result                          |
-| `reject(errorCode, message?)`  | Immediate rejection                                |
-| `manifest`                     | Generated manifest contract                        |
-| `setup`                        | Selected setup profile plus resolved option values |
-| `currentPhase`                 | Current phase name                                 |
-| `playerOrder`                  | Full turn order                                    |
-| `activePlayers`                | Current active player IDs                          |
-| `promptByInstanceId(promptId)` | Reads one open prompt instance                     |
-| `windowByInstanceId(windowId)` | Reads one open window instance                     |
+| Helper                         | Notes                                                        |
+| ------------------------------ | ------------------------------------------------------------ |
+| `accept(state, effects?)`      | Successful reducer result                                    |
+| `reject(errorCode, message?)`  | Immediate rejection                                          |
+| `fx`                           | Runtime effect factory (see below)                           |
+| `ops`                          | Curried `State -> State` writer namespace                    |
+| `q`                            | Query surface for board, zone, card, player, component reads |
+| `derived(definition)`          | Resolves a `defineDerived(...)` value (memoized per tick)    |
+| `manifest`                     | Generated manifest contract                                  |
+| `setup`                        | Selected setup profile plus resolved option values           |
+| `currentPhase`                 | Current phase name                                           |
+| `playerOrder`                  | Full turn order                                              |
+| `activePlayers`                | Current active player IDs                                    |
+| `promptByInstanceId(promptId)` | Reads one open prompt instance                               |
+
+Destructure only the helpers you need, for example
+`reduce({ state, input, accept, fx, ops, q })` or
+`project({ state, playerId, q })`. The framework builds `ops` and `q` per tick
+— authored code should not re-create them from state.
 
 `setup.optionValues` is fully resolved in reducer callbacks and initialization
 contexts. Every declared setup option ID is present, with `null` for
@@ -1091,93 +1234,102 @@ The `fx` helper groups related capabilities:
 
 **Flow control**
 
-| Helper                                                                        | Notes                                       |
-| ----------------------------------------------------------------------------- | ------------------------------------------- |
-| `fx.transition(phaseName)`                                                    | Transition into another phase               |
-| `fx.openPrompt(prompt, { to, resume, title?, payload?, options? })`           | Open a prompt and bind a continuation token |
-| `fx.closePrompt(promptId)`                                                    | Close one open prompt instance              |
-| `fx.openWindow(window, { closePolicy?, addressedTo?, payload?, resume? })`    | Open a reducer-owned window                 |
-| `fx.closeWindow(windowId)`                                                    | Close one open window instance              |
+| Helper                                                       | Notes                                                 |
+| ------------------------------------------------------------ | ----------------------------------------------------- |
+| `fx.transition(phaseName)`                                   | Transition into another phase                         |
+| `fx.open(flow, { to, context?, title?, payload?, options? })` | Open a registered flow instance (prompt or otherwise) |
+| `fx.close(flow, { to })`                                     | Close every matching open instance for that player   |
 
 **Randomness (seeded, replayable RNG)**
 
-| Helper                                                        | Notes                                               |
-| ------------------------------------------------------------- | --------------------------------------------------- |
-| `fx.rollDie(dieId)`                                           | Roll one authored die with runtime-owned RNG        |
-| `fx.shuffleSharedZone(zoneId)`                                | Shuffle a shared zone/deck                          |
-| `fx.dealCardsToPlayerZone(fromZoneId, playerId, toZoneId, n)` | Deal cards from a shared zone into a player zone    |
-| `fx.sample(from, sampleId, resume, count?)`                   | Sample cards and resume a continuation              |
-| `fx.randomInt(min, max, randomIntId, resume)`                 | Sample one integer and resume a shared continuation |
+| Helper                                                       | Notes                                                                             |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| `fx.rollDie(dieId, { resume })`                              | Roll one authored die with runtime-owned RNG. `resume` is **required**.           |
+| `fx.shuffleSharedZone(zoneId, { resume? })`                  | Shuffle a shared zone/deck. `resume` is optional.                                 |
 
-**Scheduling**
-
-| Helper                                          | Notes                         |
-| ----------------------------------------------- | ----------------------------- |
-| `fx.dispatchSystem(event, payload?)`            | Queue a system event immediately |
-| `fx.scheduleTiming(timing, event, payload?)`    | Queue a timed system input    |
+`fx` only exposes capabilities that require the runtime — either because they
+consume seeded RNG or because they orchestrate runtime-owned state such as
+prompts and phase transitions. Purely deterministic state changes
+(for example dealing the top `n` cards from a shuffled deck into a player's
+hand) belong in the reducer body via `pipe(state, ops.*)` — see
+`ops.dealCardsToPlayerZone(...)` below.
 
 Use `fx.transition(phaseName)` when you want Dreamboard to switch runtime
 phase routing. A transition changes the current phase, reinitializes the next
 phase's `state.phase`, and runs that phase's `enter(...)`.
 
-Prompt and window instance IDs are branded runtime IDs. Use the values returned
-by the runtime state instead of raw strings.
+Prompt instance IDs are branded runtime IDs. Use the values returned by the
+runtime state instead of raw strings; the flow API exposes
+`input.promptId` when you need to reference one explicitly.
 
 Randomness follows the same rule. Runtime-owned effects such as
-`fx.rollDie(...)`, `fx.shuffleSharedZone(...)`, `fx.sample(...)`, and
-`fx.randomInt(...)` consume seeded interpreter RNG. Authored reducer code
-should not call `Math.random()` directly.
+`fx.rollDie(...)` and `fx.shuffleSharedZone(...)` consume seeded interpreter
+RNG. Authored reducer code should not call `Math.random()` directly.
 
-Use `fx.rollDie(...)` when the runtime only needs to update an authored die.
-Use `fx.randomInt(...)` when reducer logic needs the sampled value back
-through a shared continuation.
+Use `fx.rollDie(...)` when the runtime needs to update an authored die and
+the reducer needs to react to the rolled value. Pass `resume` with a
+`defineFlow({ type: "rollDie", ... })` token so the SDK wires up the
+follow-up reducer automatically.
 
-Prefer `flow.open(fx, ...)` for single prompt-response flows. Reach for
-`fx.openPrompt(...)` directly when you need the low-level prompt API.
+For randomised draws, queue `fx.shuffleSharedZone(...)` and then deal from
+the shuffled deck with `ops.dealCardsToPlayerZone(...)` in the flow
+continuation (or in a follow-up auto phase when you pair the shuffle with
+a transition).
 
-```ts
-const resolveRoll = defineContinuation<GameContract>()({
-  data: z.object({}),
-  response: z.object({
-    randomIntId: z.string(),
-    value: z.number().int(),
-  }),
-  reduce({ state, input, accept }) {
-    if (input.source !== "shared") {
-      return accept(state);
-    }
-
-    return accept({
-      ...state,
-      publicState: {
-        ...state.publicState,
-        lastRoll: input.response.value,
-      },
-    });
-  },
-});
-```
-
-```ts
-reduce({ state, accept, fx }) {
-  return accept(state, [fx.rollDie("turn-die")]);
-}
-```
+Prefer `fx.open(flow, { to, context? })` for single prompt-response flows.
 
 ```ts
 reduce({ state, accept, fx }) {
   return accept(state, [
-    fx.randomInt(1, 6, "turn-roll", resolveRoll({})),
+    fx.rollDie("turn-die", { resume: onDieRolled() }),
   ]);
 }
 ```
 
 ```ts
+// Split setup into two auto phases: shuffle first, then deal deterministically.
+// `shuffleDecks` uses seeded RNG; `dealCards` uses a pure `ops.*` op.
+import { definePhase, pipe } from "@dreamboard/app-sdk/reducer";
+
+export const shuffleDecks = definePhase<GameContract>()({
+  kind: "auto",
+  state: z.object({}),
+  initialState: () => ({}),
+  enter({ state, accept, fx }) {
+    return accept(state, [
+      fx.shuffleSharedZone("draw-pile"),
+      fx.transition("dealCards"),
+    ]);
+  },
+});
+
+export const dealCards = definePhase<GameContract>()({
+  kind: "auto",
+  state: z.object({}),
+  initialState: () => ({}),
+  enter({ state, accept, fx, ops }) {
+    return accept(
+      pipe(
+        state,
+        ops.dealCardsToPlayerZone({
+          fromZoneId: "draw-pile",
+          playerId: "player-1",
+          toZoneId: "hand",
+          count: 5,
+        }),
+      ),
+      [fx.transition("play")],
+    );
+  },
+});
+```
+
+```ts
 enter({ state, accept, fx }) {
   return accept(state, [
-    fx.openPrompt(judgePlacementPrompt, {
+    fx.open(judgePlacementFlow, {
       to: "player-1",
-      resume: resolvePlacement({ pendingCardId: "a-dog" }),
+      context: { pendingCardId: "a-dog" },
       options: [
         { id: "ring-1", label: "Ring 1" },
         { id: "discard", label: "Not in any ring" },
@@ -1192,12 +1344,15 @@ enter({ state, accept, fx }) {
 
 Reducer helpers follow one rule: reads go through queries, writes go through
 curried `ops.*`. Every write returns a new state — no helper mutates in place.
+Both `q` and `ops` are injected into reducer callbacks; import `pipe` from
+`@dreamboard/app-sdk/reducer` to thread writes together.
 
-### Reads: `createStateQueries` and `createTableQueries`
+### Reads: the injected `q`
 
-`createStateQueries(state)` is the preferred read API when you already have the
-full reducer state. Use `createTableQueries(table)` when you only have a bare
-`table` handle (for example inside low-level adapters).
+The `q` injected into reducer callbacks exposes the same surface as
+`createStateQueries(state)`. Use `createStateQueries(...)` or
+`createTableQueries(table)` only when you are outside a reducer callback
+(low-level adapters, tests).
 
 | Namespace       | Read surface                                                                                |
 | --------------- | ------------------------------------------------------------------------------------------- |
@@ -1208,45 +1363,98 @@ full reducer state. Use `createTableQueries(table)` when you only have a bare
 | `q.component.*` | Raw location plus resolved deck, hand, zone, space, container, edge, vertex, and slot reads |
 
 ```ts
-const q = createStateQueries(state);
-
-const handCards = q.zone.playerCards(input.playerId, "things-hand");
-const board = q.board.tiled("market-board");
-const spaceOccupants = q.board.spaceOccupants("market-board", "tavern");
-const placedCard = q.component.space(input.params.cardId);
+reduce({ state, input, accept, q }) {
+  const handCards = q.zone.playerCards(input.playerId, "things-hand");
+  const board = q.board.tiled("market-board");
+  const spaceOccupants = q.board.spaceOccupants("market-board", "tavern");
+  const placedCard = q.component.space(input.params.cardId);
+  return accept(state);
+}
 ```
 
-### Writes: `createReducerOps` plus `pipe`
+### Writes: injected `ops` plus `pipe`
 
-Create one `ops` factory per reducer surface (typically in
-`app/reducer-support.ts`) and thread writes through `pipe(state, ...ops)`. The
-pipe preserves subtype narrowing, so phase-scoped writers such as
-`ops.setPhaseState(...)` still see the correct `state.phase` type.
+Destructure the injected `ops` in any reducer callback and thread writes
+through `pipe(state, ...ops)`. The pipe preserves subtype narrowing, so
+phase-scoped writers such as `ops.setPhaseState(...)` still see the correct
+`state.phase` type.
 
 ```ts
-import { createReducerOps, pipe } from "@dreamboard/app-sdk/reducer";
+import { pipe } from "@dreamboard/app-sdk/reducer";
+
+reduce({ state, input, accept, ops, q }) {
+  const order = q.player.order();
+  const nextPlayerId =
+    order[(order.indexOf(input.playerId) + 1) % order.length]!;
+
+  const next = pipe(
+    state,
+    ops.moveCardFromPlayerZoneToSharedZone({
+      playerId: input.playerId,
+      fromZoneId: "things-hand",
+      toZoneId: "ring-1",
+      cardId: input.params.cardId,
+      playedBy: input.playerId,
+    }),
+    ops.setActivePlayers([nextPlayerId]),
+  );
+
+  return accept(next);
+}
+```
+
+Read turn ownership from `state.flow.activePlayers` and compute the next seat
+with `q.player.order()`. Do not mirror either value into `publicState`.
+
+### Author helpers in `app/reducer-support.ts`
+
+Put reducer helpers that need `ops` or `q` in `app/reducer-support.ts` and
+accept them as arguments rather than constructing them inside the helper.
+Export the `Ops` and `Q` type aliases from the same file so helpers keep a
+single source of truth for their injected dependencies.
+
+```ts
+import type {
+  Op,
+  ReducerOps,
+  TableQueriesOfState,
+} from "@dreamboard/app-sdk/reducer";
+import type { PlayerId, ThingsDeckCardId } from "../shared/manifest-contract";
 import type { GameState } from "./game-contract";
 
-export const ops = createReducerOps<GameState>();
-export { pipe };
+export type Ops = ReducerOps<GameState>;
+export type Q = TableQueriesOfState<GameState>;
+
+export function playerThingHand(q: Q, playerId: PlayerId): ThingsDeckCardId[] {
+  return [...q.zone.playerCards(playerId, "things-hand")];
+}
+
+export function incrementScore(ops: Ops, playerId: PlayerId): Op<GameState> {
+  return ops.patchPublicState((prev) => ({
+    ...prev,
+    scores: {
+      ...prev.scores,
+      [playerId]: (prev.scores[playerId] ?? 0) + 1,
+    },
+  }));
+}
 ```
 
+Helpers that read take `q: Q`. Helpers that compose one write return
+`Op<GameState>` and take `ops: Ops`. Reducer callbacks then pass the injected
+values straight through:
+
 ```ts
-import { ops, pipe } from "../reducer-support";
+import { pipe } from "@dreamboard/app-sdk/reducer";
+import { incrementScore, playerThingHand } from "../reducer-support";
 
-const next = pipe(
-  state,
-  ops.setActivePlayers([state.publicState.currentPlayerId]),
-  ops.moveCardFromPlayerZoneToSharedZone({
-    playerId: input.playerId,
-    fromZoneId: "things-hand",
-    toZoneId: "ring-1",
-    cardId: input.params.cardId,
-    playedBy: input.playerId,
-  }),
-);
-
-return accept(next);
+reduce({ state, input, accept, ops, q }) {
+  const hand = playerThingHand(q, input.playerId);
+  if (hand.length === 0) {
+    return accept(state);
+  }
+  return accept(pipe(state, incrementScore(ops, input.playerId)));
+}
 ```
 
 ### `ops.*` reference
@@ -1256,14 +1464,15 @@ or invoke directly when you need a one-off copy.
 
 **Flow and zones**
 
-| Op                                                             | Notes                                                                        |
-| -------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `ops.setActivePlayers(playerIds)`                              | Replaces `flow.activePlayers`                                                |
-| `ops.setPhaseState(phaseState)`                                | Replaces `state.phase` for the current phase only; does not transition phases |
-| `ops.addCardToSharedZone(zoneId, cardId, playedBy?)`           | Appends a card to a shared zone                                              |
-| `ops.removeCardFromSharedZone(zoneId, cardId)`                 | Removes a card from a shared zone                                            |
-| `ops.moveCardFromPlayerZoneToSharedZone({ ... })`              | Moves one card from a player zone to a shared zone                           |
-| `ops.moveCardBetweenSharedZones({ ... })`                      | Moves one card between shared zones                                          |
+| Op                                                                    | Notes                                                                        |
+| --------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `ops.setActivePlayers(playerIds)`                                     | Replaces `flow.activePlayers`                                                |
+| `ops.setPhaseState(phaseState)`                                       | Replaces `state.phase` for the current phase only; does not transition phases |
+| `ops.addCardToSharedZone(zoneId, cardId, playedBy?)`                  | Appends a card to a shared zone                                              |
+| `ops.removeCardFromSharedZone(zoneId, cardId)`                        | Removes a card from a shared zone                                            |
+| `ops.moveCardFromPlayerZoneToSharedZone({ ... })`                     | Moves one card from a player zone to a shared zone                           |
+| `ops.moveCardBetweenSharedZones({ ... })`                             | Moves one card between shared zones                                          |
+| `ops.dealCardsToPlayerZone({ fromZoneId, playerId, toZoneId, count })` | Deals the top `count` cards from a shared deck into a player zone (pure)     |
 
 <Info>
   `ops.setPhaseState(...)` only replaces the typed payload stored in
@@ -1359,7 +1568,7 @@ export default createReducerBundle(game);
 | `getView({ state, playerId, viewId? })`              | Projects one named reducer view; defaults to `player`                                    |
 
 The bundle also exposes reducer metadata registries such as `actions`,
-`prompts`, `views`, `windows`, `continuations`, and `metadata`.
+`prompts`, `views`, `flows`, and `metadata`.
 
 ## High-value type utilities
 
@@ -1374,8 +1583,6 @@ The bundle also exposes reducer metadata registries such as `actions`,
 | `ActionParamsOfDefinitionPhase<Definition, PhaseName, ActionName>` | Inferred params for one phase-local action                           |
 | `PromptIdsOfDefinition<Definition>`                                | Prompt ID union for a reducer definition                             |
 | `PromptResponseOfDefinition<Definition, PromptId>`                 | Response payload for one prompt                                      |
-| `WindowActionNamesOfDefinition<Definition, WindowId>`              | Window action-name union for one registered window                   |
-| `WindowActionParamsOfDefinition<Definition, WindowId, ActionName>` | Inferred params payload for one window action                        |
 
 ```ts
 import type {

@@ -33,34 +33,11 @@ declare module "@dreamboard/ui-contract" {
   export type PromptResponse<_Name extends PromptId> = unknown;
   export type PromptInstanceId<_Name extends PromptId> = string;
 
-  export type WindowId = string;
-  export type WindowInstanceId<_Name extends WindowId> = string;
-  export type WindowActionName<_Name extends WindowId> = string;
-  export type WindowActionParams<
-    _Name extends WindowId,
-    _Action extends WindowActionName<_Name>,
-  > = Record<string, unknown> | undefined;
-  export type WindowActionArgs<
-    _Name extends WindowId,
-    _Action extends WindowActionName<_Name>,
-  > = [] | [Record<string, unknown>];
-  export type WindowActionCommand<_Name extends WindowId> =
-    | { type: string }
-    | { type: string; params?: Record<string, unknown> };
-  export type WindowCommands<_Name extends WindowId> = Record<
-    string,
-    (...args: [] | [Record<string, unknown>]) => {
-      type: string;
-      params?: Record<string, unknown>;
-    }
-  >;
-
   const uiContract: any;
   export default uiContract;
   export const uiStateSchema: any;
   export const uiContractSchema: any;
   export const phaseCommands: Record<string, PhaseCommands<string>>;
-  export const windowCommands: Record<string, WindowCommands<string>>;
 }
 
 declare module "@dreamboard/manifest-contract" {

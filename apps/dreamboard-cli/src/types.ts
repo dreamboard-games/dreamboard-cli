@@ -1,5 +1,10 @@
 export type Environment = "local" | "dev" | "prod";
 
+export type GlobalAuth = {
+  authToken?: string;
+  refreshToken?: string;
+};
+
 export type LocalMaintainerSdkPackageName =
   | "@dreamboard/api-client"
   | "@dreamboard/app-sdk"
@@ -26,12 +31,9 @@ export type EnvironmentConfig = {
   supabaseAnonKey: string;
 };
 
-export type GlobalConfig = {
+export type GlobalConfig = GlobalAuth & {
   // Current environment (defaults to 'dev' if not set)
   environment?: Environment;
-  // Auth tokens
-  authToken?: string;
-  refreshToken?: string;
 };
 
 export type ProjectPendingSyncPhase =

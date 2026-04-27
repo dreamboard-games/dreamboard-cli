@@ -80,7 +80,7 @@ A fresh `dreamboard new` workspace contains:
 Use the commands for different kinds of state:
 
 - `dreamboard sync`
-  Upload local authored changes and advance the remote authored head. Run this after editing `rule.md`, `manifest.ts`, or authored source files that should be part of the next remote build. Re-running `sync` against the same authored content is safe; Dreamboard reuses already-uploaded source blobs and still refreshes framework-owned generated files. When `package.json` changes, `sync` also prepares workspace dependencies automatically. If Dreamboard reports missing dependency tooling, see https://dreamboard.games/docs/reference/dependency-setup.
+  Upload local authored changes and advance the remote authored head. Run this after editing `rule.md`, `manifest.ts`, or authored source files that should be part of the next remote build. Re-running `sync` against the same authored content is safe; Dreamboard reuses already-uploaded source blobs and still refreshes framework-owned generated files. When `package.json` changes, `sync` also prepares workspace dependencies automatically.
 - `dreamboard compile`
   Compile the current remote authored head. Run this after `sync`, or re-run it after a failed compile when you have not made new authored edits.
 - `dreamboard pull`

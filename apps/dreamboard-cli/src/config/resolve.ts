@@ -12,6 +12,7 @@ import { loadGlobalConfig, saveGlobalConfig } from "./global-config.js";
 import { findProjectRoot, loadProjectConfig } from "./project-config.js";
 
 const LOGIN_HINT = "Run `dreamboard login` to authenticate again.";
+const TOKEN_REFRESH_WINDOW_MS = 5 * 60 * 1000;
 
 export function resolveConfig(
   globalConfig: GlobalConfig,
@@ -149,6 +150,17 @@ async function refreshAuthTokenIfNeeded(
   if (!config.authToken || !config.refreshToken) return null;
   if (!config.supabaseUrl || !config.supabaseAnonKey) return null;
 
+  const authTokenExpiry = getAuthTokenExpiry(config.authToken);
+  const expiresAtMs = authTokenExpiry?.getTime();
+  const isExpired = expiresAtMs !== undefined && expiresAtMs <= Date.now();
+  const shouldRefresh =
+    expiresAtMs !== undefined &&
+    expiresAtMs <= Date.now() + TOKEN_REFRESH_WINDOW_MS;
+
+  if (!shouldRefresh) {
+    return null;
+  }
+
   try {
     const initialSession = {
       authToken: config.authToken,
@@ -174,10 +186,26 @@ async function refreshAuthTokenIfNeeded(
           return recoveredSession;
         }
 
-        config.authToken = undefined;
         config.refreshToken = undefined;
-        await clearStoredSession();
-        throw new Error(formatStoredSessionInvalidMessage(error.message));
+        await persistStoredSession({
+          authToken: config.authToken,
+          refreshToken: undefined,
+        });
+
+        if (isExpired) {
+          throw new Error(formatStoredSessionInvalidMessage(error.message));
+        }
+
+        console.warn(
+          `Stored refresh token is invalid: ${error.message}. Continuing with the existing access token until it expires.`,
+        );
+        return null;
+      }
+
+      if (isExpired) {
+        throw new Error(
+          `Access token refresh failed: ${error.message}. ${LOGIN_HINT}`,
+        );
       }
 
       // If refresh fails, continue with the original token — it may still be valid
@@ -277,15 +305,6 @@ async function tryRecoverStoredSession(
   });
 
   return session;
-}
-
-async function clearStoredSession(): Promise<void> {
-  const globalConfig = await loadGlobalConfig();
-  await saveGlobalConfig({
-    ...globalConfig,
-    authToken: undefined,
-    refreshToken: undefined,
-  });
 }
 
 export function requireAuth(config: ResolvedConfig): void {

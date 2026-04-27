@@ -209,7 +209,6 @@ export class DevHostController {
             seatViewsByPlayerId: {},
             availableActions: [],
             prompts: [],
-            windows: [],
             layout: null,
             cardDisplayConfigs: null,
           },
@@ -357,6 +356,7 @@ export class DevHostController {
     }
 
     if (
+      persisted.sessionId !== this.defaultSession.sessionId ||
       persisted.gameId !== this.defaultSession.gameId ||
       persisted.compiledResultId !== this.defaultSession.compiledResultId ||
       persisted.setupProfileId !== this.defaultSession.setupProfileId
@@ -552,44 +552,6 @@ export class DevHostController {
             data.errorCode ?? undefined,
             data.message ?? undefined,
             "Prompt response rejected",
-          );
-        }
-      },
-      onWindowAction: async (playerId, windowId, actionType, params = {}) => {
-        const expectedVersion = this.store.getState().gameplay.version;
-        const { data, error } = await submitInput({
-          path: { sessionId: this.currentSession.sessionId },
-          headers: this.authHeaders(),
-          body: {
-            input: {
-              kind: "windowAction",
-              playerId,
-              windowId,
-              actionType,
-              params: JSON.stringify(params),
-            },
-            expectedVersion,
-          },
-        });
-
-        if (error) {
-          throw createSubmissionError(
-            "api-error",
-            undefined,
-            "Failed to submit window action",
-          );
-        }
-        if (data?.accepted === false) {
-          this.store
-            .getState()
-            .enqueueActionRejected(
-              data.message ?? "Window action rejected",
-              playerId,
-            );
-          throw createSubmissionError(
-            data.errorCode ?? undefined,
-            data.message ?? undefined,
-            "Window action rejected",
           );
         }
       },

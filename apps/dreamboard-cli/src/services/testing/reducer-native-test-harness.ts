@@ -102,13 +102,6 @@ type HistoryInput =
       playerId: string;
       promptId: string;
       response: unknown;
-    }
-  | {
-      kind: "windowAction";
-      playerId: string;
-      windowId: string;
-      actionType: string;
-      params: Record<string, unknown>;
     };
 
 type HistoryRecord = {
@@ -144,7 +137,6 @@ type SharedScenarioContext = {
   state: () => string;
   view: (playerId: string) => unknown;
   prompts: (playerId: string) => readonly Record<string, unknown>[];
-  windows: (playerId: string) => readonly Record<string, unknown>[];
   expect: ExpectApi;
 };
 
@@ -162,22 +154,10 @@ type ScenarioGameApi = {
     promptOrId: string | { id: string; promptId?: string },
     response: unknown,
   ) => Promise<void>;
-  windowAction: (
-    playerId: string,
-    windowOrId: string | { id: string; windowId?: string },
-    actionOrCommand:
-      | string
-      | {
-          type: string;
-          params?: Record<string, unknown>;
-        },
-    params?: Record<string, unknown>,
-  ) => Promise<void>;
   expectPrompt: (
     playerId: string,
     promptId: string,
   ) => Promise<Record<string, unknown>>;
-  expectWindow: (windowId: string) => Promise<Record<string, unknown>>;
 };
 
 type SubmissionError = Error & { errorCode?: string };
@@ -200,15 +180,6 @@ type BrowserRunnerDriver = {
     bridge: BrowserBridgeClient,
     input: { playerId: string; promptId: string; response: unknown },
   ) => Promise<boolean | void> | boolean | void;
-  windowAction?: (
-    bridge: BrowserBridgeClient,
-    input: {
-      playerId: string;
-      windowId: string;
-      actionType: string;
-      params: Record<string, unknown>;
-    },
-  ) => Promise<boolean | void> | boolean | void;
 };
 
 type BrowserSnapshot = {
@@ -221,7 +192,6 @@ type BrowserSnapshot = {
   seatViewsByPlayerId: Record<string, unknown>;
   availableActionsByPlayerId?: Record<string, string[]>;
   prompts: Array<Record<string, unknown>>;
-  windows: Array<Record<string, unknown>>;
 };
 
 export type ReducerNativeScenarioResult = {
@@ -248,12 +218,6 @@ type BrowserBridgeClient = {
     promptId: string,
     response: unknown,
   ) => Promise<void>;
-  submitWindowAction: (
-    playerId: string,
-    windowId: string,
-    actionType: string,
-    params: Record<string, unknown>,
-  ) => Promise<void>;
   waitForVersionChange: (
     previousVersion: number,
     timeoutMs?: number,
@@ -266,7 +230,6 @@ type GameplaySnapshot = {
   seatViewsByPlayerId: Record<string, unknown>;
   availableActionsByPlayerId: Record<string, string[]>;
   prompts: Array<Record<string, unknown>>;
-  windows: Array<Record<string, unknown>>;
 };
 
 function createSubmissionError(
@@ -826,17 +789,6 @@ class ShadowReducerRuntime {
     );
   }
 
-  windowInstances(): Array<Record<string, unknown>> {
-    return ((this.rawState().runtime as { windows?: unknown[] } | undefined)
-      ?.windows ?? []) as Array<Record<string, unknown>>;
-  }
-
-  windowsForPlayer(playerId: string): Array<Record<string, unknown>> {
-    return this.windowInstances().filter((window) =>
-      windowTargetsPlayer(window, playerId),
-    );
-  }
-
   clearHistory(): void {
     this.historyRecords.length = 0;
   }
@@ -922,21 +874,6 @@ class ShadowReducerRuntime {
       response,
     });
   }
-
-  async submitWindowAction(
-    playerId: string,
-    windowId: string,
-    actionType: string,
-    params: Record<string, unknown>,
-  ): Promise<void> {
-    await this.applyInput({
-      kind: "windowAction",
-      playerId,
-      windowId,
-      actionType,
-      params,
-    });
-  }
 }
 
 function toReducerInput(input: HistoryInput): Record<string, unknown> {
@@ -955,14 +892,6 @@ function toReducerInput(input: HistoryInput): Record<string, unknown> {
         promptId: input.promptId,
         response: input.response,
       };
-    case "windowAction":
-      return {
-        kind: "windowAction",
-        playerId: input.playerId,
-        windowId: input.windowId,
-        actionType: input.actionType,
-        params: input.params,
-      };
   }
 }
 
@@ -973,16 +902,6 @@ function promptTargetsPlayer(
   return prompt.to === playerId;
 }
 
-function windowTargetsPlayer(
-  window: Record<string, unknown>,
-  playerId: string,
-): boolean {
-  const addressedTo = Array.isArray(window.addressedTo)
-    ? window.addressedTo
-    : [];
-  return addressedTo.length === 0 || addressedTo.includes(playerId);
-}
-
 class EmbeddedGameplayTracker {
   private readonly abortController = new AbortController();
   private readonly state: GameplaySnapshot = {
@@ -991,7 +910,6 @@ class EmbeddedGameplayTracker {
     seatViewsByPlayerId: {},
     availableActionsByPlayerId: {},
     prompts: [],
-    windows: [],
   };
   private readonly events: GameMessage[] = [];
   private connected = false;
@@ -1030,7 +948,6 @@ class EmbeddedGameplayTracker {
       seatViewsByPlayerId: { ...this.state.seatViewsByPlayerId },
       availableActionsByPlayerId: { ...this.state.availableActionsByPlayerId },
       prompts: [...this.state.prompts],
-      windows: [...this.state.windows],
     };
   }
 
@@ -1050,9 +967,6 @@ class EmbeddedGameplayTracker {
       this.state.prompts = message.gameplay.prompts as Array<
         Record<string, unknown>
       >;
-      this.state.windows = message.gameplay.windows as Array<
-        Record<string, unknown>
-      >;
       return;
     }
 
@@ -1069,9 +983,6 @@ class EmbeddedGameplayTracker {
         ]),
       );
       this.state.prompts = message.gameplay.prompts as Array<
-        Record<string, unknown>
-      >;
-      this.state.windows = message.gameplay.windows as Array<
         Record<string, unknown>
       >;
     }
@@ -1152,15 +1063,6 @@ export function assertDispatchResultWireContract(result: unknown): void {
 
     const effect = (entry as { effect?: unknown }).effect;
     assertTaggedByKind(effect, `DispatchResult.accept.trace[${index}].effect`);
-    if (effect.type !== "openWindow") {
-      continue;
-    }
-
-    const closePolicy = (effect as { closePolicy?: unknown }).closePolicy;
-    assertTaggedByKind(
-      closePolicy,
-      `DispatchResult.accept.trace[${index}].effect.closePolicy`,
-    );
   }
 }
 
@@ -1246,28 +1148,6 @@ async function createBrowserBridgeClient(
           ),
         [playerId, promptId, response] as const,
       ),
-    submitWindowAction: (playerId, windowId, actionType, params) =>
-      page.evaluate(
-        ([nextPlayerId, nextWindowId, nextActionType, nextParams]) =>
-          (
-            window as typeof window & {
-              __dreamboardTestBridge__: {
-                submitWindowAction: (
-                  playerId: string,
-                  windowId: string,
-                  actionType: string,
-                  params: Record<string, unknown>,
-                ) => Promise<void>;
-              };
-            }
-          ).__dreamboardTestBridge__.submitWindowAction(
-            nextPlayerId,
-            nextWindowId,
-            nextActionType,
-            nextParams,
-          ),
-        [playerId, windowId, actionType, params] as const,
-      ),
     waitForVersionChange: async (
       previousVersion,
       timeoutMs = DEFAULT_TIMEOUT_MS,
@@ -1311,18 +1191,6 @@ function normalizePromptForComparison(
   };
 }
 
-function normalizeWindowForComparison(
-  window: Record<string, unknown>,
-): Record<string, unknown> {
-  return {
-    id: window.id,
-    windowId: window.windowId,
-    closePolicy: window.closePolicy ?? null,
-    addressedTo: Array.isArray(window.addressedTo) ? window.addressedTo : [],
-    payload: window.payload ?? null,
-  };
-}
-
 async function assertLiveMatchesShadow(
   runner: TestRunnerName,
   shadow: ShadowReducerRuntime,
@@ -1340,16 +1208,6 @@ async function assertLiveMatchesShadow(
     .map(normalizePromptForComparison);
   if (!deepEqual(livePrompts, shadowPrompts)) {
     throw new Error("Live prompt state diverged from reducer shadow state.");
-  }
-
-  const liveWindows = ("windows" in live ? live.windows : []).map(
-    normalizeWindowForComparison,
-  );
-  const shadowWindows = shadow
-    .windowInstances()
-    .map(normalizeWindowForComparison);
-  if (!deepEqual(liveWindows, shadowWindows)) {
-    throw new Error("Live window state diverged from reducer shadow state.");
   }
 
   const currentPhase =
@@ -1461,31 +1319,6 @@ async function createScenarioContext(options: {
       .promptsForPlayer(playerId)
       .find((candidate) => candidate.promptId === promptOrId);
     return (activePrompt?.id as string | undefined) ?? promptOrId;
-  };
-
-  const resolveWindowInstanceId = (
-    playerId: string,
-    windowOrId: string | { id: string; windowId?: string },
-  ): string => {
-    if (typeof windowOrId !== "string") {
-      return (
-        (windowOrId.id as string | undefined) ??
-        (windowOrId.windowId as string | undefined) ??
-        ""
-      );
-    }
-
-    const directMatch = options.shadow
-      .windowInstances()
-      .find((candidate) => candidate.id === windowOrId);
-    if (directMatch) {
-      return windowOrId;
-    }
-
-    const activeWindow = options.shadow
-      .windowsForPlayer(playerId)
-      .find((candidate) => candidate.windowId === windowOrId);
-    return (activeWindow?.id as string | undefined) ?? windowOrId;
   };
 
   const api: ScenarioGameApi = {
@@ -1672,107 +1505,6 @@ async function createScenarioContext(options: {
         await assertLiveMatchesShadow("browser", options.shadow, live);
       }
     },
-    windowAction: async (playerId, windowOrId, actionOrCommand, params) => {
-      await api.start();
-      const windowId = resolveWindowInstanceId(playerId, windowOrId);
-      const actionType =
-        typeof actionOrCommand === "string"
-          ? actionOrCommand
-          : actionOrCommand.type;
-      const actionParams =
-        typeof actionOrCommand === "string"
-          ? (params ?? {})
-          : (actionOrCommand.params ?? {});
-
-      const previousVersion =
-        options.runner === "embedded"
-          ? (options.embedded?.tracker.snapshot().version ?? 0)
-          : options.runner === "browser"
-            ? ((await options.browser?.bridge.snapshot())?.version ?? 0)
-            : 0;
-
-      if (options.runner === "embedded" && options.embedded) {
-        const { data, error } = await submitInput({
-          path: { sessionId: options.embedded.sessionId },
-          body: {
-            input: {
-              kind: "windowAction",
-              playerId,
-              windowId,
-              actionType,
-              params: JSON.stringify(actionParams),
-            },
-            expectedVersion: previousVersion,
-          },
-        });
-        if (error) {
-          throw createSubmissionError(
-            "api-error",
-            undefined,
-            "Failed to submit window action",
-          );
-        }
-        if (data?.accepted === false) {
-          const shadowError = await tryShadowWindow(
-            options.shadow,
-            playerId,
-            windowId,
-            actionType,
-            actionParams,
-          );
-          if (!shadowError || shadowError.errorCode !== data.errorCode) {
-            throw new Error(
-              "Embedded window rejection diverged from reducer shadow state.",
-            );
-          }
-          throw createSubmissionError(
-            data.errorCode ?? undefined,
-            data.message ?? undefined,
-            "Window action rejected",
-          );
-        }
-      } else if (options.runner === "browser" && options.browser) {
-        const handled =
-          (await options.browser.driver?.windowAction?.(
-            options.browser.bridge,
-            {
-              playerId,
-              windowId,
-              actionType,
-              params: actionParams,
-            },
-          )) === true;
-        if (!handled) {
-          await options.browser.bridge.submitWindowAction(
-            playerId,
-            windowId,
-            actionType,
-            actionParams,
-          );
-        }
-      }
-
-      await options.shadow.submitWindowAction(
-        playerId,
-        windowId,
-        actionType,
-        actionParams,
-      );
-
-      if (options.runner === "embedded" && options.embedded) {
-        await options.embedded.tracker.waitForVersionChange(previousVersion);
-        await assertLiveMatchesShadow(
-          "embedded",
-          options.shadow,
-          options.embedded.tracker.snapshot(),
-        );
-      }
-      if (options.runner === "browser" && options.browser) {
-        const live =
-          await options.browser.bridge.waitForVersionChange(previousVersion);
-        await assertLiveMatchesShadow("browser", options.shadow, live);
-      }
-    },
     expectPrompt: async (playerId, promptId) => {
       await api.start();
       const started = Date.now();
@@ -1802,35 +1534,6 @@ async function createScenarioContext(options: {
       }
       throw new Error(`Timed out waiting for prompt '${promptId}'.`);
     },
-    expectWindow: async (windowId) => {
-      await api.start();
-      const started = Date.now();
-      while (Date.now() - started < DEFAULT_TIMEOUT_MS) {
-        const window =
-          options.shadow
-            .windowInstances()
-            .find((candidate) => candidate.windowId === windowId) ?? null;
-        if (window) {
-          if (options.runner === "embedded" && options.embedded) {
-            await assertLiveMatchesShadow(
-              "embedded",
-              options.shadow,
-              options.embedded.tracker.snapshot(),
-            );
-          }
-          if (options.runner === "browser" && options.browser) {
-            await assertLiveMatchesShadow(
-              "browser",
-              options.shadow,
-              await options.browser.bridge.snapshot(),
-            );
-          }
-          return window;
-        }
-        await sleep(20);
-      }
-      throw new Error(`Timed out waiting for window '${windowId}'.`);
-    },
   };
 
   return {
@@ -1839,7 +1542,6 @@ async function createScenarioContext(options: {
     state: () => options.shadow.phase(),
     view: (playerId) => options.shadow.view(playerId),
     prompts: (playerId) => options.shadow.promptsForPlayer(playerId),
-    windows: (playerId) => options.shadow.windowsForPlayer(playerId),
     expect,
   };
 }
@@ -1873,27 +1575,6 @@ async function tryShadowPrompt(
   try {
     await shadow.submitPromptResponse(playerId, promptId, response);
     throw new Error("Expected shadow prompt response to reject.");
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      (error as SubmissionError).name === "SubmissionError"
-    ) {
-      return error as SubmissionError;
-    }
-    throw error;
-  }
-}
-
-async function tryShadowWindow(
-  shadow: ShadowReducerRuntime,
-  playerId: string,
-  windowId: string,
-  actionType: string,
-  params: Record<string, unknown>,
-): Promise<SubmissionError | null> {
-  try {
-    await shadow.submitWindowAction(playerId, windowId, actionType, params);
-    throw new Error("Expected shadow window action to reject.");
   } catch (error) {
     if (
       error instanceof Error &&

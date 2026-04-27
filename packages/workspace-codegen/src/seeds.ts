@@ -10,25 +10,15 @@ const UI_SDK_COMPONENT_SEED_PREFIX = "ui/components/dreamboard/";
 const UI_SDK_COMPONENT_IMPORT_REWRITES = new Map<string, string>([
   ["../manifest-contract.js", "@dreamboard/manifest-contract"],
   ["../../manifest-contract.js", "@dreamboard/manifest-contract"],
-  [
-    "../context/RuntimeContext.js",
-    "@dreamboard/ui-sdk/internal/runtime-context",
-  ],
-  ["../hooks/useHandLayout.js", "@dreamboard/ui-sdk/internal/useHandLayout"],
-  [
-    "../hooks/usePluginRuntime.js",
-    "@dreamboard/ui-sdk/internal/usePluginRuntime",
-  ],
-  [
-    "../runtime/createPluginRuntimeAPI.js",
-    "@dreamboard/ui-sdk/internal/createPluginRuntimeAPI",
-  ],
-  ["../types/player-state.js", "@dreamboard/ui-sdk/internal/player-state"],
-  ["../types/plugin-state.js", "@dreamboard/ui-sdk/internal/plugin-state"],
-  ["../../hooks/usePanZoom.js", "@dreamboard/ui-sdk/internal/usePanZoom"],
-  ["../../hooks/useIsMobile.js", "@dreamboard/ui-sdk/internal/useIsMobile"],
-  ["../../types/player-state.js", "@dreamboard/ui-sdk/internal/player-state"],
-  ["../../types/tiled-board.js", "@dreamboard/ui-sdk/internal/tiled-board"],
+  ["../context/PluginStateContext.js", "@dreamboard/ui-sdk"],
+  ["../context/RuntimeContext.js", "@dreamboard/ui-sdk"],
+  ["../hooks/useHandLayout.js", "@dreamboard/ui-sdk"],
+  ["../hooks/usePluginRuntime.js", "@dreamboard/ui-sdk"],
+  ["../types/player-state.js", "@dreamboard/ui-sdk"],
+  ["../../hooks/usePanZoom.js", "@dreamboard/ui-sdk"],
+  ["../../hooks/useIsMobile.js", "@dreamboard/ui-sdk"],
+  ["../../types/player-state.js", "@dreamboard/ui-sdk"],
+  ["../../types/tiled-board.js", "@dreamboard/ui-sdk"],
 ]);
 
 export const SETUP_PROFILES_SEED_MARKER =
@@ -52,10 +42,6 @@ import type {
   PromptResponseOfDefinition,
   ViewNamesOfDefinition,
   ViewOfDefinition,
-  WindowActionNamesOfDefinition,
-  WindowActionParamsOfDefinition,
-  WindowIdsOfDefinition,
-  WindowInstanceId as WindowInstanceIdBrand,
 } from "@dreamboard/app-sdk/reducer/model";
 
 type GameDefinition = typeof game;
@@ -169,66 +155,91 @@ export type PromptResponse<Name extends PromptId> = PromptResponseOfDefinition<
 export type PromptInstanceId<Name extends PromptId> = PromptInstanceIdBrand<
   Name
 >;
-
-export type WindowId = WindowIdsOfDefinition<GameDefinition>;
-export type WindowInstanceId<Name extends WindowId> = WindowInstanceIdBrand<
-  Name
->;
-export type WindowActionName<
-  Name extends WindowId,
-> = WindowActionNamesOfDefinition<GameDefinition, Name>;
-export type WindowActionParams<
-  Name extends WindowId,
-  Action extends WindowActionName<Name>,
-> = WindowActionParamsOfDefinition<GameDefinition, Name, Action>;
-export type WindowActionArgs<
-  Name extends WindowId,
-  Action extends WindowActionName<Name>,
-> = InvocationArgs<WindowActionParams<Name, Action>>;
-export type WindowActionCommand<Name extends WindowId> = {
-  [Action in WindowActionName<Name>]: CommandShape<
-    Action,
-    WindowActionParams<Name, Action>
-  >;
-}[WindowActionName<Name>];
-export type WindowCommands<Name extends WindowId> = {
-  [Action in WindowActionName<Name>]: (
-    ...args: WindowActionArgs<Name, Action>
-  ) => Extract<WindowActionCommand<Name>, { type: Action }>;
-};
-export const windowCommands = new Proxy(Object.create(null), {
-  get(_target, prop) {
-    if (typeof prop !== "string") {
-      return undefined;
-    }
-    return createCommandNamespace();
-  },
-}) as {
-  [Name in WindowId]: WindowCommands<Name>;
-};
 `;
 }
 
 function generateReducerSupportSeed(): string {
-  return `/**
-   * App-owned reducer helpers belong here.
+  return `import {
+  createReducerOps,
+  createStateQueries,
+  pipe,
+} from "@dreamboard/app-sdk/reducer";
+import type { GameState } from "./game-contract";
+
+/**
+ * App-owned reducer helpers belong here.
  * Keep schema and contract declarations in app/game-contract.ts.
  * Keep initial state callbacks and game wiring in app/game.ts.
+ * Keep memoized aggregates (winner checks, VP totals, longest-road,
+ * largest-army) in app/derived.ts via \`defineDerived\`.
+ *
+ * Recommended authoring pattern inside a phase reducer:
+ *
+ *   const next = pipe(
+ *     state,
+ *     ops.setActivePlayers([q.players.order()[0]]),
+ *   );
+ *   return accept(next);
  */
+
+export const ops = createReducerOps<GameState>();
+
+export { pipe };
+
+export function stateQueries(state: GameState) {
+  return createStateQueries(state);
+}
+`;
+}
+
+function generateReducerDerivedSeed(): string {
+  return `// Memoized, pure projections of reducer state. Read them from reducer
+// callbacks and view projections via the injected \`derived\` helper:
+//
+//   reduce({ state, derived, accept }) {
+//     const winner = derived(winnerOf);
+//     return accept({ ...state, publicState: { ...state.publicState, winnerPlayerId: winner } });
+//   }
+//
+// Do NOT mirror derived values back into \`publicState\`. Keep the raw
+// inputs (component locations, zone contents, counters) in state and
+// express aggregates here.
+//
+// Uncomment the example below once you have something to derive.
+
+// import { defineDerived } from "@dreamboard/app-sdk/reducer";
+// import type { GameContract } from "./game-contract";
+//
+// export const winnerOf = defineDerived<GameContract>()({
+//   name: "winnerOf",
+//   compute: ({ state }) => {
+//     // Example: return the first player at or above the VP target.
+//     return state.publicState.winnerPlayerId ?? null;
+//   },
+// });
+
+export {};
 `;
 }
 
 function generateReducerGameContractSeed(): string {
   return `import { z } from "zod";
-import * as manifestContract from "../shared/manifest-contract";
+import { ids, manifestContract } from "../shared/manifest-contract";
 import { defineGameContract, type GameStateOf } from "@dreamboard/app-sdk/reducer";
 
-const publicStateSchema = z.object({});
+const publicStateSchema = z.object({
+  currentPlayerId: ids.playerId.nullable(),
+  notesByPlayerId: z.partialRecord(ids.playerId, z.string()).default({}),
+});
 const privateStateSchema = z.object({});
 const hiddenStateSchema = z.object({});
 
 export const gameContract = defineGameContract({
-  manifest: manifestContract.manifestContract,
+  manifest: manifestContract,
+  // Keep this list in sync with the keys of the \`phases\` record in ./phases.
+  // Declaring phase names here narrows \`fx.transition(...)\`, \`phase.dispatch\`,
+  // and the flow state's \`currentPhase\` to a literal union.
+  phaseNames: ["setup"] as const,
   state: {
     public: publicStateSchema,
     private: privateStateSchema,
@@ -250,7 +261,10 @@ import setupProfiles from "./setup-profiles";
 export default defineGame({
   contract: gameContract,
   initial: {
-    public: () => ({}),
+    public: ({ playerIds }) => ({
+      currentPlayerId: playerIds[0] ?? null,
+      notesByPlayerId: {},
+    }),
     private: () => ({}),
     hidden: () => ({}),
   },
@@ -339,7 +353,7 @@ function generateAppFrameworkTsConfig(): string {
         strict: true,
         esModuleInterop: true,
         skipLibCheck: true,
-        declaration: true,
+        declaration: false,
         outDir: "./dist",
         baseUrl: ".",
         paths: {
@@ -616,6 +630,7 @@ export function generateSeedFiles(
     "app/game.ts": generateReducerGameSeed(),
     "app/setup-profiles.ts": generateSetupProfilesSeed(manifest),
     "app/reducer-support.ts": generateReducerSupportSeed(),
+    "app/derived.ts": generateReducerDerivedSeed(),
     "app/phases/setup.ts": generateSetupPhaseSeed(),
     "app/phases/index.ts": generatePhaseIndexSeed(),
   };

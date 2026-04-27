@@ -22,7 +22,7 @@ export type ScaffoldingOwnership = {
 };
 
 export const WORKSPACE_CODEGEN_OWNERSHIP: ScaffoldingOwnership = {
-  version: 21,
+  version: 22,
   allowedPaths: {
     rootFiles: [
       ".npmrc",
@@ -49,6 +49,7 @@ export const WORKSPACE_CODEGEN_OWNERSHIP: ScaffoldingOwnership = {
       "app/game.ts",
       "app/setup-profiles.ts",
       "app/reducer-support.ts",
+      "app/derived.ts",
     ],
     seedFilePatterns: [
       { prefix: "app/phases/", suffix: ".ts" },

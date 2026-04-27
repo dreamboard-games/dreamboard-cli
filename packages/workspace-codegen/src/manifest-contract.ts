@@ -468,7 +468,12 @@ ${GENERATED_ID_FAMILIES.map(
 function renderGeneratedIdGuards(): string {
   return `export const idGuards = {
 ${GENERATED_ID_FAMILIES.map(
-  ({ literalKey, typeName, guardName, description }) => `  is${guardName}(value: string): value is ${typeName} {
+  ({
+    literalKey,
+    typeName,
+    guardName,
+    description,
+  }) => `  is${guardName}(value: string): value is ${typeName} {
     return isTypedId(literals.${literalKey}, value);
   },
   expect${guardName}(value: string): ${typeName} {
@@ -4495,6 +4500,10 @@ function renderManifestContractSource(manifest: GameTopologyManifest): string {
             runtimeBoardId,
           )}, ${renderStringUnion(
             board.spaces.map((space) => space.id),
+          )}, ${renderStringUnion(
+            board.edges.map((edge) => edge.id),
+          )}, ${renderStringUnion(
+            board.vertices.map((vertex) => vertex.id),
           )}, ${boardFieldsTypeName(board.board.id)}, ${boardSpaceFieldsTypeName(
             board.board.id,
           )}, ${hexEdgeFieldsTypeName(board.board.id)}, ${hexVertexFieldsTypeName(
@@ -4508,6 +4517,10 @@ function renderManifestContractSource(manifest: GameTopologyManifest): string {
             board.spaces.map((space) => space.id),
           )}, ${renderStringUnion(
             board.containers.map((container) => container.id),
+          )}, ${renderStringUnion(
+            board.edges.map((edge) => edge.id),
+          )}, ${renderStringUnion(
+            board.vertices.map((vertex) => vertex.id),
           )}, ${boardFieldsTypeName(board.board.id)}, ${boardSpaceFieldsTypeName(
             board.board.id,
           )}, ${boardRelationFieldsTypeName(
@@ -4972,9 +4985,10 @@ export interface SquareSpaceStateRecord<
 
 export interface TiledEdgeStateRecord<
   SpaceIdValue extends SpaceId = SpaceId,
+  EdgeIdValue extends EdgeId = EdgeId,
   Fields = RuntimeRecord,
 > {
-  id: EdgeId;
+  id: EdgeIdValue;
   spaceIds: readonly SpaceIdValue[];
   typeId?: EdgeTypeId | null;
   label?: string | null;
@@ -4984,9 +4998,10 @@ export interface TiledEdgeStateRecord<
 
 export interface TiledVertexStateRecord<
   SpaceIdValue extends SpaceId = SpaceId,
+  VertexIdValue extends VertexId = VertexId,
   Fields = RuntimeRecord,
 > {
-  id: VertexId;
+  id: VertexIdValue;
   spaceIds: readonly SpaceIdValue[];
   typeId?: VertexTypeId | null;
   label?: string | null;
@@ -4996,17 +5011,21 @@ export interface TiledVertexStateRecord<
 
 export type HexEdgeStateRecord<
   SpaceIdValue extends SpaceId = SpaceId,
+  EdgeIdValue extends EdgeId = EdgeId,
   Fields = RuntimeRecord,
-> = TiledEdgeStateRecord<SpaceIdValue, Fields>;
+> = TiledEdgeStateRecord<SpaceIdValue, EdgeIdValue, Fields>;
 
 export type HexVertexStateRecord<
   SpaceIdValue extends SpaceId = SpaceId,
+  VertexIdValue extends VertexId = VertexId,
   Fields = RuntimeRecord,
-> = TiledVertexStateRecord<SpaceIdValue, Fields>;
+> = TiledVertexStateRecord<SpaceIdValue, VertexIdValue, Fields>;
 
 export interface HexBoardStateRecord<
   BoardIdValue extends BoardId = BoardId,
   SpaceIdValue extends SpaceId = SpaceId,
+  EdgeIdValue extends EdgeId = EdgeId,
+  VertexIdValue extends VertexId = VertexId,
   BoardFields = RuntimeRecord,
   SpaceFields = RuntimeRecord,
   EdgeFields = RuntimeRecord,
@@ -5025,14 +5044,18 @@ export interface HexBoardStateRecord<
   relations: Array<BoardRelationStateRecord<SpaceIdValue, RuntimeRecord>>;
   containers: Record<never, never>;
   orientation: "pointy-top" | "flat-top";
-  edges: Array<HexEdgeStateRecord<SpaceIdValue, EdgeFields>>;
-  vertices: Array<HexVertexStateRecord<SpaceIdValue, VertexFields>>;
+  edges: Array<HexEdgeStateRecord<SpaceIdValue, EdgeIdValue, EdgeFields>>;
+  vertices: Array<
+    HexVertexStateRecord<SpaceIdValue, VertexIdValue, VertexFields>
+  >;
 }
 
 export interface SquareBoardStateRecord<
   BoardIdValue extends BoardId = BoardId,
   SpaceIdValue extends SpaceId = SpaceId,
   ContainerIdValue extends BoardContainerId = BoardContainerId,
+  EdgeIdValue extends EdgeId = EdgeId,
+  VertexIdValue extends VertexId = VertexId,
   BoardFields = RuntimeRecord,
   SpaceFields = RuntimeRecord,
   RelationFields = RuntimeRecord,
@@ -5058,8 +5081,10 @@ export interface SquareBoardStateRecord<
     ContainerIdValue,
     BoardContainerStateRecord<SpaceIdValue, ContainerIdValue, ContainerFields>
   >;
-  edges: Array<TiledEdgeStateRecord<SpaceIdValue, EdgeFields>>;
-  vertices: Array<TiledVertexStateRecord<SpaceIdValue, VertexFields>>;
+  edges: Array<TiledEdgeStateRecord<SpaceIdValue, EdgeIdValue, EdgeFields>>;
+  vertices: Array<
+    TiledVertexStateRecord<SpaceIdValue, VertexIdValue, VertexFields>
+  >;
 }
 
 export type TiledBoardStateRecord =

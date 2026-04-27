@@ -9,7 +9,6 @@ import type game from "../../app/game";
 import { literals, type SetupProfileId } from "../../shared/manifest-contract";
 import {
   phaseCommands,
-  windowCommands,
   type ActionCommandForPhase,
   type ActionName,
   type ActionParams,
@@ -17,24 +16,14 @@ import {
   type PhaseName,
   type PromptId,
   type PromptResponse,
-  type WindowActionCommand,
-  type WindowActionName,
-  type WindowActionParams,
-  type WindowId,
 } from "../../shared/generated/ui-contract";
-import type { WindowInstanceId } from "@dreamboard/app-sdk";
-import type {
-  GameplayPromptInstance,
-  GameplayWindowInstance,
-} from "@dreamboard/ui-sdk";
+import type { GameplayPromptInstance } from "@dreamboard/ui-sdk";
 
 export type GameDefinition = typeof game;
 export type PlayerId = (typeof literals.playerIds)[number];
 export type StateName = PhaseName;
 export type PromptInstance<Name extends PromptId = PromptId> =
   GameplayPromptInstance<Name>;
-export type WindowInstance<Name extends WindowId = WindowId> =
-  GameplayWindowInstance<Name>;
 export type TestRunner = "reducer" | "embedded" | "browser";
 
 type DefaultRunners = readonly ["reducer"];
@@ -42,10 +31,6 @@ type DefaultRunners = readonly ["reducer"];
 export type AnyActionCommand = {
   [Name in PhaseName]: ActionCommandForPhase<Name>;
 }[PhaseName];
-
-export type AnyWindowActionCommand = {
-  [Name in WindowId]: WindowActionCommand<Name>;
-}[WindowId];
 
 export type ExpectFn = (actual: unknown) => {
   toBe(expected: unknown): void;
@@ -67,19 +52,12 @@ export interface BrowserRunnerSnapshot {
   seatViewsByPlayerId: Record<string, unknown>;
   availableActionsByPlayerId?: Record<string, string[]>;
   prompts: readonly PromptInstance[];
-  windows: readonly WindowInstance[];
 }
 
 export interface BrowserRunnerBridge {
   snapshot(): Promise<BrowserRunnerSnapshot>;
   submitAction(playerId: PlayerId, actionType: string, params: Record<string, unknown>): Promise<void>;
   submitPromptResponse(playerId: PlayerId, promptId: string, response: unknown): Promise<void>;
-  submitWindowAction(
-    playerId: PlayerId,
-    windowId: string,
-    actionType: string,
-    params: Record<string, unknown>,
-  ): Promise<void>;
 }
 
 export interface BrowserRunnerDriver {
@@ -91,15 +69,6 @@ export interface BrowserRunnerDriver {
   promptResponse?(
     bridge: BrowserRunnerBridge,
     input: { playerId: PlayerId; promptId: string; response: unknown },
-  ): Promise<boolean | void> | boolean | void;
-  windowAction?(
-    bridge: BrowserRunnerBridge,
-    input: {
-      playerId: PlayerId;
-      windowId: string;
-      actionType: string;
-      params: Record<string, unknown>;
-    },
   ): Promise<boolean | void> | boolean | void;
 }
 
@@ -116,18 +85,10 @@ export interface ScenarioGameApi {
     prompt: Name | PromptInstance<Name>,
     response: PromptResponse<Name>,
   ): Promise<void>;
-  windowAction<Name extends WindowId, Action extends WindowActionName<Name>>(
-    playerId: PlayerId,
-    window: WindowInstance<Name> | WindowInstanceId<Name>,
-    actionType: Action,
-    params: WindowActionParams<Name, Action>,
-  ): Promise<void>;
-  windowAction(playerId: PlayerId, window: WindowInstance, command: AnyWindowActionCommand): Promise<void>;
   expectPrompt<Name extends PromptId>(
     playerId: PlayerId,
     promptId: Name,
   ): Promise<PromptInstance<Name>>;
-  expectWindow<Name extends WindowId>(windowId: Name): Promise<WindowInstance<Name>>;
 }
 
 export interface BaseContext {
@@ -140,7 +101,6 @@ export interface SharedScenarioContext {
   state(): StateName;
   view(playerId: PlayerId): GameView;
   prompts(playerId: PlayerId): readonly PromptInstance[];
-  windows(playerId: PlayerId): readonly WindowInstance[];
   expect: ExpectFn;
 }
 
@@ -167,7 +127,7 @@ export interface ScenarioDefinition<
   then: (ctx: ScenarioThenContext<Runners>) => void | Promise<void>;
 }
 
-export { phaseCommands, windowCommands };
+export { phaseCommands };
 export type {
   ActionCommandForPhase,
   ActionName,
@@ -176,10 +136,6 @@ export type {
   PhaseName,
   PromptId,
   PromptResponse,
-  WindowActionCommand,
-  WindowActionName,
-  WindowActionParams,
-  WindowId,
 };
 
 export function defineBase<const Definition extends BaseDefinition>(

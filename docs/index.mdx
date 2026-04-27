@@ -26,7 +26,11 @@ It is small enough to understand quickly, but rich enough to show the main Dream
 
 ## Three layers, one iteration loop
 
-You do not need to write these by hand on day one. The point is that Dreamboard keeps them aligned as rules and components change.
+You do not write these files by hand. Your coding agent drafts them from your
+game description, and you iterate by describing changes in plain language. The
+snippets below show what the agent produces so you can see the shape of a
+Dreamboard game. The point is that Dreamboard keeps these three layers aligned
+as rules and components change.
 
 ### `manifest.ts`
 
@@ -55,8 +59,7 @@ The reducer is where the rules live. It decides what a player is allowed to do, 
 
 ```ts
 import { z } from "zod";
-import { defineAction, definePhase } from "@dreamboard/app-sdk/reducer";
-import { ops, pipe } from "../reducer-support";
+import { defineAction, definePhase, pipe } from "@dreamboard/app-sdk/reducer";
 
 const choosePairing = defineAction<GameContract>()({
   params: z.object({
@@ -78,18 +81,15 @@ const choosePairing = defineAction<GameContract>()({
 
     return null;
   },
-  reduce({ state, input, accept, fx }) {
+  reduce({ state, input, accept, fx, ops }) {
     return accept(
-      {
-        ...state,
-        publicState: {
-          ...state.publicState,
-          temporaryColumns: [
-            ...state.publicState.temporaryColumns,
-            ...input.params.sums,
-          ],
-        },
-      },
+      pipe(
+        state,
+        ops.patchPublicState((prev) => ({
+          ...prev,
+          temporaryColumns: [...prev.temporaryColumns, ...input.params.sums],
+        })),
+      ),
       [fx.transition("rollOrStop")],
     );
   },
@@ -99,10 +99,9 @@ export const turn = definePhase<GameContract>()({
   kind: "player",
   state: z.object({}),
   initialState: () => ({}),
-  enter({ state, accept }) {
-    return accept(
-      pipe(state, ops.setActivePlayers([state.publicState.currentPlayerId])),
-    );
+  enter({ state, accept, ops, q }) {
+    const firstPlayerId = q.player.order()[0]!;
+    return accept(pipe(state, ops.setActivePlayers([firstPlayerId])));
   },
   actions: {
     choosePairing,
@@ -150,7 +149,8 @@ You can start in plain language, but the framework still gives you real guardrai
 - The reducer owns rule enforcement, turn flow, and multiplayer correctness.
 - The UI stays focused on presentation and player interaction.
 
-Start with [Quickstart](/docs/quickstart), then follow
+Start with [Quickstart](/docs/quickstart), then read
+[Core concepts](/docs/concepts) for the mental model and glossary. Follow
 [Building your first game](/docs/tutorials/building-your-first-game) for a full
 end-to-end example. Use [CLI](/docs/reference/cli),
 [Rule authoring](/docs/reference/rule-authoring),

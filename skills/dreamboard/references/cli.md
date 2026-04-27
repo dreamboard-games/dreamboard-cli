@@ -5,7 +5,7 @@ Reference for Dreamboard CLI workflows and commands.
 Dreamboard CLI manages the authored workspace loop: authenticate, create or
 clone a game, sync authored changes, compile, develop, and test.
 
-## Responsibility
+## What the CLI does
 
 Use the CLI for:
 
@@ -65,8 +65,7 @@ dreamboard status --json
 
 `dreamboard sync` also reconciles local workspace dependencies when `package.json`
 changes, so users should not run a separate install command as part of the
-normal authored workflow. If `dreamboard sync` reports missing dependency
-tooling, see [Dependency setup](/docs/reference/dependency-setup).
+normal authored workflow.
 
 The CLI materializes `.dreamboard/generated/manifest.json` from `manifest.ts`
 for local tooling. Treat that file as generated output, not authored source.

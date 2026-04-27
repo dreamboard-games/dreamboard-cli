@@ -30,6 +30,8 @@ mock.module("@dreamboard/api-client/client.gen", () => ({
 }));
 
 mock.module("./global-config.js", () => ({
+  getGlobalAuthPath: () => "/tmp/.dreamboard/auth.json",
+  getGlobalConfigPath: () => "/tmp/.dreamboard/config.json",
   loadGlobalConfig,
   saveGlobalConfig,
 }));
@@ -40,6 +42,18 @@ const originalEnvToken = process.env.DREAMBOARD_TOKEN;
 const originalEnvRefreshToken = process.env.DREAMBOARD_REFRESH_TOKEN;
 const originalApiBaseUrl = process.env.DREAMBOARD_API_BASE_URL;
 const originalWebBaseUrl = process.env.DREAMBOARD_WEB_BASE_URL;
+
+function createJwt(expSecondsFromNow: number): string {
+  const header = Buffer.from(
+    JSON.stringify({ alg: "HS256", typ: "JWT" }),
+  ).toString("base64url");
+  const payload = Buffer.from(
+    JSON.stringify({
+      exp: Math.floor(Date.now() / 1000) + expSecondsFromNow,
+    }),
+  ).toString("base64url");
+  return `${header}.${payload}.signature`;
+}
 
 beforeEach(() => {
   setSession.mockClear();
@@ -148,17 +162,43 @@ test("environment variable base URLs override resolved environment defaults", ()
   expect(config.webBaseUrl).toBe("http://127.0.0.1:4173");
 });
 
-test("configureClient persists rotated stored sessions", async () => {
+test("configureClient does not eagerly refresh active stored sessions", async () => {
+  const activeToken = createJwt(3600);
+
+  const config = resolveConfig(
+    {
+      environment: "prod",
+      authToken: activeToken,
+      refreshToken: "stored-refresh-token",
+    },
+    {},
+  );
+
+  await configureClient(config);
+
+  expect(setSession).not.toHaveBeenCalled();
+  expect(saveGlobalConfig).not.toHaveBeenCalled();
+  expect(setClientConfig).toHaveBeenCalledWith({
+    baseUrl: config.apiBaseUrl,
+    headers: {
+      Authorization: `Bearer ${activeToken}`,
+    },
+  });
+});
+
+test("configureClient persists rotated stored sessions when the access token is expired", async () => {
+  const expiredToken = createJwt(-3600);
+
   loadGlobalConfig.mockImplementation(async () => ({
     environment: "prod",
-    authToken: "stored-access-token",
+    authToken: expiredToken,
     refreshToken: "stored-refresh-token",
   }));
 
   const config = resolveConfig(
     {
       environment: "prod",
-      authToken: "stored-access-token",
+      authToken: expiredToken,
       refreshToken: "stored-refresh-token",
     },
     {},
@@ -167,7 +207,7 @@ test("configureClient persists rotated stored sessions", async () => {
   await configureClient(config);
 
   expect(setSession).toHaveBeenCalledWith({
-    access_token: "stored-access-token",
+    access_token: expiredToken,
     refresh_token: "stored-refresh-token",
   });
   expect(saveGlobalConfig).toHaveBeenCalledWith({
@@ -183,10 +223,12 @@ test("configureClient persists rotated stored sessions", async () => {
   });
 });
 
-test("configureClient fails fast when the stored refresh token is invalid", async () => {
+test("configureClient preserves the access token when the stored refresh token is invalid", async () => {
+  const expiringToken = createJwt(60);
+
   loadGlobalConfig.mockImplementation(async () => ({
     environment: "prod",
-    authToken: "stored-access-token",
+    authToken: expiringToken,
     refreshToken: "stale-refresh-token",
   }));
   setSession.mockImplementation(async () => ({
@@ -201,7 +243,50 @@ test("configureClient fails fast when the stored refresh token is invalid", asyn
   const config = resolveConfig(
     {
       environment: "prod",
-      authToken: "stored-access-token",
+      authToken: expiringToken,
+      refreshToken: "stale-refresh-token",
+    },
+    {},
+  );
+
+  await expect(configureClient(config)).resolves.toBeUndefined();
+
+  expect(config.authToken).toBe(expiringToken);
+  expect(config.refreshToken).toBeUndefined();
+  expect(saveGlobalConfig).toHaveBeenCalledWith({
+    environment: "prod",
+    authToken: expiringToken,
+    refreshToken: undefined,
+  });
+  expect(setClientConfig).toHaveBeenCalledWith({
+    baseUrl: config.apiBaseUrl,
+    headers: {
+      Authorization: `Bearer ${expiringToken}`,
+    },
+  });
+});
+
+test("configureClient fails fast when the stored refresh token is invalid and the access token is expired", async () => {
+  const expiredToken = createJwt(-3600);
+
+  loadGlobalConfig.mockImplementation(async () => ({
+    environment: "prod",
+    authToken: expiredToken,
+    refreshToken: "stale-refresh-token",
+  }));
+  setSession.mockImplementation(async () => ({
+    data: {
+      session: null,
+    },
+    error: {
+      message: "Invalid Refresh Token: Refresh Token Not Found",
+    },
+  }));
+
+  const config = resolveConfig(
+    {
+      environment: "prod",
+      authToken: expiredToken,
       refreshToken: "stale-refresh-token",
     },
     {},
@@ -211,17 +296,19 @@ test("configureClient fails fast when the stored refresh token is invalid", asyn
     "Stored Dreamboard session is expired or invalid (Invalid Refresh Token: Refresh Token Not Found). Run `dreamboard login` to authenticate again.",
   );
 
-  expect(config.authToken).toBeUndefined();
+  expect(config.authToken).toBe(expiredToken);
   expect(config.refreshToken).toBeUndefined();
   expect(saveGlobalConfig).toHaveBeenCalledWith({
     environment: "prod",
-    authToken: undefined,
+    authToken: expiredToken,
     refreshToken: undefined,
   });
   expect(setClientConfig).not.toHaveBeenCalled();
 });
 
 test("configureClient recovers when another process already rotated the stored session", async () => {
+  const expiredToken = createJwt(-3600);
+
   loadGlobalConfig.mockImplementation(async () => ({
     environment: "prod",
     authToken: "fresh-access-token",
@@ -260,7 +347,7 @@ test("configureClient recovers when another process already rotated the stored s
   const config = resolveConfig(
     {
       environment: "prod",
-      authToken: "stale-access-token",
+      authToken: expiredToken,
       refreshToken: "stale-refresh-token",
     },
     {},
@@ -269,7 +356,7 @@ test("configureClient recovers when another process already rotated the stored s
   await configureClient(config);
 
   expect(setSession).toHaveBeenNthCalledWith(1, {
-    access_token: "stale-access-token",
+    access_token: expiredToken,
     refresh_token: "stale-refresh-token",
   });
   expect(setSession).toHaveBeenNthCalledWith(2, {
@@ -290,26 +377,20 @@ test("configureClient recovers when another process already rotated the stored s
 });
 
 test("configureClient does not rewrite env-provided sessions", async () => {
-  process.env.DREAMBOARD_TOKEN = "env-access-token";
+  const envToken = createJwt(3600);
+  process.env.DREAMBOARD_TOKEN = envToken;
   process.env.DREAMBOARD_REFRESH_TOKEN = "env-refresh-token";
-  setSession.mockImplementation(async () => ({
-    data: {
-      session: null,
-    },
-    error: {
-      message: "Invalid Refresh Token: Refresh Token Not Found",
-    },
-  }));
 
   const config = resolveConfig({}, {});
 
   await expect(configureClient(config)).resolves.toBeUndefined();
 
+  expect(setSession).not.toHaveBeenCalled();
   expect(saveGlobalConfig).not.toHaveBeenCalled();
   expect(setClientConfig).toHaveBeenCalledWith({
     baseUrl: config.apiBaseUrl,
     headers: {
-      Authorization: "Bearer env-access-token",
+      Authorization: `Bearer ${envToken}`,
     },
   });
 });

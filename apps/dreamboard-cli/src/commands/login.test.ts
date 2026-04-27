@@ -15,6 +15,7 @@ const startCliAuthServer = mock(async () => ({
   close: closeServer,
 }));
 const openBrowser = mock(() => undefined);
+const parseAuthCommandArgs = mock((args: Record<string, unknown>) => args);
 const parseLoginCommandArgs = mock((args: Record<string, unknown>) => args);
 
 mock.module("../build-target.js", () => ({
@@ -27,6 +28,7 @@ mock.module("../config/resolve.js", () => ({
 }));
 
 mock.module("../config/global-config.js", () => ({
+  getGlobalAuthPath: () => "/tmp/.dreamboard/auth.json",
   getGlobalConfigPath: () => "/tmp/.dreamboard/config.json",
   loadGlobalConfig,
   saveGlobalConfig,
@@ -38,6 +40,7 @@ mock.module("../auth/auth-server.js", () => ({
 }));
 
 mock.module("../flags.js", () => ({
+  parseAuthCommandArgs,
   parseLoginCommandArgs,
 }));
 
@@ -50,6 +53,7 @@ test("published login resolves config without injecting an env flag", async () =
   startCliAuthServer.mockClear();
   closeServer.mockClear();
   openBrowser.mockClear();
+  parseAuthCommandArgs.mockClear();
   parseLoginCommandArgs.mockClear();
 
   await loginCommand.run({

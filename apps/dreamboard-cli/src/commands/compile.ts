@@ -55,6 +55,29 @@ function formatCompileJobProgressMessage(job: {
   return `Compile ${job.status.toLowerCase()}${phase}${detail}`.trim();
 }
 
+function formatFailedCompileJobSummary(job: {
+  phase?: string;
+  message?: string | null;
+  errorMessage?: string | null;
+}): string {
+  return formatCompileJobProgressMessage({
+    status: "FAILED",
+    phase: job.phase,
+    message: job.errorMessage ?? job.message ?? undefined,
+  });
+}
+
+function formatFailedCompileJobWithCompiledResultMessage(options: {
+  compiledResultId: string;
+  job: {
+    phase?: string;
+    message?: string | null;
+    errorMessage?: string | null;
+  };
+}): string {
+  return `${formatFailedCompileJobSummary(options.job)}. The backend created compiled result ${options.compiledResultId}, but the compile job did not complete cleanly. Run 'dreamboard compile' again after fixing the backend/compiler issue.`;
+}
+
 function formatRemoteCompileCommandError(options: {
   message: string;
   jobId?: string;
@@ -192,6 +215,10 @@ export default defineCommand({
     }
 
     let compileJobId: string | undefined;
+    let compileJobStatus: string | undefined;
+    let compileJobPhase: string | undefined;
+    let compileJobMessage: string | null | undefined;
+    let compileJobErrorMessage: string | null | undefined;
     let compiledResult: CompiledResult;
     try {
       const compileJob = await queueCompiledResultJobSdk({
@@ -203,7 +230,15 @@ export default defineCommand({
         throw new Error("Failed to create compile job: missing jobId.");
       }
 
-      ({ compiledResult } = await waitForCompiledResultJobSdk({
+      ({
+        job: {
+          status: compileJobStatus,
+          phase: compileJobPhase,
+          message: compileJobMessage,
+          errorMessage: compileJobErrorMessage,
+        },
+        compiledResult,
+      } = await waitForCompiledResultJobSdk({
         gameId: projectConfig.gameId,
         jobId: compileJobId,
         onProgress: (job) => {
@@ -234,14 +269,42 @@ export default defineCommand({
       );
     }
 
+    const failedJobProducedCompiledResult =
+      compileJobStatus === "FAILED" && compiledResult.success;
+    const failedJobWithCompiledResultSummary = failedJobProducedCompiledResult
+      ? formatFailedCompileJobSummary({
+          phase: compileJobPhase,
+          message: compileJobMessage,
+          errorMessage: compileJobErrorMessage,
+        })
+      : undefined;
+
     const nextProjectConfig = setLatestCompileAttempt(projectConfig, {
       resultId: compiledResult.id,
       jobId: compileJobId,
       authoringStateId: compiledResult.authoringStateId,
-      status: compiledResult.success ? "successful" : "failed",
-      diagnosticsSummary: formatDiagnosticsSummary(compiledResult.diagnostics),
+      status:
+        compiledResult.success && !failedJobProducedCompiledResult
+          ? "successful"
+          : "failed",
+      diagnosticsSummary:
+        failedJobWithCompiledResultSummary ??
+        formatDiagnosticsSummary(compiledResult.diagnostics),
     });
     await updateProjectState(projectRoot, nextProjectConfig);
+
+    if (failedJobProducedCompiledResult) {
+      throw new Error(
+        formatFailedCompileJobWithCompiledResultMessage({
+          compiledResultId: compiledResult.id,
+          job: {
+            phase: compileJobPhase,
+            message: compileJobMessage,
+            errorMessage: compileJobErrorMessage,
+          },
+        }),
+      );
+    }
 
     if (!compiledResult.success) {
       for (const diagnostic of compiledResult.diagnostics ?? []) {

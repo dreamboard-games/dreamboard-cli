@@ -2150,19 +2150,6 @@ export type GameplayPromptInstance = {
     options: Array<GameplayPromptOption>;
 };
 
-export type GameplayWindowClosePolicy = 'allPassInSequence' | 'allResponded' | 'firstValidAction' | 'manual';
-
-export type GameplayWindowInstance = {
-    id: string;
-    windowId: string;
-    closePolicy: GameplayWindowClosePolicy;
-    addressedTo: Array<string>;
-    /**
-     * JSON-serialized window payload
-     */
-    payload?: string;
-};
-
 export type GameplaySnapshot = {
     /**
      * Monotonic gameplay version for stale-client detection
@@ -2191,7 +2178,6 @@ export type GameplaySnapshot = {
      */
     availableActions: Array<PlayerAvailableActions>;
     prompts: Array<GameplayPromptInstance>;
-    windows: Array<GameplayWindowInstance>;
 };
 
 /**
@@ -2603,17 +2589,6 @@ export type PromptResponseGameInput = {
     response: string;
 };
 
-export type WindowActionGameInput = {
-    kind: 'windowAction';
-    playerId: string;
-    windowId: string;
-    actionType: string;
-    /**
-     * Optional JSON-serialized window action parameters
-     */
-    params?: string;
-};
-
 export type SystemGameInput = {
     kind: 'system';
     event: string;
@@ -2628,8 +2603,6 @@ export type GameInput = ({
 } & ActionGameInput) | ({
     kind: 'promptResponse';
 } & PromptResponseGameInput) | ({
-    kind: 'windowAction';
-} & WindowActionGameInput) | ({
     kind: 'system';
 } & SystemGameInput);
 

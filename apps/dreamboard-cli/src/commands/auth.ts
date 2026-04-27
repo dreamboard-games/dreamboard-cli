@@ -5,6 +5,7 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { startCliAuthServer, openBrowser } from "../auth/auth-server.js";
 import { DEFAULT_LOGIN_TIMEOUT_MS, ENVIRONMENT_CONFIGS } from "../constants.js";
 import {
+  getGlobalAuthPath,
   getGlobalConfigPath,
   loadGlobalConfig,
   saveGlobalConfig,
@@ -117,8 +118,12 @@ export default defineCommand({
       }
       const token = parsedArgs.tokenValue ?? parsedArgs.token ?? "";
       if (!token) throw new Error("Usage: dreamboard auth set <token>");
-      await saveGlobalConfig({ ...config, authToken: token });
-      consola.success("Auth token saved.");
+      await saveGlobalConfig({
+        ...config,
+        authToken: token,
+        refreshToken: undefined,
+      });
+      consola.success(`Auth token saved to ${getGlobalAuthPath()}.`);
       return;
     }
 
@@ -129,7 +134,7 @@ export default defineCommand({
         refreshToken: undefined,
       });
       consola.success(
-        `Stored Dreamboard session cleared from ${getGlobalConfigPath()}.`,
+        `Stored Dreamboard session cleared from ${getGlobalAuthPath()}.`,
       );
       return;
     }
@@ -219,15 +224,15 @@ export default defineCommand({
 
       if (didUseBrowserLogin) {
         consola.success(
-          `Browser login successful. Session saved to ${getGlobalConfigPath()}.`,
+          `Browser login successful. Session saved to ${getGlobalAuthPath()}.`,
         );
       } else if (config.authToken && didRefreshStoredSession) {
         consola.success(
-          `Stored auth session refreshed and saved to ${getGlobalConfigPath()}.`,
+          `Stored auth session refreshed and saved to ${getGlobalAuthPath()}.`,
         );
       } else if (config.authToken) {
         consola.success(
-          `Stored auth token found. Session data remains in ${getGlobalConfigPath()}.`,
+          `Stored auth token found. Session data remains in ${getGlobalAuthPath()}.`,
         );
       }
       return;
@@ -244,6 +249,7 @@ export default defineCommand({
       consola.log(`Auth token source: ${resolvedConfig.authTokenSource}`);
       consola.log(`Refresh token source: ${resolvedConfig.refreshTokenSource}`);
       consola.log(`Config path: ${getGlobalConfigPath()}`);
+      consola.log(`Auth path: ${getGlobalAuthPath()}`);
 
       if (!resolvedConfig.authToken) {
         consola.warn("No Dreamboard session found.");

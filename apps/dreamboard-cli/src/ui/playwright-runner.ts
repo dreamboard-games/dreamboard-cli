@@ -48,24 +48,6 @@ export async function buildBrowserAuthInitScript(
 
     let sessionData: Record<string, unknown> | null = null;
 
-    if (config.refreshToken) {
-      const { data } = await supabase.auth.setSession({
-        access_token: config.authToken,
-        refresh_token: config.refreshToken,
-      });
-      if (data.session) {
-        config.authToken = data.session.access_token;
-        sessionData = {
-          access_token: data.session.access_token,
-          token_type: data.session.token_type ?? "bearer",
-          expires_in: data.session.expires_in,
-          expires_at: data.session.expires_at,
-          refresh_token: data.session.refresh_token,
-          user: data.session.user,
-        };
-      }
-    }
-
     if (!sessionData) {
       const { data: userData } = await supabase.auth.getUser(config.authToken);
       if (userData?.user) {
@@ -86,7 +68,7 @@ export async function buildBrowserAuthInitScript(
             ? expiresAt - Math.floor(Date.now() / 1000)
             : 3600,
           expires_at: expiresAt,
-          refresh_token: "",
+          refresh_token: config.refreshToken ?? "",
           user: userData.user,
         };
       }

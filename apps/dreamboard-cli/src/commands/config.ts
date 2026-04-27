@@ -5,6 +5,7 @@ import { IS_PUBLISHED_BUILD } from "../build-target.js";
 import { resolveConfig, valueOrUndefined } from "../config/resolve.js";
 import { parseConfigCommandArgs } from "../flags.js";
 import {
+  getGlobalAuthPath,
   getGlobalConfigPath,
   loadGlobalConfig,
   saveGlobalConfig,
@@ -48,11 +49,13 @@ export default defineCommand({
           IS_PUBLISHED_BUILD
             ? {
                 configPath: getGlobalConfigPath(),
+                authPath: getGlobalAuthPath(),
                 authenticated: Boolean(config.authToken),
                 refreshableSession: Boolean(config.refreshToken),
               }
             : {
                 configPath: getGlobalConfigPath(),
+                authPath: getGlobalAuthPath(),
                 environment:
                   parsedArgs.env || globalConfig.environment || "dev",
                 apiBaseUrl: config.apiBaseUrl,
@@ -76,7 +79,10 @@ export default defineCommand({
       const updated: GlobalConfig = { ...globalConfig };
       if (parsedArgs.env) updated.environment = parsedArgs.env as Environment;
       const authToken = valueOrUndefined(parsedArgs.token);
-      if (authToken) updated.authToken = authToken;
+      if (authToken) {
+        updated.authToken = authToken;
+        updated.refreshToken = undefined;
+      }
       await saveGlobalConfig(updated);
       consola.success("Config updated.");
       return;

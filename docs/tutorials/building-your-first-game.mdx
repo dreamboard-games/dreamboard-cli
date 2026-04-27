@@ -13,11 +13,10 @@ The example game is `Race to Ten`.
 - each turn, the active player rolls the die and adds the result to their score
 - the first player to reach 10 points wins
 
-For tutorial stability, the main walkthrough uses a deterministic die sequence
-`1, 2, 3, 4, 5, 6, ...` instead of true randomness. The important part is how a
-die component, a `rollDie` action, reducer state, UI, and tests fit together.
-This is also consistent with the reducer model: reducers stay pure, and
-runtime-owned effects handle live randomness.
+The reducer itself stays pure. Dice rolls run through `fx.rollDie`, a
+runtime-owned effect that uses the engine's seeded RNG. Because every test base
+pins a `seed`, scenarios are reproducible without any custom randomness
+plumbing in your reducer.
 
 ## What you will build
 
@@ -103,7 +102,6 @@ The scaffold gives you the files you will edit next:
 
 - Actions after game end are illegal
 - Out-of-turn actions are illegal
-- For this tutorial implementation, the die value cycles deterministically from 1 to 6 so the example stays reproducible
 ```
 
 For a fuller reference, see [Rule authoring](/docs/reference/rule-authoring).
@@ -147,8 +145,6 @@ dreamboard compile
 
 `dreamboard sync` refreshes generated contracts from authored files.
 It also prepares workspace dependencies after `package.json` changes.
-If sync reports missing dependency tooling, see
-[Dependency setup](/docs/reference/dependency-setup).
 `dreamboard compile` builds the current authored head.
 
 ## 4. Define the reducer contract
@@ -167,7 +163,6 @@ import {
 const playerId = manifestContract.ids.playerId;
 
 const publicStateSchema = z.object({
-  currentPlayerId: playerId,
   winnerPlayerId: playerId.nullable(),
   lastRoll: z.number().int().min(1).max(6).nullable(),
   scores: z.record(playerId, z.number().int().nonnegative()),
@@ -175,12 +170,14 @@ const publicStateSchema = z.object({
 
 const privateStateSchema = z.object({});
 
-const hiddenStateSchema = z.object({
-  rollCount: z.number().int().nonnegative(),
-});
+const hiddenStateSchema = z.object({});
 
 export const gameContract = defineGameContract({
   manifest: manifestContract.manifestContract,
+  // Keep this list in sync with the keys of the `phases` record in ./phases.
+  // Declaring phase names here narrows `fx.transition(...)`, `phase.dispatch`,
+  // and the flow state's `currentPhase` to a literal union.
+  phaseNames: ["takeTurn"] as const,
   state: {
     public: publicStateSchema,
     private: privateStateSchema,
@@ -192,30 +189,29 @@ export type GameContract = typeof gameContract;
 export type GameState = GameStateOf<GameContract>;
 ```
 
-The public state holds player-visible game progress. The hidden state tracks the
-deterministic roll index so the test can stay reproducible.
+The public state holds player-visible game progress. Race to Ten has no hidden
+information, so the hidden state is an empty object — real games use it for
+deck orders, secret goals, or other reducer-private fields.
+
+Note what is not in `publicState`: whose turn it is, or the current die face.
+Turn routing is owned by the engine as `state.flow.activePlayers` and is
+updated through `ops.setActivePlayers(...)`. The rolled die value lives in
+`state.table.dice["turn-die"].value`, which the runtime maintains when
+`fx.rollDie(...)` fires. Keeping both out of `publicState` avoids two sources
+of truth.
 
 ## 5. Add a player view
 
 Create `app/player-view.ts`:
 
 ```ts
-import { z } from "zod";
 import { defineView } from "@dreamboard/app-sdk/reducer";
 import type { GameContract } from "./game-contract";
 
 export const playerView = defineView<GameContract>()({
-  schema: z.object({
-    currentPlayerId: z.string(),
-    winnerPlayerId: z.string().nullable(),
-    lastRoll: z.number().nullable(),
-    scores: z.record(z.string(), z.number()),
-    targetScore: z.number(),
-    turnDieId: z.string(),
-  }),
   project({ state, playerId }) {
     return {
-      currentPlayerId: state.publicState.currentPlayerId,
+      activePlayerId: state.flow.activePlayers[0] ?? null,
       winnerPlayerId: state.publicState.winnerPlayerId,
       lastRoll: state.publicState.lastRoll,
       scores: state.publicState.scores,
@@ -226,6 +222,15 @@ export const playerView = defineView<GameContract>()({
 });
 ```
 
+`activePlayerId` is projected from `state.flow.activePlayers`, which the
+engine owns. The view is free to expose whatever shape the UI needs — it is
+not limited to `publicState` fields.
+
+The projected payload type is inferred from `project`'s return value — no Zod
+schema is required. Reducer callbacks inside `project(...)` also receive `q`
+for reducer-native reads such as `q.zone.playerCardCollection(...)` or
+`q.board.tiled(...)` when the view grows.
+
 The UI will read this view instead of reconstructing game logic in React.
 
 ## 6. Implement the phase and action
@@ -234,12 +239,49 @@ Create `app/phases/take-turn.ts`:
 
 ```ts
 import { z } from "zod";
-import { defineAction, definePhase } from "@dreamboard/app-sdk/reducer";
+import {
+  defineAction,
+  defineFlow,
+  definePhase,
+  pipe,
+} from "@dreamboard/app-sdk/reducer";
 import type { GameContract } from "../game-contract";
-import { ops, pipe } from "../reducer-support";
 
 const TARGET_SCORE = 10;
 const TURN_DIE_ID = "turn-die" as const;
+
+const onDieRolled = defineFlow<GameContract>()({
+  id: "on-die-rolled",
+  type: "rollDie",
+  reduce({ state, input, accept, ops, q }) {
+    const actingPlayerId = state.flow.activePlayers[0];
+    if (actingPlayerId == null) {
+      return accept(state);
+    }
+
+    const rollValue = input.response.value;
+    const nextScore =
+      state.publicState.scores[actingPlayerId] + rollValue;
+    const reachedTarget = nextScore >= TARGET_SCORE;
+
+    const order = q.player.order();
+    const nextPlayerId =
+      order[(order.indexOf(actingPlayerId) + 1) % order.length]!;
+
+    return accept(
+      pipe(
+        state,
+        ops.patchPublicState((prev) => ({
+          ...prev,
+          winnerPlayerId: reachedTarget ? actingPlayerId : null,
+          lastRoll: rollValue,
+          scores: { ...prev.scores, [actingPlayerId]: nextScore },
+        })),
+        ops.setActivePlayers(reachedTarget ? [] : [nextPlayerId]),
+      ),
+    );
+  },
+});
 
 const rollDie = defineAction<GameContract>()({
   params: z.object({}),
@@ -251,7 +293,7 @@ const rollDie = defineAction<GameContract>()({
       };
     }
 
-    if (input.playerId !== state.publicState.currentPlayerId) {
+    if (!state.flow.activePlayers.includes(input.playerId)) {
       return {
         errorCode: "NOT_YOUR_TURN",
         message: "It is not your turn.",
@@ -260,53 +302,10 @@ const rollDie = defineAction<GameContract>()({
 
     return null;
   },
-  reduce({ state, input, accept }) {
-    const nextRoll = (state.hiddenState.rollCount % 6) + 1;
-    const nextScore = state.publicState.scores[input.playerId] + nextRoll;
-    const nextScores = {
-      ...state.publicState.scores,
-      [input.playerId]: nextScore,
-    };
-
-    const nextPlayerId =
-      input.playerId === "player-1" ? "player-2" : "player-1";
-
-    const nextTable = {
-      ...state.table,
-      dice: {
-        ...state.table.dice,
-        [TURN_DIE_ID]: {
-          ...state.table.dice[TURN_DIE_ID],
-          value: nextRoll,
-        },
-      },
-    };
-
-    const nextState = {
-      ...state,
-      table: nextTable,
-      publicState: {
-        ...state.publicState,
-        currentPlayerId:
-          nextScore >= TARGET_SCORE ? input.playerId : nextPlayerId,
-        winnerPlayerId: nextScore >= TARGET_SCORE ? input.playerId : null,
-        lastRoll: nextRoll,
-        scores: nextScores,
-      },
-      hiddenState: {
-        ...state.hiddenState,
-        rollCount: state.hiddenState.rollCount + 1,
-      },
-    };
-
-    return accept(
-      pipe(
-        nextState,
-        ops.setActivePlayers(
-          nextScore >= TARGET_SCORE ? [] : [nextPlayerId],
-        ),
-      ),
-    );
+  reduce({ state, accept, fx }) {
+    return accept(state, [
+      fx.rollDie(TURN_DIE_ID, { resume: onDieRolled() }),
+    ]);
   },
 });
 
@@ -314,30 +313,63 @@ export const takeTurn = definePhase<GameContract>()({
   kind: "player",
   state: z.object({}),
   initialState: () => ({}),
-  enter({ state, accept }) {
+  enter({ state, accept, ops, q }) {
     if (state.publicState.winnerPlayerId) {
       return accept(state);
     }
 
-    return accept(
-      pipe(state, ops.setActivePlayers([state.publicState.currentPlayerId])),
-    );
+    const firstPlayerId = q.player.order()[0]!;
+    return accept(pipe(state, ops.setActivePlayers([firstPlayerId])));
   },
   actions: {
     rollDie,
   },
+  flows: {
+    onDieRolled,
+  },
 });
 ```
 
-`enter(...)` sets the first active player when the phase starts. After that,
-the phase stays in `takeTurn`, so `rollDie.reduce(...)` must also call
-`ops.setActivePlayers(...)` when it changes `currentPlayerId`. Updating
-`publicState.currentPlayerId` alone does not update Dreamboard's action
-routing.
+Two ideas drive this phase.
 
-`ops` and `pipe` come from the scaffolded `app/reducer-support.ts`, which is
-the canonical location for the `createReducerOps<GameState>()` factory and a
-re-export of `pipe` from `@dreamboard/app-sdk/reducer`.
+**Randomness belongs to the runtime.** The reducer never calls `Math.random()`
+or writes into `state.table` directly. `rollDie.reduce(...)` queues one typed
+effect: `fx.rollDie("turn-die", { resume: onDieRolled() })`. The `resume`
+token is required — the SDK will not let you call `fx.rollDie(...)` without a
+flow to handle the result. The engine rolls the die with its seeded
+RNG, writes the new face into `state.table.dice["turn-die"].value`, and then
+calls `onDieRolled.reduce(...)` with the rolled value surfaced as
+`input.response.value`. Scoring logic reacts to that value instead of
+computing one by hand.
+
+**Turn routing belongs to the engine.** `ops.setActivePlayers(...)` is the
+single source of truth for who can act next, and the engine exposes it back to
+reducer callbacks as `state.flow.activePlayers`. `validate(...)` reads it to
+reject out-of-turn actions, `enter(...)` seeds the first active player from
+`q.player.order()`, and `onDieRolled.reduce(...)` passes the turn to the next
+seat — or hands control to `[]` when a winner exists so the engine stops
+routing actions. Nothing is mirrored into `publicState`.
+
+`ops`, `q`, and `fx` are injected into every reducer callback. Destructure
+them alongside `state`, `input`, and `accept` as you need them. Import `pipe`
+directly from `@dreamboard/app-sdk/reducer` to compose `ops.*` writes.
+
+App-owned helpers that need `ops` or `q` belong in `app/reducer-support.ts`
+and should accept the injected values as arguments. The scaffold exports
+`type Ops = ReducerOps<GameState>` and `type Q = TableQueriesOfState<GameState>`
+so helpers can share a single source of truth:
+
+```ts
+import type {
+  Op,
+  ReducerOps,
+  TableQueriesOfState,
+} from "@dreamboard/app-sdk/reducer";
+import type { GameState } from "./game-contract";
+
+export type Ops = ReducerOps<GameState>;
+export type Q = TableQueriesOfState<GameState>;
+```
 
 Then update `app/phases/index.ts`:
 
@@ -363,16 +395,13 @@ import { playerView } from "./player-view";
 export default defineGame({
   contract: gameContract,
   initial: {
-    public: ({ playerIds }) => ({
-      currentPlayerId: playerIds[0],
+    public: () => ({
       winnerPlayerId: null,
       lastRoll: null,
       scores: records.playerIds(0),
     }),
     private: () => ({}),
-    hidden: () => ({
-      rollCount: 0,
-    }),
+    hidden: () => ({}),
   },
   initialPhase: "takeTurn",
   phases,
@@ -429,7 +458,7 @@ export default function App() {
         {Object.entries(view.scores).map(([playerId, score]) => (
           <li key={playerId}>
             {playerId}: {score}
-            {view.currentPlayerId === playerId ? " <- current player" : ""}
+            {view.activePlayerId === playerId ? " <- current player" : ""}
           </li>
         ))}
       </ul>
@@ -451,14 +480,19 @@ export default function App() {
 The important part is that:
 
 - the die exists in authored game structure
-- the reducer updates the die value and the score together
-- the UI reads projected view data and the die state from the runtime
-- actions still go through `useActions()`
+- `fx.rollDie(...)` is the only code path that writes the die value; the
+  reducer never touches `state.table` directly
+- scoring happens in `onDieRolled.reduce(...)` once the runtime has rolled the
+  die, so it can read `input.response.value` and update the public state in a
+  single `pipe`
+- the UI reads projected view data and the runtime die face through
+  `view.lastRoll`, and dispatches actions through `useActions()`
 
-For authored reducer reads, prefer `const q = createTableQueries(state.table)`
-and then `q.board.*`, `q.zone.*`, `q.card.*`, or `q.component.*`. The die
-update above is a low-level table write because there is not yet a dedicated
-die mutation helper.
+For authored reducer reads, prefer the injected `q` on reducer callbacks
+(`reduce({ state, q, ... })`, `project({ state, q, ... })`) and use
+`q.board.*`, `q.zone.*`, `q.card.*`, or `q.component.*`. Shared helpers that
+need `ops` or `q` belong in `app/reducer-support.ts` and should accept the
+injected values as arguments.
 
 ## 9. Add a base and a scenario
 
@@ -477,32 +511,38 @@ export default defineBase({
 });
 ```
 
-Create `test/scenarios/player-two-wins.scenario.ts`:
+Create `test/scenarios/first-roll-scores.scenario.ts`:
 
 ```ts
 import { defineScenario } from "../testing-types";
 
 export default defineScenario({
-  id: "player-two-wins",
-  description: "The deterministic roll sequence lets player 2 reach ten first",
+  id: "first-roll-scores",
+  description:
+    "Player 1's opening roll is recorded, scored, and passes the turn to player 2.",
   from: "initial-turn",
   when: async ({ game }) => {
     await game.action("player-1", "rollDie");
-    await game.action("player-2", "rollDie");
-    await game.action("player-1", "rollDie");
-    await game.action("player-2", "rollDie");
-    await game.action("player-1", "rollDie");
-    await game.action("player-2", "rollDie");
   },
   then: ({ state, view, expect }) => {
     expect(state()).toBe("takeTurn");
-    expect(view("player-1").scores["player-1"]).toBe(9);
-    expect(view("player-2").scores["player-2"]).toBe(12);
-    expect(view("player-2").winnerPlayerId).toBe("player-2");
-    expect(view("player-1").lastRoll).toBe(6);
+
+    const p1 = view("player-1");
+    const roll = p1.lastRoll ?? 0;
+    expect(roll).toBeGreaterThanOrEqual(1);
+    expect(p1.scores["player-1"]).toBe(roll);
+    expect(p1.scores["player-2"]).toBe(0);
+    expect(p1.winnerPlayerId).toBeNull();
+    expect(p1.activePlayerId).toBe("player-2");
   },
 });
 ```
+
+The assertions intentionally avoid hard-coding the die face. The base pins
+`seed: 1337`, so the roll is reproducible across runs, but the test stays
+robust if you later change the seed: as long as the engine rolled a `1..6`
+value, the acting player's score must equal `lastRoll`, player 2 must not
+have scored, and the turn must have passed.
 
 Generate artifacts and run the test suite:
 
@@ -532,12 +572,16 @@ components, reducer state, UI, and tests. The next layer of depth is:
 - replace the plain button UI with grouped action panels and richer views
 - add rejection-path tests such as out-of-turn actions
 
-If you need live randomness in authored reducer logic, do not call
-`Math.random()` inside reducers. Use runtime-owned effects instead:
+The tutorial already uses one runtime-owned effect (`fx.rollDie(...)`). When
+you reach for more randomness, keep it on the same side of the line:
 
-- `fx.rollDie(...)` when the runtime only needs to update an authored die
-- `fx.randomInt(...)` when reducer logic needs the sampled value back
+- `fx.rollDie(dieId, { resume })` to roll an authored die with seeded RNG and
+  react to the rolled value through a typed flow
+- `fx.shuffleSharedZone(zoneId, { resume })` to randomise a deck, then react
+  to the new card order — or deal from the top with
+  `ops.dealCardsToPlayerZone(...)` in the follow-up reducer
+- `fx.open(promptFlow, { to, ... })` for a player choice that drives a
+  reducer reaction once the player responds
 
-The main walkthrough stays deterministic so the rule, reducer, UI, and test
-snippets all line up exactly. See [Reducer](/docs/reference/reducer) for the
-runtime-random versions.
+Do not call `Math.random()` or `Date.now()` inside reducer callbacks — see
+[Reducer](/docs/reference/reducer) for the full list of purity rules.

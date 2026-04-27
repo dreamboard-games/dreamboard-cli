@@ -160,15 +160,23 @@ export async function runLocalTypecheck(
     };
   }
 
-  for (const projectPath of [
-    MANIFEST_TYPECHECK_CONFIG_FILE,
-    "app/tsconfig.json",
-    "ui/tsconfig.json",
-  ]) {
-    const result = await runTypecheckProject(runner, projectRoot, projectPath);
-    if (!result.success) {
-      return result;
-    }
+  // The three projects are independent (no cross-project references), so
+  // checking them in parallel roughly halves wall-clock time without changing
+  // correctness. The slowest project (typically `ui/tsconfig.json`) bounds the
+  // total cost.
+  const results = await Promise.all(
+    [
+      MANIFEST_TYPECHECK_CONFIG_FILE,
+      "app/tsconfig.json",
+      "ui/tsconfig.json",
+    ].map((projectPath) =>
+      runTypecheckProject(runner, projectRoot, projectPath),
+    ),
+  );
+
+  const firstFailure = results.find((result) => !result.success);
+  if (firstFailure) {
+    return firstFailure;
   }
 
   return {

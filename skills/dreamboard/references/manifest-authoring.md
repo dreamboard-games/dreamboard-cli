@@ -26,7 +26,7 @@ export default defineTopologyManifest({
 ```
 
 `defineTopologyManifest(...)` now matches the documented defaults here:
-`boardTemplates` may be omitted entirely, and `DieTypeSpec.sides` is optional
+`boardTemplates` may be omitted entirely, and `sides` on die types is optional
 with a default of `6`.
 
 Boards describe positions, connections, and structural sites. Randomized setup
@@ -73,12 +73,16 @@ movement, ownership, hazards, or score markers.
 
 Top-level keys outside this schema are rejected when the manifest is loaded.
 
-## Shared schema types
+## Field schemas
 
-### `PropertySchema`
+Use schema-backed `fields` and `properties` surfaces to give authored data
+structured typing. Write them on manual cards, board and template `fields`,
+space `fields`, relation `fields`, container `fields`, edge `fields`, vertex
+`fields`, and piece or die seed `fields`.
 
-Use `PropertySchema` inside card schemas and board, space, relation, container,
-edge, vertex, piece, or die field schemas.
+### Property entries
+
+Each entry under `properties` describes a single field.
 
 | Field | Required | Notes |
 | --- | --- | --- |
@@ -91,10 +95,10 @@ edge, vertex, piece, or die field schemas.
 | `values` | No | Required when `type` is `record` |
 | `enums` | No | Required when `type` is `enum` |
 
-### `ObjectSchema`
+### Property maps
 
-`ObjectSchema` is a map of property names to `PropertySchema`. Properties are
-required unless their schema sets `optional: true`.
+A `properties` map is an object of property names to property entries.
+Properties are required unless the entry sets `optional: true`.
 
 ```json
 {
@@ -111,14 +115,14 @@ required unless their schema sets `optional: true`.
 `properties` and `fields` values in `manifest.ts` are stored as authored JSON
 values. Keep those values consistent with the schema you declare.
 
-When you author manifests in TypeScript with
-`defineTopologyManifest(...)`, Dreamboard uses these schemas for static typing
-in authored source. That currently covers manual card `properties`,
-`pieceSeeds[].fields`, `dieSeeds[].fields`, and board or template `fields`
-surfaces. `ObjectSchema` remains the authored source of truth; do not replace
-these schema objects with raw Zod values in `manifest.ts`.
+When you author manifests in TypeScript with `defineTopologyManifest(...)`,
+Dreamboard uses these schemas for static typing in authored source. That
+currently covers manual card `properties`, `pieceSeeds[].fields`,
+`dieSeeds[].fields`, and board or template `fields` surfaces. Keep these
+schemas as plain authored objects; do not replace them with raw Zod values in
+`manifest.ts`.
 
-### `ComponentHomeSpec`
+### Component `home`
 
 Use `home` on cards, piece seeds, and die seeds to place authored inventory.
 
@@ -132,7 +136,7 @@ Use `home` on cards, piece seeds, and die seeds to place authored inventory.
 | `vertex` | `boardId`, `ref` | Place onto a tiled-board vertex identified by one to four spaces |
 | `slot` | `host.kind`, `host.id`, `slotId` | Place into a strict piece-owned or die-owned slot |
 
-### `ComponentVisibilitySpec`
+### Component `visibility`
 
 | Field | Required | Notes |
 | --- | --- | --- |
@@ -140,8 +144,6 @@ Use `home` on cards, piece seeds, and die seeds to place authored inventory.
 | `visibleTo` | No | Player IDs that can see the component; omitted means visible to all players. In `manifest.ts`, `defineTopologyManifest(...)` narrows this to declared manifest player IDs. |
 
 ## `players`
-
-### `PlayersDefinition`
 
 | Field | Required | Notes |
 | --- | --- | --- |
@@ -153,7 +155,7 @@ Use `home` on cards, piece seeds, and die seeds to place authored inventory.
 
 `cardSets` define the cards that exist. They do not place cards into zones by themselves.
 
-### `CardSetDefinition`
+### Card set entry
 
 | Variant | Required fields | Notes |
 | --- | --- | --- |
@@ -181,7 +183,9 @@ cardSets: [
 //
 ```
 
-### `BoardCard`
+### Manual card entry
+
+Each entry in `cards[]` on a manual card set is a single authored card type.
 
 | Field | Required | Notes |
 | --- | --- | --- |
@@ -192,8 +196,8 @@ cardSets: [
 | `imageUrl` | No | Image URL |
 | `text` | No | Card text |
 | `cardType` | No | Category or subtype |
-| `home` | No | `ComponentHomeSpec` |
-| `visibility` | No | `ComponentVisibilitySpec` |
+| `home` | No | See [Component `home`](#component-home) |
+| `visibility` | No | See [Component `visibility`](#component-visibility) |
 
 ```json
 {
@@ -280,7 +284,7 @@ shared hex map, and per-player square mats are a good authoring benchmark when
 you want one workspace to cover the stricter board APIs in a realistic game
 shape.
 
-### `BoardTemplateSpec`
+### Board template entry
 
 | Variant | Required fields | Notes |
 | --- | --- | --- |
@@ -340,7 +344,7 @@ Square templates can include `boardFieldsSchema`, `spaceFieldsSchema`,
 }
 ```
 
-### `BoardSpec`
+### Board entry
 
 | Field | Required | Notes |
 | --- | --- | --- |
@@ -365,7 +369,9 @@ Square boards can add `boardFieldsSchema`, `spaceFieldsSchema`,
 `vertexFieldsSchema`, plus `spaces`, `relations`, `containers`, `edges`, and
 `vertices`. Those arrays default to `[]`.
 
-### `BoardSpaceSpec`
+### Generic space entry
+
+Entries in `spaces[]` on generic boards or templates.
 
 | Field | Required | Notes |
 | --- | --- | --- |
@@ -374,7 +380,9 @@ Square boards can add `boardFieldsSchema`, `spaceFieldsSchema`,
 | `typeId` | No | Authored space category used by reducer/UI code |
 | `fields` | No | JSON-valued field map. In `manifest.ts`, this is schema-typed from `spaceFieldsSchema`. |
 
-### `BoardRelationSpec`
+### Relation entry
+
+Entries in `relations[]` on generic or square boards and templates.
 
 | Field | Required | Notes |
 | --- | --- | --- |
@@ -385,7 +393,9 @@ Square boards can add `boardFieldsSchema`, `spaceFieldsSchema`,
 | `directed` | No | Defaults to `false` |
 | `fields` | No | JSON-valued field map. In `manifest.ts`, this is schema-typed from `relationFieldsSchema`. |
 
-### `BoardContainerSpec`
+### Container entry
+
+Entries in `containers[]` on generic or square boards and templates.
 
 | Field | Required | Notes |
 | --- | --- | --- |
@@ -399,25 +409,30 @@ Board containers are for attached holding areas such as market rows, discard
 trays, or board-level displays. Board spaces are topology nodes in the board
 graph such as squares, hexes, map locations, or action spots.
 
-### `HexSpaceSpec`, `HexEdgeSpec`, and `HexVertexSpec`
+### Hex spaces, edges, and vertices
 
-| Type | Required fields | Notes |
+Entries in `spaces[]`, `edges[]`, and `vertices[]` on hex boards and templates.
+
+| Field group | Required fields | Notes |
 | --- | --- | --- |
-| `HexSpaceSpec` | `id`, `q`, `r` | Optional `typeId`, `label`, `fields`. In `manifest.ts`, `fields` is schema-typed from `spaceFieldsSchema`. |
-| `HexEdgeSpec` | `ref` | `ref.spaces` must contain exactly 2 adjacent space IDs; optional `typeId`, `label`, `tags`, `fields`. In `manifest.ts`, `fields` is schema-typed from `edgeFieldsSchema`. |
-| `HexVertexSpec` | `ref` | `ref.spaces` must contain exactly 3 touching space IDs; optional `typeId`, `label`, `tags`, `fields`. In `manifest.ts`, `fields` is schema-typed from `vertexFieldsSchema`. |
+| Space | `id`, `q`, `r` | Optional `typeId`, `label`, `fields`. In `manifest.ts`, `fields` is schema-typed from `spaceFieldsSchema`. |
+| Edge | `ref` | `ref.spaces` must contain exactly 2 adjacent space IDs; optional `typeId`, `label`, `tags`, `fields`. In `manifest.ts`, `fields` is schema-typed from `edgeFieldsSchema`. |
+| Vertex | `ref` | `ref.spaces` must contain exactly 3 touching space IDs; optional `typeId`, `label`, `tags`, `fields`. In `manifest.ts`, `fields` is schema-typed from `vertexFieldsSchema`. |
 
 Use hex spaces for stable board positions. Use edges and vertices for
 structural sites such as roads, borders, settlements, checkpoints, or other
 game-specific metadata.
 
-### `SquareSpaceSpec`, `SquareEdgeSpec`, and `SquareVertexSpec`
+### Square spaces, edges, and vertices
 
-| Type | Required fields | Notes |
+Entries in `spaces[]`, `edges[]`, and `vertices[]` on square boards and
+templates.
+
+| Field group | Required fields | Notes |
 | --- | --- | --- |
-| `SquareSpaceSpec` | `id`, `row`, `col` | Optional `typeId`, `label`, `fields`. In `manifest.ts`, `fields` is schema-typed from `spaceFieldsSchema`. |
-| `SquareEdgeSpec` | `ref` | `ref.spaces` must resolve to exactly one shared border; optional `typeId`, `label`, `tags`, `fields`. In `manifest.ts`, `fields` is schema-typed from `edgeFieldsSchema`. |
-| `SquareVertexSpec` | `ref` | `ref.spaces` must resolve to exactly one shared corner; optional `typeId`, `label`, `tags`, `fields`. In `manifest.ts`, `fields` is schema-typed from `vertexFieldsSchema`. |
+| Space | `id`, `row`, `col` | Optional `typeId`, `label`, `fields`. In `manifest.ts`, `fields` is schema-typed from `spaceFieldsSchema`. |
+| Edge | `ref` | `ref.spaces` must resolve to exactly one shared border; optional `typeId`, `label`, `tags`, `fields`. In `manifest.ts`, `fields` is schema-typed from `edgeFieldsSchema`. |
+| Vertex | `ref` | `ref.spaces` must resolve to exactly one shared corner; optional `typeId`, `label`, `tags`, `fields`. In `manifest.ts`, `fields` is schema-typed from `vertexFieldsSchema`. |
 
 Use square spaces for stable board positions such as chess cells, tactical-map
 tiles, or fixed tile-placement slots. Use square edges and vertices for shared
@@ -427,7 +442,8 @@ that sits between or around spaces.
 Hex and square boards are fixed-topology in this release. Carcassonne-style
 board growth is a future extension, not part of the current board layouts.
 
-For a single real-game example that also lines up with `PieceSeedSpec` and `DieSeedSpec`, a Monopoly-style `track` board is the best fit.
+For a single real-game example that also lines up with piece and die seeds, a
+Monopoly-style `track` board is the best fit.
 
 ```json
 {
@@ -472,14 +488,18 @@ For a single real-game example that also lines up with `PieceSeedSpec` and `DieS
 
 ## `pieceTypes`, `pieceSeeds`, `dieTypes`, and `dieSeeds`
 
-### `PieceTypeSpec` and `DieTypeSpec`
+### Piece and die types
 
-| Type | Core fields | Notes |
+Entries in `pieceTypes[]` and `dieTypes[]`.
+
+| Collection | Core fields | Notes |
 | --- | --- | --- |
-| `PieceTypeSpec` | `id`, `name` | Optional `fieldsSchema`; optional `slots` for strict piece-hosted slot definitions |
-| `DieTypeSpec` | `id`, `name` | Optional `sides` defaults to `6`; optional `fieldsSchema`; optional `slots` for strict die-hosted slot definitions |
+| `pieceTypes[]` | `id`, `name` | Optional `fieldsSchema`; optional `slots` for strict piece-hosted slot definitions |
+| `dieTypes[]` | `id`, `name` | Optional `sides` defaults to `6`; optional `fieldsSchema`; optional `slots` for strict die-hosted slot definitions |
 
-### `PieceSeedSpec` and `DieSeedSpec`
+### Piece and die seeds
+
+Entries in `pieceSeeds[]` and `dieSeeds[]`.
 
 | Field | Required | Notes |
 | --- | --- | --- |
@@ -488,13 +508,13 @@ For a single real-game example that also lines up with `PieceSeedSpec` and `DieS
 | `name` | No | Display label |
 | `count` | No | Integer `>= 1`; defaults to `1` |
 | `ownerId` | No | Player ID such as `player-1` |
-| `home` | No | `ComponentHomeSpec` |
-| `visibility` | No | `ComponentVisibilitySpec` |
+| `home` | No | See [Component `home`](#component-home) |
+| `visibility` | No | See [Component `visibility`](#component-visibility) |
 | `fields` | No | JSON-valued field map |
 
-Strict slot hosts must be singleton seeds with an explicit `id`. If a
-`PieceTypeSpec` or `DieTypeSpec` declares `slots`, every authored seed of that
-type must omit `count` or set it to `1`, and must provide `id`.
+Strict slot hosts must be singleton seeds with an explicit `id`. If a piece or
+die type declares `slots`, every authored seed of that type must omit `count`
+or set it to `1`, and must provide `id`.
 
 ### Complete strict-slot example
 
@@ -581,40 +601,26 @@ That shape is the full authoring contract:
 - place components into those homes with `home.type: "slot"` plus `host` and
   `slotId`
 
-Reducer code can then inspect those placements through `createTableQueries(...)`:
+Reducer code can then inspect those placements through the injected `q.slot.*`
+queries:
 
 ```ts
-const q = createTableQueries(state.table);
-const slotOccupants = q.slot.pieceOccupantsByHost("mat-alpha");
-
-const workerAtRest = slotOccupants["worker-rest"]?.[0] ?? null;
+reduce({ state, accept, q }) {
+  const slotOccupants = q.slot.pieceOccupantsByHost("mat-alpha");
+  const workerAtRest = slotOccupants["worker-rest"]?.[0] ?? null;
+  return accept(state);
+}
 ```
 
 Project those runtime `InSlot` locations into a reducer view before the UI
 tries to render them:
 
 ```ts
-import { z } from "zod";
-import { createTableQueries, defineView } from "@dreamboard/app-sdk/reducer";
+import { defineView } from "@dreamboard/app-sdk/reducer";
 import type { GameContract } from "./game-contract";
 
 export const playerView = defineView<GameContract>()({
-  schema: z.object({
-    matOccupantsBySlotId: z.record(
-      z.string(),
-      z.array(
-        z.object({
-          pieceId: z.string(),
-          playerId: z.string().nullable(),
-          slotId: z.string(),
-          data: z.record(z.string(), z.unknown()).optional(),
-        }),
-      ),
-    ),
-  }),
-  project({ state }) {
-    const q = createTableQueries(state.table);
-
+  project({ state, q }) {
     return {
       matOccupantsBySlotId: q.slot.pieceOccupantsByHost("mat-alpha"),
     };
@@ -734,12 +740,12 @@ It currently adds these author-time checks in `manifest.ts`:
 - existing narrowing for `space` and `container` homes from the selected `boardId`
 - existing narrowing for `slot` homes from eligible singleton piece/die seeds whose type declares slots
 
-Use `ObjectSchema` and `PropertySchema` values in `manifest.ts`. Do not replace
-them with raw Zod schemas.
+Use plain authored objects for `properties`, `fieldsSchema`, and nested
+`fields` schemas in `manifest.ts`. Do not replace them with raw Zod schemas.
 
 ## `resources`, `setupOptions`, and `setupProfiles`
 
-### `ResourceDefinition`
+### Resource entry
 
 | Field | Required | Notes |
 | --- | --- | --- |
@@ -756,16 +762,18 @@ them with raw Zod schemas.
 }
 ```
 
-### `SetupOptionSpec`
+### Setup option entry
 
 | Field | Required | Notes |
 | --- | --- | --- |
 | `id` | Yes | Stable option ID |
 | `name` | Yes | Display name |
 | `description` | No | Help text |
-| `choices` | No | Array of `SetupOptionChoiceSpec`; defaults to `[]` |
+| `choices` | No | Array of setup option choices; defaults to `[]` |
 
-### `SetupOptionChoiceSpec`
+### Setup option choice
+
+Entries in `choices[]` on a setup option.
 
 | Field | Required | Notes |
 | --- | --- | --- |
@@ -773,7 +781,7 @@ them with raw Zod schemas.
 | `label` | Yes | Display label |
 | `description` | No | Help text |
 
-### `SetupProfileSpec`
+### Setup profile entry
 
 | Field | Required | Notes |
 | --- | --- | --- |
@@ -820,13 +828,13 @@ setupProfiles: [
 
 - Player IDs are generated as `player-1` through `player-{maxPlayers}`.
 - Optional top-level arrays default to `[]`.
-- `ZoneSpec.visibility` defaults to `public`.
-- `BoardRelationSpec.directed` defaults to `false`.
-- `HexBoardTemplateSpec.orientation` defaults to `pointy-top`.
-- `ComponentVisibilitySpec.faceUp` defaults to `true`.
-- `PieceSeedSpec.count` and `DieSeedSpec.count` default to `1`.
-- `DieTypeSpec.sides` defaults to `6`.
-- `SetupOptionSpec.choices` defaults to `[]`.
+- Zone `visibility` defaults to `public`.
+- Relation `directed` defaults to `false`.
+- Hex template and board `orientation` defaults to `pointy-top`.
+- Component `visibility.faceUp` defaults to `true`.
+- Piece and die seed `count` defaults to `1`.
+- Die type `sides` defaults to `6`.
+- Setup option `choices` defaults to `[]`.
 - A manual card with `count > 1` expands to runtime card IDs like `{type}-1`,
   `{type}-2`, and so on. A single-copy card keeps `type` as its runtime ID.
 - A piece or die seed with `count > 1` expands to runtime IDs like `{id}-1`,

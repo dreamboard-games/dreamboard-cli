@@ -1,22 +1,21 @@
 import { z } from "zod";
 import {
   defineAction,
-  defineChoiceFlow,
+  defineFlow,
   defineGame,
   definePhase,
-  definePrompt,
-  definePromptFlow,
 } from "@dreamboard/app-sdk/reducer";
 import { gameContract } from "./game-contract";
 
-const chooseBonusFlow = defineChoiceFlow<typeof gameContract>()({
+const chooseBonusFlow = defineFlow<typeof gameContract>()({
+  type: "choicePrompt",
   id: "choose-bonus",
   title: "Choose bonus",
   options: [
     { id: "energy", label: "Energy" },
     { id: "steel", label: "Steel" },
   ] as const,
-  data: z.object({
+  context: z.object({
     source: z.string(),
   }),
   reduce({ state, accept }) {
@@ -24,17 +23,14 @@ const chooseBonusFlow = defineChoiceFlow<typeof gameContract>()({
   },
 });
 
-const writeNotePrompt = definePrompt<typeof gameContract>()({
+const writeNoteFlow = defineFlow<typeof gameContract>()({
+  type: "prompt",
   id: "write-note",
   title: "Write note",
   responseSchema: z.object({
     note: z.string(),
   }),
-});
-
-const writeNoteFlow = definePromptFlow<typeof gameContract>()({
-  prompt: writeNotePrompt,
-  data: z.object({
+  context: z.object({
     source: z.string(),
   }),
   reduce({ state, accept }) {
@@ -45,28 +41,31 @@ const writeNoteFlow = definePromptFlow<typeof gameContract>()({
 export default defineGame({
   contract: gameContract,
   initial: {
-    public: () => ({}),
+    public: ({ playerIds }) => ({
+      currentPlayerId: playerIds[0] ?? null,
+      notesByPlayerId: {},
+    }),
     private: () => ({}),
     hidden: () => ({}),
   },
-  initialPhase: "prompt-phase",
+  initialPhase: "setup",
   phases: {
-    "prompt-phase": definePhase<typeof gameContract>()({
+    setup: definePhase<typeof gameContract>()({
       kind: "player",
       state: z.object({}),
       initialState: () => ({}),
-      promptFlows: {
+      flows: {
         chooseBonusFlow,
         writeNoteFlow,
       },
       actions: {
         openChoice: defineAction<typeof gameContract>()({
           params: z.object({}),
-          reduce({ state, accept, effects }) {
+          reduce({ state, accept, fx }) {
             return accept(state, [
-              chooseBonusFlow.open(effects, {
+              fx.open(chooseBonusFlow, {
                 to: "player-1",
-                data: { source: "smoke" },
+                context: { source: "smoke" },
               }),
             ]);
           },

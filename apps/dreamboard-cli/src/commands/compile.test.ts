@@ -143,6 +143,50 @@ test("compile failure persists the failed attempt without changing authored sync
   });
 });
 
+test("compile treats a failed job with a compiled artifact as a failed attempt", async () => {
+  const state = currentState();
+  state.getLocalDiffResult = {
+    modified: [],
+    added: [],
+    deleted: [],
+  };
+  state.findCompiledResultsForAuthoringStateResult = [];
+  state.createCompiledResultResult = {
+    id: "result-2",
+    authoringStateId: "authoring-1",
+    success: true,
+    sourceRevisionId: "source-revision-1",
+  };
+  state.waitForCompiledResultJobTerminalResult = {
+    status: "FAILED",
+    phase: "publishing",
+    message: "Failed to connect to external service",
+  };
+
+  await expect(
+    compileCommand.run({
+      args: {
+        env: "local",
+      },
+    }),
+  ).rejects.toThrow(
+    "Compile failed [publishing] Failed to connect to external service. The backend created compiled result result-2, but the compile job did not complete cleanly. Run 'dreamboard compile' again after fixing the backend/compiler issue.",
+  );
+
+  expect(state.projectConfig.compile?.latestAttempt).toEqual({
+    resultId: "result-2",
+    jobId: "compile-job-1",
+    authoringStateId: "authoring-1",
+    status: "failed",
+    diagnosticsSummary:
+      "Compile failed [publishing] Failed to connect to external service",
+  });
+  expect(state.projectConfig.compile?.latestSuccessful).toEqual({
+    resultId: "result-1",
+    authoringStateId: "authoring-1",
+  });
+});
+
 test("compile persists a failed attempt when the queued job errors before producing a result", async () => {
   const state = currentState();
   state.getLocalDiffResult = {

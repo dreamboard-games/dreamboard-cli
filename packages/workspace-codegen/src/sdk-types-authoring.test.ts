@@ -1,139 +1,128 @@
-import { createRequire } from "node:module";
+import { readdirSync } from "node:fs";
 import path from "node:path";
 import { expect, test } from "bun:test";
+import ts from "typescript";
 
-const require = createRequire(import.meta.url);
-const tscBin = require.resolve("typescript/bin/tsc");
 const fixtureRoot = path.join(import.meta.dir, "__fixtures__", "sdk-types");
 const workspaceCodegenRoot = path.resolve(import.meta.dir, "..");
 
-function runTypecheck(fileName: string) {
-  return Bun.spawnSync({
-    cmd: [
-      tscBin,
-      "--noEmit",
-      "--strict",
-      "--target",
-      "ES2022",
-      "--module",
-      "ESNext",
-      "--moduleResolution",
-      "bundler",
-      fileName,
-    ],
-    cwd: workspaceCodegenRoot,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
+const FIXTURE_FILES: readonly string[] = readdirSync(fixtureRoot)
+  .filter((name) => name.endsWith(".ts"))
+  .map((name) => path.join(fixtureRoot, name));
+
+const COMPILER_OPTIONS: ts.CompilerOptions = {
+  noEmit: true,
+  strict: true,
+  target: ts.ScriptTarget.ES2022,
+  module: ts.ModuleKind.ESNext,
+  moduleResolution: ts.ModuleResolutionKind.Bundler,
+  skipLibCheck: true,
+};
+
+const DIAGNOSTIC_FORMAT_HOST: ts.FormatDiagnosticsHost = {
+  getCanonicalFileName: (fileName) => fileName,
+  getCurrentDirectory: () => workspaceCodegenRoot,
+  getNewLine: () => "\n",
+};
+
+/**
+ * Shared TypeScript program covering every fixture file. Building one program
+ * per test process lets us reuse the parsed lib + SDK declaration graph across
+ * ~40 fixtures instead of spawning a cold `tsc --noEmit` per case
+ * (previously ~4s per spawn, ~120s total).
+ */
+let cachedProgram: ts.Program | null = null;
+function getProgram(): ts.Program {
+  if (!cachedProgram) {
+    cachedProgram = ts.createProgram({
+      rootNames: [...FIXTURE_FILES],
+      options: COMPILER_OPTIONS,
+    });
+  }
+  return cachedProgram;
+}
+
+function fixtureFilePath(fileName: string): string {
+  return path.join(fixtureRoot, fileName);
+}
+
+function getDiagnosticsForFixture(fileName: string): ts.Diagnostic[] {
+  const program = getProgram();
+  const targetPath = fixtureFilePath(fileName);
+  const sourceFile = program.getSourceFile(targetPath);
+  if (!sourceFile) {
+    throw new Error(
+      `Fixture not loaded into shared program: ${targetPath}. Ensure the file exists and is included in FIXTURE_FILES.`,
+    );
+  }
+  return [
+    ...program.getSyntacticDiagnostics(sourceFile),
+    ...program.getSemanticDiagnostics(sourceFile),
+  ];
+}
+
+function formatDiagnostics(diagnostics: readonly ts.Diagnostic[]): string {
+  return ts.formatDiagnostics(diagnostics, DIAGNOSTIC_FORMAT_HOST);
+}
+
+function expectFixtureTypechecks(fileName: string): void {
+  const diagnostics = getDiagnosticsForFixture(fileName);
+  if (diagnostics.length > 0) {
+    throw new Error(
+      `Typecheck failed for ${fileName}\n${formatDiagnostics(diagnostics)}`,
+    );
+  }
 }
 
 function expectTypecheckFailure(
   fileName: string,
   expectedSnippets: readonly string[],
-) {
-  const result = runTypecheck(path.join(fixtureRoot, fileName));
-  const decoder = new TextDecoder();
-  const output = `${decoder.decode(result.stdout)}\n${decoder.decode(result.stderr)}`;
+): void {
+  const diagnostics = getDiagnosticsForFixture(fileName);
+  const output = formatDiagnostics(diagnostics);
 
-  expect(result.exitCode).not.toBe(0);
+  expect(diagnostics.length).toBeGreaterThan(0);
   for (const snippet of expectedSnippets) {
     expect(output).toContain(snippet);
   }
 }
 
 test("defineTopologyManifest accepts valid typed references", () => {
-  const result = runTypecheck(path.join(fixtureRoot, "valid-manifest.ts"));
-  const decoder = new TextDecoder();
-  if (result.exitCode !== 0) {
-    throw new Error(
-      `Typecheck failed for valid-manifest.ts\nstdout:\n${decoder.decode(result.stdout)}\nstderr:\n${decoder.decode(result.stderr)}`,
-    );
-  }
+  expectFixtureTypechecks("valid-manifest.ts");
 });
 
 test("defineTopologyManifest accepts valid player-scoped seed homes with ownerId", () => {
-  const result = runTypecheck(
-    path.join(fixtureRoot, "valid-player-scoped-seed-homes.ts"),
-  );
-  const decoder = new TextDecoder();
-  if (result.exitCode !== 0) {
-    throw new Error(
-      `Typecheck failed for valid-player-scoped-seed-homes.ts\nstdout:\n${decoder.decode(result.stdout)}\nstderr:\n${decoder.decode(result.stderr)}`,
-    );
-  }
+  expectFixtureTypechecks("valid-player-scoped-seed-homes.ts");
 });
 
 test("defineTopologyManifest accepts omitted boardTemplates", () => {
-  const result = runTypecheck(
-    path.join(fixtureRoot, "valid-manifest-omits-board-templates.ts"),
-  );
-  const decoder = new TextDecoder();
-  if (result.exitCode !== 0) {
-    throw new Error(
-      `Typecheck failed for valid-manifest-omits-board-templates.ts\nstdout:\n${decoder.decode(result.stdout)}\nstderr:\n${decoder.decode(result.stderr)}`,
-    );
-  }
+  expectFixtureTypechecks("valid-manifest-omits-board-templates.ts");
 });
 
 test("defineTopologyManifest accepts die types that omit sides", () => {
-  const result = runTypecheck(
-    path.join(fixtureRoot, "valid-die-type-omits-sides.ts"),
-  );
-  const decoder = new TextDecoder();
-  if (result.exitCode !== 0) {
-    throw new Error(
-      `Typecheck failed for valid-die-type-omits-sides.ts\nstdout:\n${decoder.decode(result.stdout)}\nstderr:\n${decoder.decode(result.stderr)}`,
-    );
-  }
+  expectFixtureTypechecks("valid-die-type-omits-sides.ts");
 });
 
 test("defineTopologyManifest rejects invalid typed references", () => {
-  const result = runTypecheck(path.join(fixtureRoot, "invalid-manifest.ts"));
-  const decoder = new TextDecoder();
-  const output = `${decoder.decode(result.stdout)}\n${decoder.decode(result.stderr)}`;
-
-  expect(result.exitCode).not.toBe(0);
-  expect(output).toContain(
+  expectTypecheckFailure("invalid-manifest.ts", [
     "Type '\"discard\"' is not assignable to type '\"draw\"'",
-  );
-  expect(output).toContain(
     "Type '\"missing-card-set\"' is not assignable to type '\"main\"'",
-  );
-  expect(output).toContain(
     "Type '\"space-b\"' is not assignable to type '\"space-a\"'",
-  );
-  expect(output).toContain(
     'Type \'"missing-slot"\' is not assignable to type \'"worker-rest" | "staging"\'',
-  );
-  expect(output).toContain(
     "Type '\"draft\"' is not assignable to type '\"standard\"'",
-  );
+  ]);
 });
 
 test("defineTopologyManifest rejects invalid strict slot host ids", () => {
-  const result = runTypecheck(
-    path.join(fixtureRoot, "invalid-slot-host-manifest.ts"),
-  );
-  const decoder = new TextDecoder();
-  const output = `${decoder.decode(result.stdout)}\n${decoder.decode(result.stderr)}`;
-
-  expect(result.exitCode).not.toBe(0);
-  expect(output).toContain(
+  expectTypecheckFailure("invalid-slot-host-manifest.ts", [
     "Type '\"missing-host\"' is not assignable to type '\"mat-alpha\"'",
-  );
+  ]);
 });
 
 test("defineTopologyManifest rejects invalid strict slot ids", () => {
-  const result = runTypecheck(
-    path.join(fixtureRoot, "invalid-slot-id-manifest.ts"),
-  );
-  const decoder = new TextDecoder();
-  const output = `${decoder.decode(result.stdout)}\n${decoder.decode(result.stderr)}`;
-
-  expect(result.exitCode).not.toBe(0);
-  expect(output).toContain(
+  expectTypecheckFailure("invalid-slot-id-manifest.ts", [
     "Type '\"missing-slot\"' is not assignable to type '\"staging\"'",
-  );
+  ]);
 });
 
 test("defineTopologyManifest rejects missing required card properties", () => {
@@ -262,16 +251,9 @@ test("defineTopologyManifest rejects per-player zone homes without ownerId", () 
 });
 
 test("defineTopologyManifest rejects invalid board container card-set references", () => {
-  const result = runTypecheck(
-    path.join(fixtureRoot, "invalid-container-card-set-manifest.ts"),
-  );
-  const decoder = new TextDecoder();
-  const output = `${decoder.decode(result.stdout)}\n${decoder.decode(result.stderr)}`;
-
-  expect(result.exitCode).not.toBe(0);
-  expect(output).toContain(
+  expectTypecheckFailure("invalid-container-card-set-manifest.ts", [
     "Type '\"missing-card-set\"' is not assignable to type '\"main\"'",
-  );
+  ]);
 });
 
 test("defineTopologyManifest rejects edge ids in generic board field schemas", () => {

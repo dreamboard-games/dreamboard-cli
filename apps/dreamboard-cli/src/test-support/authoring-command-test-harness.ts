@@ -260,6 +260,12 @@ export type AuthoringCommandTestState = {
     ruleId: string;
   };
   waitForCompiledResultJobError: Error | null;
+  waitForCompiledResultJobTerminalResult: {
+    status: "COMPLETED" | "FAILED";
+    phase?: string;
+    message?: string;
+    createdCompiledResultId?: string;
+  } | null;
 };
 
 function createDefaultState(): AuthoringCommandTestState {
@@ -477,6 +483,7 @@ function createDefaultState(): AuthoringCommandTestState {
       ruleId: "rule-2",
     },
     waitForCompiledResultJobError: null,
+    waitForCompiledResultJobTerminalResult: null,
   };
 }
 
@@ -803,15 +810,20 @@ mock.module("../services/api/index.js", () => ({
     if (state.waitForCompiledResultJobError) {
       throw state.waitForCompiledResultJobError;
     }
+    const terminalResult = state.waitForCompiledResultJobTerminalResult;
     return {
       job: {
         id: options.jobId,
         jobId: options.jobId,
         gameId: options.gameId,
-        status: state.createCompiledResultResult.success
-          ? "COMPLETED"
-          : "FAILED",
-        createdCompiledResultId: state.createCompiledResultResult.id,
+        status:
+          terminalResult?.status ??
+          (state.createCompiledResultResult.success ? "COMPLETED" : "FAILED"),
+        phase: terminalResult?.phase,
+        message: terminalResult?.message,
+        createdCompiledResultId:
+          terminalResult?.createdCompiledResultId ??
+          state.createCompiledResultResult.id,
       },
       compiledResult: structuredClone(state.createCompiledResultResult),
     };

@@ -1,6 +1,7 @@
 import { defineCommand } from "citty";
 import consola from "consola";
 import {
+  getGlobalAuthPath,
   getGlobalConfigPath,
   loadGlobalConfig,
   saveGlobalConfig,
@@ -16,8 +17,6 @@ export default defineCommand({
       authToken: undefined,
       refreshToken: undefined,
     });
-    consola.success(
-      `Logged out. Cleared session from ${getGlobalConfigPath()}.`,
-    );
+    consola.success(`Logged out. Cleared session from ${getGlobalAuthPath()}.`);
   },
 });

@@ -713,7 +713,7 @@ export const startGameMutation = (options?: Partial<Options<StartGameData>>): Us
 /**
  * Submit generic gameplay input
  *
- * Submit a gameplay input during gameplay phase. Supports action, promptResponse, and windowAction for clients.
+ * Submit a gameplay input during gameplay phase. Supports action and promptResponse for clients.
  */
 export const submitInputMutation = (options?: Partial<Options<SubmitInputData>>): UseMutationOptions<SubmitInputResponse2, SubmitInputError, Options<SubmitInputData>> => {
     const mutationOptions: UseMutationOptions<SubmitInputResponse2, SubmitInputError, Options<SubmitInputData>> = {

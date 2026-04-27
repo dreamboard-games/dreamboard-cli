@@ -613,6 +613,14 @@ test("generateManifestContractSource emits typed topology fields and helper lite
     "export type BoardSpaceFields<BoardIdValue extends BoardId = BoardId> =",
   );
   expect(source).toContain("export type BoardContainerStateByBoardId = {");
+  expect(source).toContain(
+    "export interface TiledEdgeStateRecord<\n  SpaceIdValue extends SpaceId = SpaceId,\n  EdgeIdValue extends EdgeId = EdgeId,",
+  );
+  expect(source).toContain("  id: EdgeIdValue;");
+  expect(source).toContain(
+    "export interface TiledVertexStateRecord<\n  SpaceIdValue extends SpaceId = SpaceId,\n  VertexIdValue extends VertexId = VertexId,",
+  );
+  expect(source).toContain("  id: VertexIdValue;");
   expect(source).toContain("export type HexEdgeState<");
   expect(source).toContain(
     "export type TiledBoardId = keyof HexBoardStateById | keyof SquareBoardStateById;",
@@ -1150,7 +1158,10 @@ test("generated records and idGuards preserve exact manifest ids", async () => {
         module.literals.edgeIds.map((edgeId: string) => [edgeId, null]),
       );
       const expectedVertexRecord = Object.fromEntries(
-        module.literals.vertexIds.map((vertexId: string) => [vertexId, vertexId]),
+        module.literals.vertexIds.map((vertexId: string) => [
+          vertexId,
+          vertexId,
+        ]),
       );
       const expectedSquareEdgeRecord = Object.fromEntries(
         module.literals.edgeIds
@@ -1244,14 +1255,15 @@ test("generateManifestContractSource typechecks typed zone card helpers against 
   await expectGeneratedContractTypechecks({
     tempPrefix: ".tmp-zone-card-helper-contract-",
     manifest: TEST_MANIFEST,
-    usageSource: `import { getPlayerZoneCards, getSharedZoneCards } from "@dreamboard/app-sdk/reducer";
+    usageSource: `import { createTableQueries } from "@dreamboard/app-sdk/reducer";
 import { createInitialTable } from "./manifest-contract";
 
 const table = createInitialTable({
   playerIds: ["player-1", "player-2"],
 });
+const q = createTableQueries(table);
 
-const sharedCardId = getSharedZoneCards(table, "draw-deck")[0];
+const sharedCardId = q.zone.sharedCards("draw-deck")[0];
 const sharedCardName: string | undefined = sharedCardId
   ? table.cards[sharedCardId].name
   : undefined;
@@ -1259,7 +1271,7 @@ const sharedCardText: string | undefined = sharedCardId
   ? table.cards[sharedCardId].text
   : undefined;
 
-const handCardId = getPlayerZoneCards(table, "player-1", "main-hand")[0];
+const handCardId = q.zone.playerCards("player-1", "main-hand")[0];
 const handCardName: string | undefined = handCardId
   ? table.cards[handCardId].name
   : undefined;

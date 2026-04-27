@@ -63,6 +63,10 @@ function isSourceRevisionPath(filePath: string): boolean {
   );
 }
 
+function shouldAlwaysUpsertSourcePath(filePath: string): boolean {
+  return filePath === ".npmrc";
+}
+
 function buildSourceChanges(options: {
   mode: SourceChangeMode;
   localFiles: Record<string, string>;
@@ -72,7 +76,11 @@ function buildSourceChanges(options: {
 
   if (mode === "replace") {
     return Object.entries(localFiles)
-      .filter(([filePath]) => isSourceRevisionPath(filePath))
+      .filter(
+        ([filePath]) =>
+          isSourceRevisionPath(filePath) ||
+          shouldAlwaysUpsertSourcePath(filePath),
+      )
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([path, content]) => ({
         kind: "upsert",
@@ -94,6 +102,16 @@ function buildSourceChanges(options: {
 
   for (const filePath of diff.deleted.filter(isSourceRevisionPath).sort()) {
     changesByPath.set(filePath, { kind: "delete", path: filePath });
+  }
+
+  for (const [filePath, content] of Object.entries(localFiles)
+    .filter(([filePath]) => shouldAlwaysUpsertSourcePath(filePath))
+    .sort(([left], [right]) => left.localeCompare(right))) {
+    changesByPath.set(filePath, {
+      kind: "upsert",
+      path: filePath,
+      content,
+    });
   }
 
   return Array.from(changesByPath.values()).sort((left, right) =>
@@ -443,6 +461,7 @@ export default defineCommand({
       localDiff.deleted.length > 0;
     if (
       !hasChanges &&
+      !parsedArgs.force &&
       localHeadId != null &&
       remoteHeadId === localHeadId &&
       !pendingSync

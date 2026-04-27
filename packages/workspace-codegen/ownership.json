@@ -1,5 +1,5 @@
 {
-  "version": 21,
+  "version": 22,
   "allowedPaths": {
     "rootFiles": [
       ".npmrc",
@@ -25,7 +25,8 @@
       "app/game-contract.ts",
       "app/game.ts",
       "app/setup-profiles.ts",
-      "app/reducer-support.ts"
+      "app/reducer-support.ts",
+      "app/derived.ts"
     ],
     "seedFilePatterns": [
       {

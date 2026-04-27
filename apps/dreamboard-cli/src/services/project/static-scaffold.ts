@@ -57,13 +57,12 @@ export default defineScenario({
     "Sanity check that the scaffolded workspace boots into its initial phase.",
   from: "initial-turn",
   when: async () => undefined,
-  then: ({ expect, players, prompts, state, windows }) => {
+  then: ({ expect, players, prompts, state }) => {
     const playerIds = players();
     expect(playerIds.length).toBeGreaterThanOrEqual(1);
     expect(state()).toBe("setup");
     for (const playerId of playerIds) {
       expect(prompts(playerId)).toEqual([]);
-      expect(windows(playerId)).toEqual([]);
     }
   },
 });
@@ -251,7 +250,7 @@ async function removeLegacyVendoredSdkPaths(
 async function writeTestReadme(filePath: string): Promise<void> {
   await writeTextFile(
     filePath,
-    "# Dreamboard Test Workspace\n\nTypeScript bases live in `test/bases/*.base.ts` and scenarios live in `test/scenarios/*.scenario.ts`.\n\n1. Define reusable seeded bases with `defineBase({ id, seed, players, setupProfileId?, setup })`.\n2. Define scenarios with `defineScenario({ id, from, when, then })`.\n3. Scenario assertions can read `players()`, `state()`, `view(playerId)`, `prompts(playerId)`, and `windows(playerId)`.\n4. Generate deterministic base snapshots: `dreamboard test generate`.\n5. Run tests: `dreamboard test run`.\n\nImport test helpers from `../testing-types`.\n\nGenerated artifacts are written to `test/generated/*` and should not be edited manually.\n",
+    "# Dreamboard Test Workspace\n\nTypeScript bases live in `test/bases/*.base.ts` and scenarios live in `test/scenarios/*.scenario.ts`.\n\n1. Define reusable seeded bases with `defineBase({ id, seed, players, setupProfileId?, setup })`.\n2. Define scenarios with `defineScenario({ id, from, when, then })`.\n3. Scenario assertions can read `players()`, `state()`, `view(playerId)`, and `prompts(playerId)`.\n4. Generate deterministic base snapshots: `dreamboard test generate`.\n5. Run tests: `dreamboard test run`.\n\nImport test helpers from `../testing-types`.\n\nGenerated artifacts are written to `test/generated/*` and should not be edited manually.\n",
   );
 }
 

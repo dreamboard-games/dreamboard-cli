@@ -108,11 +108,10 @@ export default defineScenario({
   id: "smoke-initial-turn",
   from: "initial-turn",
   when: async () => undefined,
-  then: ({ expect, players, prompts, state, windows }) => {
+  then: ({ expect, players, prompts, state }) => {
     expect(state()).toBe("setup");
     for (const playerId of players()) {
       expect(prompts(playerId)).toEqual([]);
-      expect(windows(playerId)).toEqual([]);
     }
   },
 });
@@ -133,12 +132,8 @@ test("accept dispatch results require kind discriminators throughout trace paylo
           type: "appliedEffect",
           kind: "appliedEffect",
           effect: {
-            type: "openWindow",
-            kind: "openWindow",
-            closePolicy: {
-              type: "manual",
-              kind: "manual",
-            },
+            type: "transition",
+            kind: "transition",
           },
         },
       ],
@@ -165,13 +160,13 @@ test("missing nested effect kind fails with a precise payload path", () => {
           type: "appliedEffect",
           kind: "appliedEffect",
           effect: {
-            type: "dispatchSystem",
+            type: "transition",
           },
         },
       ],
     }),
   ).toThrow(
-    "DispatchResult.accept.trace[0].effect must include kind='dispatchSystem'",
+    "DispatchResult.accept.trace[0].effect must include kind='transition'",
   );
 });
 

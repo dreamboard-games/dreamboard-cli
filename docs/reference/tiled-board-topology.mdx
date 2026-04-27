@@ -142,30 +142,31 @@ Use this pattern for:
 ## Projecting UI-ready boards
 
 Reducer views should join immutable topology with mutable overlay state before
-rendering.
+rendering. Destructure the injected `q` inside `project({ state, playerId, q })`
+instead of constructing a fresh query from state.
 
 ```ts
-import {
-  createTableQueries,
-} from "@dreamboard/app-sdk/reducer";
+import { defineView } from "@dreamboard/app-sdk/reducer";
+import type { GameContract } from "./game-contract";
 
-function projectBoard(state: GameState) {
-  const q = createTableQueries(state.table);
-  const board = q.board.tiled("arena");
+export const playerView = defineView<GameContract>()({
+  project({ state, q }) {
+    const board = q.board.tiled("arena");
 
-  return {
-    boardId: board.id,
-    layout: board.layout,
-    spaces: Object.values(board.spaces).map((space) => ({
-      ...space,
-      ownerId: state.publicState.ownershipBySpaceId[space.id] ?? null,
-      edgeIds: q.board.spaceEdges(board.id, space.id),
-      vertexIds: q.board.spaceVertices(board.id, space.id),
-    })),
-    legalEdgeIds: state.publicState.legalEdgeIds,
-    legalVertexIds: state.publicState.legalVertexIds,
-  };
-}
+    return {
+      boardId: board.id,
+      layout: board.layout,
+      spaces: Object.values(board.spaces).map((space) => ({
+        ...space,
+        ownerId: state.publicState.ownershipBySpaceId[space.id] ?? null,
+        edgeIds: q.board.spaceEdges(board.id, space.id),
+        vertexIds: q.board.spaceVertices(board.id, space.id),
+      })),
+      legalEdgeIds: state.publicState.legalEdgeIds,
+      legalVertexIds: state.publicState.legalVertexIds,
+    };
+  },
+});
 ```
 
 Keep canonical legality and scoring in reducer code. The UI should consume a
@@ -177,9 +178,11 @@ projected board view plus simple highlight or legal-target sets.
 - `board.edges` is an array of edge records.
 - `board.vertices` is an array of vertex records.
 
-Do not use `Object.keys(board.edges)` or `Object.keys(board.vertices)` to
-discover runtime IDs. Those expressions return array indexes, not edge or
-vertex IDs.
+<Warning>
+  Do not use `Object.keys(board.edges)` or `Object.keys(board.vertices)` to
+  discover runtime IDs. Those expressions return array indexes, not edge or
+  vertex IDs.
+</Warning>
 
 Use reducer-native query helpers when you need topology traversal:
 
@@ -237,9 +240,7 @@ Project the whole tiled board record into the reducer view. Then keep
 game-specific legality beside it:
 
 ```ts
-project({ state }) {
-  const q = createStateQueries(state);
-
+project({ state, q }) {
   return {
     board: q.board.tiled("arena"),
     legalEdgeIds: state.publicState.legalEdgeIds,
@@ -275,7 +276,11 @@ space topology.
   `boardHelpers.boardIdForPlayer(...)`, or the projected board view
 - use those IDs as keys in reducer state and as click targets in the UI
 
-Do not hardcode the derived string format in app code.
+<Warning>
+  Do not hardcode the derived string format in app code. Read the runtime
+  `edgeId` and `vertexId` values from the helpers and projected board view
+  above instead.
+</Warning>
 
 ## Valid and invalid tiled refs
 

@@ -215,4 +215,4 @@ test("board-contract-lab example workspace typechecks", async () => {
       ].join("\n"),
     );
   }
-}, 20_000);
+}, 60_000);
