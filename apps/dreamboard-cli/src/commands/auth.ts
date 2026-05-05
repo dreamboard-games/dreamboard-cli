@@ -11,6 +11,13 @@ import {
   saveGlobalConfig,
 } from "../config/global-config.js";
 import {
+  clearCredentials,
+  getActiveCredentialBackendName,
+  getStoredSession,
+  setAccessOnlySession,
+  setCredentials,
+} from "../config/credential-store.js";
+import {
   formatStoredSessionInvalidMessage,
   getAuthTokenExpiry,
   isInvalidRefreshTokenMessage,
@@ -82,7 +89,7 @@ export default defineCommand({
   async run({ args }) {
     const parsedArgs = parseAuthCommandArgs(args);
     const action = parsedArgs.action;
-    const config = await loadGlobalConfig();
+    const globalConfig = await loadGlobalConfig();
 
     if (IS_PUBLISHED_BUILD && action !== "login" && action !== "clear") {
       throw new Error(
@@ -105,7 +112,10 @@ export default defineCommand({
           `Invalid environment '${environment}'. Valid options: local, dev, prod`,
         );
       }
-      await saveGlobalConfig({ ...config, environment: environment as any });
+      await saveGlobalConfig({
+        ...globalConfig,
+        environment: environment as any,
+      });
       consola.success(`Environment set to '${environment}'.`);
       return;
     }
@@ -118,21 +128,18 @@ export default defineCommand({
       }
       const token = parsedArgs.tokenValue ?? parsedArgs.token ?? "";
       if (!token) throw new Error("Usage: dreamboard auth set <token>");
-      await saveGlobalConfig({
-        ...config,
-        authToken: token,
-        refreshToken: undefined,
-      });
+
+      // `auth set` is the power-user "paste a JWT" path. It has no
+      // refresh token by construction; calling `setAccessOnlySession`
+      // keeps the intent explicit at the storage layer rather than
+      // piggybacking on a partial `setCredentials` write.
+      await setAccessOnlySession(token);
       consola.success(`Auth token saved to ${getGlobalAuthPath()}.`);
       return;
     }
 
     if (action === "clear") {
-      await saveGlobalConfig({
-        ...config,
-        authToken: undefined,
-        refreshToken: undefined,
-      });
+      await clearCredentials();
       consola.success(
         `Stored Dreamboard session cleared from ${getGlobalAuthPath()}.`,
       );
@@ -143,7 +150,7 @@ export default defineCommand({
       const shouldPrintJwt = !IS_PUBLISHED_BUILD && parsedArgs.jwt === true;
       const environment = IS_PUBLISHED_BUILD
         ? PUBLISHED_ENVIRONMENT
-        : parsedArgs.env || config.environment || "dev";
+        : parsedArgs.env || globalConfig.environment || "dev";
       const envConfig = ENVIRONMENT_CONFIGS[environment];
 
       const supabaseUrl = envConfig?.supabaseUrl;
@@ -155,34 +162,31 @@ export default defineCommand({
         );
       }
 
+      const storedSession = await getStoredSession();
       const supabase = createSupabaseClient(supabaseUrl, supabaseAnonKey);
-      let accessToken = config.authToken;
-      let refreshToken = config.refreshToken;
+      let accessToken = storedSession?.accessToken;
+      let refreshToken = storedSession?.refreshToken;
       let didRefreshStoredSession = false;
       let didUseBrowserLogin = false;
 
-      if (accessToken) {
-        if (refreshToken) {
-          const { data, error } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          });
+      if (accessToken && refreshToken) {
+        const { data, error } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
 
-          if (error) {
-            if (isInvalidRefreshTokenMessage(error.message)) {
-              consola.warn(formatStoredSessionInvalidMessage(error.message));
-              accessToken = undefined;
-              refreshToken = undefined;
-            } else {
-              throw new Error(
-                `Stored session refresh failed: ${error.message}`,
-              );
-            }
+        if (error) {
+          if (isInvalidRefreshTokenMessage(error.message)) {
+            consola.warn(formatStoredSessionInvalidMessage(error.message));
+            accessToken = undefined;
+            refreshToken = undefined;
           } else {
-            accessToken = data.session?.access_token ?? accessToken;
-            refreshToken = data.session?.refresh_token ?? refreshToken;
-            didRefreshStoredSession = true;
+            throw new Error(`Stored session refresh failed: ${error.message}`);
           }
+        } else {
+          accessToken = data.session?.access_token ?? accessToken;
+          refreshToken = data.session?.refresh_token ?? refreshToken;
+          didRefreshStoredSession = true;
         }
       }
 
@@ -201,11 +205,15 @@ export default defineCommand({
       }
 
       await saveGlobalConfig({
-        ...config,
-        authToken: accessToken,
-        refreshToken: refreshToken,
+        ...globalConfig,
         environment: environment as any,
       });
+
+      if (refreshToken) {
+        await setCredentials({ accessToken, refreshToken });
+      } else {
+        await setAccessOnlySession(accessToken);
+      }
 
       if (shouldPrintJwt) {
         process.stdout.write(
@@ -224,32 +232,56 @@ export default defineCommand({
 
       if (didUseBrowserLogin) {
         consola.success(
-          `Browser login successful. Session saved to ${getGlobalAuthPath()}.`,
+          `Browser login successful. Session saved to ${getGlobalAuthPath()}`,
         );
-      } else if (config.authToken && didRefreshStoredSession) {
+      } else if (storedSession?.accessToken && didRefreshStoredSession) {
         consola.success(
-          `Stored auth session refreshed and saved to ${getGlobalAuthPath()}.`,
+          `Stored auth session refreshed and saved to ${getGlobalAuthPath()}`,
         );
-      } else if (config.authToken) {
+      } else if (storedSession?.accessToken) {
         consola.success(
-          `Stored auth token found. Session data remains in ${getGlobalAuthPath()}.`,
+          `Stored auth token found. Session data remains in ${getGlobalAuthPath()}`,
         );
       }
       return;
     }
 
     if (action === "status") {
-      const resolvedConfig = resolveConfig(config, {
-        env: parsedArgs.env,
-      });
-      const environment = parsedArgs.env || config.environment || "dev";
+      const storedSession = await getStoredSession();
+      const resolvedConfig = resolveConfig(
+        globalConfig,
+        { env: parsedArgs.env },
+        undefined,
+        storedSession,
+      );
+      const environment = parsedArgs.env || globalConfig.environment || "dev";
       const authTokenExpiry = getAuthTokenExpiry(resolvedConfig.authToken);
+      const backendName = await getActiveCredentialBackendName();
 
       consola.log(`Environment: ${environment}`);
       consola.log(`Auth token source: ${resolvedConfig.authTokenSource}`);
       consola.log(`Refresh token source: ${resolvedConfig.refreshTokenSource}`);
+      consola.log(
+        `Credential backend: ${backendName}${
+          backendName === "keychain"
+            ? " (OS keychain via @napi-rs/keyring)"
+            : ` (${getGlobalAuthPath()})`
+        }`,
+      );
+      const preference = globalConfig.credentialBackend;
+      if (preference) {
+        consola.log(`Credential backend preference (config): ${preference}`);
+      } else {
+        consola.log(
+          'Credential backend preference (config): file (default; set `"credentialBackend": "keychain"` in config.json to opt in)',
+        );
+      }
+      if (process.env.DREAMBOARD_CREDENTIAL_BACKEND) {
+        consola.log(
+          `Backend override: DREAMBOARD_CREDENTIAL_BACKEND=${process.env.DREAMBOARD_CREDENTIAL_BACKEND}`,
+        );
+      }
       consola.log(`Config path: ${getGlobalConfigPath()}`);
-      consola.log(`Auth path: ${getGlobalAuthPath()}`);
 
       if (!resolvedConfig.authToken) {
         consola.warn("No Dreamboard session found.");
@@ -270,17 +302,16 @@ export default defineCommand({
             return;
           }
 
-          const refreshedSession =
-            await refreshResolvedAuthSession(resolvedConfig);
+          const refreshed = await refreshResolvedAuthSession(resolvedConfig);
 
-          if (!refreshedSession?.authToken) {
+          if (!refreshed?.accessToken) {
             consola.warn(
               "Access token is expired and refresh did not return a new session.",
             );
             return;
           }
 
-          const refreshedExpiry = getAuthTokenExpiry(resolvedConfig.authToken);
+          const refreshedExpiry = getAuthTokenExpiry(refreshed.accessToken);
           consola.success("Access token was expired and has been refreshed.");
           if (refreshedExpiry) {
             consola.log(

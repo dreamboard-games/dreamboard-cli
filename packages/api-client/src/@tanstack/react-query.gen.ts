@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen.js';
-import { abortSandboxSession, addSeat, assignSeat, cancelConversationJob, createAuthoringState, createGame, createGameRule, createSession, createSourceBlobUploadSession, createSourceRevision, deleteConversation, deleteGame, disconnectSessionEvents, downloadGameSources, fetchUiBundle, findManifests, getActiveJob, getAgentChatContext, getApiVersion, getAuthoringHead, getCompiledResult, getGame, getGameBySlug, getGameRule, getGameScripts, getGameSources, getJob, getLatestCompiledResult, getLatestGameRule, getManifest, getSessionByShortCode, getSessionStatus, healthCheck, listCompiledResults, listConversations, listGameRules, listGames, type Options, queryWorkshopRulebook, queueCompiledResultJob, receiveSandboxWebhookComplete, receiveSandboxWebhookEvent, removeSeat, restoreHistory, sandboxAbort, sandboxChat, saveManifest, sendSandboxMessage, startGame, submitInput, unassignSeat, updateGame, updateSeat, validateInput } from '../sdk.gen.js';
-import type { AbortSandboxSessionData, AbortSandboxSessionError, AbortSandboxSessionResponse, AddSeatData, AddSeatError, AddSeatResponse, AssignSeatData, AssignSeatError, AssignSeatResponse, CancelConversationJobData, CancelConversationJobError, CancelConversationJobResponse, CreateAuthoringStateData, CreateAuthoringStateError, CreateAuthoringStateResponse, CreateGameData, CreateGameError, CreateGameResponse, CreateGameRuleData, CreateGameRuleError, CreateGameRuleResponse2, CreateSessionData, CreateSessionError, CreateSessionResponse2, CreateSourceBlobUploadSessionData, CreateSourceBlobUploadSessionError, CreateSourceBlobUploadSessionResponse, CreateSourceRevisionData, CreateSourceRevisionError, CreateSourceRevisionResponse, DeleteConversationData, DeleteConversationError, DeleteConversationResponse, DeleteGameData, DeleteGameError, DeleteGameResponse2, DisconnectSessionEventsData, DisconnectSessionEventsError, DownloadGameSourcesData, DownloadGameSourcesError, DownloadGameSourcesResponse, FetchUiBundleData, FetchUiBundleError, FetchUiBundleResponse, FindManifestsData, FindManifestsError, FindManifestsResponse2, GetActiveJobData, GetActiveJobError, GetActiveJobResponse, GetAgentChatContextData, GetAgentChatContextError, GetAgentChatContextResponse, GetApiVersionData, GetApiVersionResponse, GetAuthoringHeadData, GetAuthoringHeadError, GetAuthoringHeadResponse, GetCompiledResultData, GetCompiledResultError, GetCompiledResultResponse, GetGameBySlugData, GetGameBySlugError, GetGameBySlugResponse, GetGameData, GetGameError, GetGameResponse, GetGameRuleData, GetGameRuleError, GetGameRuleResponse, GetGameScriptsData, GetGameScriptsError, GetGameScriptsResponse, GetGameSourcesData, GetGameSourcesError, GetGameSourcesResponse, GetJobData, GetJobError, GetJobResponse, GetLatestCompiledResultData, GetLatestCompiledResultError, GetLatestCompiledResultResponse, GetLatestGameRuleData, GetLatestGameRuleError, GetLatestGameRuleResponse, GetManifestData, GetManifestError, GetManifestResponse, GetSessionByShortCodeData, GetSessionByShortCodeError, GetSessionByShortCodeResponse, GetSessionStatusData, GetSessionStatusError, GetSessionStatusResponse, HealthCheckData, HealthCheckResponse, ListCompiledResultsData, ListCompiledResultsError, ListCompiledResultsResponse2, ListConversationsData, ListConversationsError, ListConversationsResponse, ListGameRulesData, ListGameRulesError, ListGameRulesResponse2, ListGamesData, ListGamesError, ListGamesResponse, QueryWorkshopRulebookData, QueryWorkshopRulebookError, QueryWorkshopRulebookResponse, QueueCompiledResultJobData, QueueCompiledResultJobError, QueueCompiledResultJobResponse2, ReceiveSandboxWebhookCompleteData, ReceiveSandboxWebhookCompleteError, ReceiveSandboxWebhookCompleteResponse, ReceiveSandboxWebhookEventData, ReceiveSandboxWebhookEventError, ReceiveSandboxWebhookEventResponse, RemoveSeatData, RemoveSeatError, RemoveSeatResponse, RestoreHistoryData, RestoreHistoryError, RestoreHistoryResponse2, SandboxAbortData, SandboxAbortError, SandboxAbortResponse, SandboxChatData, SandboxChatError, SandboxChatResponse2, SaveManifestData, SaveManifestError, SaveManifestResponse2, SendSandboxMessageData, SendSandboxMessageError, SendSandboxMessageResponse2, StartGameData, StartGameError, StartGameResponse2, SubmitInputData, SubmitInputError, SubmitInputResponse2, UnassignSeatData, UnassignSeatError, UnassignSeatResponse, UpdateGameData, UpdateGameError, UpdateGameResponse, UpdateSeatData, UpdateSeatError, UpdateSeatResponse, ValidateInputData, ValidateInputError, ValidateInputResponse2 } from '../types.gen.js';
+import { abortSandboxSession, addSeat, assignSeat, cancelConversationJob, createAuthoringState, createGame, createGameRule, createSession, createSourceBlobUploadSession, createSourceRevision, deleteConversation, deleteGame, describePlayerAction, disconnectPlayerGameplayEvents, disconnectSessionLobbyEvents, downloadGameSources, fetchUiBundle, findManifests, getActiveJob, getAgentChatContext, getApiVersion, getAuthoringHead, getCompiledResult, getGame, getGameBySlug, getGameRule, getGameScripts, getGameSources, getJob, getLatestCompiledResult, getLatestGameRule, getManifest, getPlayerActionTargets, getSessionBootstrap, getSessionByShortCode, healthCheck, listCompiledResults, listConversations, listGameRules, listGames, listPlayerActions, type Options, queryWorkshopRulebook, queueCompiledResultJob, receiveSandboxWebhookComplete, receiveSandboxWebhookEvent, removeSeat, restoreHistory, sandboxAbort, sandboxChat, saveManifest, sendSandboxMessage, startGame, submitPlayerAction, unassignSeat, updateGame, updateSeat, validatePlayerAction } from '../sdk.gen.js';
+import type { AbortSandboxSessionData, AbortSandboxSessionError, AbortSandboxSessionResponse, AddSeatData, AddSeatError, AddSeatResponse, AssignSeatData, AssignSeatError, AssignSeatResponse, CancelConversationJobData, CancelConversationJobError, CancelConversationJobResponse, CreateAuthoringStateData, CreateAuthoringStateError, CreateAuthoringStateResponse, CreateGameData, CreateGameError, CreateGameResponse, CreateGameRuleData, CreateGameRuleError, CreateGameRuleResponse2, CreateSessionData, CreateSessionError, CreateSessionResponse2, CreateSourceBlobUploadSessionData, CreateSourceBlobUploadSessionError, CreateSourceBlobUploadSessionResponse, CreateSourceRevisionData, CreateSourceRevisionError, CreateSourceRevisionResponse, DeleteConversationData, DeleteConversationError, DeleteConversationResponse, DeleteGameData, DeleteGameError, DeleteGameResponse2, DescribePlayerActionData, DescribePlayerActionError, DescribePlayerActionResponse, DisconnectPlayerGameplayEventsData, DisconnectPlayerGameplayEventsError, DisconnectSessionLobbyEventsData, DisconnectSessionLobbyEventsError, DownloadGameSourcesData, DownloadGameSourcesError, DownloadGameSourcesResponse, FetchUiBundleData, FetchUiBundleError, FetchUiBundleResponse, FindManifestsData, FindManifestsError, FindManifestsResponse2, GetActiveJobData, GetActiveJobError, GetActiveJobResponse, GetAgentChatContextData, GetAgentChatContextError, GetAgentChatContextResponse, GetApiVersionData, GetApiVersionResponse, GetAuthoringHeadData, GetAuthoringHeadError, GetAuthoringHeadResponse, GetCompiledResultData, GetCompiledResultError, GetCompiledResultResponse, GetGameBySlugData, GetGameBySlugError, GetGameBySlugResponse, GetGameData, GetGameError, GetGameResponse, GetGameRuleData, GetGameRuleError, GetGameRuleResponse, GetGameScriptsData, GetGameScriptsError, GetGameScriptsResponse, GetGameSourcesData, GetGameSourcesError, GetGameSourcesResponse, GetJobData, GetJobError, GetJobResponse, GetLatestCompiledResultData, GetLatestCompiledResultError, GetLatestCompiledResultResponse, GetLatestGameRuleData, GetLatestGameRuleError, GetLatestGameRuleResponse, GetManifestData, GetManifestError, GetManifestResponse, GetPlayerActionTargetsData, GetPlayerActionTargetsError, GetPlayerActionTargetsResponse, GetSessionBootstrapData, GetSessionBootstrapError, GetSessionBootstrapResponse, GetSessionByShortCodeData, GetSessionByShortCodeError, GetSessionByShortCodeResponse, HealthCheckData, HealthCheckResponse, ListCompiledResultsData, ListCompiledResultsError, ListCompiledResultsResponse2, ListConversationsData, ListConversationsError, ListConversationsResponse, ListGameRulesData, ListGameRulesError, ListGameRulesResponse2, ListGamesData, ListGamesError, ListGamesResponse, ListPlayerActionsData, ListPlayerActionsError, ListPlayerActionsResponse, QueryWorkshopRulebookData, QueryWorkshopRulebookError, QueryWorkshopRulebookResponse, QueueCompiledResultJobData, QueueCompiledResultJobError, QueueCompiledResultJobResponse2, ReceiveSandboxWebhookCompleteData, ReceiveSandboxWebhookCompleteError, ReceiveSandboxWebhookCompleteResponse, ReceiveSandboxWebhookEventData, ReceiveSandboxWebhookEventError, ReceiveSandboxWebhookEventResponse, RemoveSeatData, RemoveSeatError, RemoveSeatResponse, RestoreHistoryData, RestoreHistoryError, RestoreHistoryResponse2, SandboxAbortData, SandboxAbortError, SandboxAbortResponse, SandboxChatData, SandboxChatError, SandboxChatResponse2, SaveManifestData, SaveManifestError, SaveManifestResponse2, SendSandboxMessageData, SendSandboxMessageError, SendSandboxMessageResponse2, StartGameData, StartGameError, StartGameResponse, SubmitPlayerActionData, SubmitPlayerActionError, SubmitPlayerActionResponse, UnassignSeatData, UnassignSeatError, UnassignSeatResponse, UpdateGameData, UpdateGameError, UpdateGameResponse, UpdateSeatData, UpdateSeatError, UpdateSeatResponse, ValidatePlayerActionData, ValidatePlayerActionError, ValidatePlayerActionResponse } from '../types.gen.js';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -652,16 +652,16 @@ export const getSessionByShortCodeOptions = (options: Options<GetSessionByShortC
     queryKey: getSessionByShortCodeQueryKey(options)
 });
 
-export const getSessionStatusQueryKey = (options: Options<GetSessionStatusData>) => createQueryKey('getSessionStatus', options);
+export const getSessionBootstrapQueryKey = (options: Options<GetSessionBootstrapData>) => createQueryKey('getSessionBootstrap', options);
 
 /**
- * Get session status
+ * Bootstrap a session
  *
- * Get current status and phase of a game session
+ * Return a deterministic session snapshot for first render before live SSE updates.
  */
-export const getSessionStatusOptions = (options: Options<GetSessionStatusData>) => queryOptions<GetSessionStatusResponse, GetSessionStatusError, GetSessionStatusResponse, ReturnType<typeof getSessionStatusQueryKey>>({
+export const getSessionBootstrapOptions = (options: Options<GetSessionBootstrapData>) => queryOptions<GetSessionBootstrapResponse, GetSessionBootstrapError, GetSessionBootstrapResponse, ReturnType<typeof getSessionBootstrapQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
-        const { data } = await getSessionStatus({
+        const { data } = await getSessionBootstrap({
             ...options,
             ...queryKey[0],
             signal,
@@ -669,18 +669,37 @@ export const getSessionStatusOptions = (options: Options<GetSessionStatusData>) 
         });
         return data;
     },
-    queryKey: getSessionStatusQueryKey(options)
+    queryKey: getSessionBootstrapQueryKey(options)
 });
 
 /**
- * Release a session events stream slot
+ * Release a lobby events stream slot
  *
  * Best-effort disconnect signal used by browser tabs during unload and reconnect transitions so stale event stream slots are released promptly.
  */
-export const disconnectSessionEventsMutation = (options?: Partial<Options<DisconnectSessionEventsData>>): UseMutationOptions<unknown, DisconnectSessionEventsError, Options<DisconnectSessionEventsData>> => {
-    const mutationOptions: UseMutationOptions<unknown, DisconnectSessionEventsError, Options<DisconnectSessionEventsData>> = {
+export const disconnectSessionLobbyEventsMutation = (options?: Partial<Options<DisconnectSessionLobbyEventsData>>): UseMutationOptions<unknown, DisconnectSessionLobbyEventsError, Options<DisconnectSessionLobbyEventsData>> => {
+    const mutationOptions: UseMutationOptions<unknown, DisconnectSessionLobbyEventsError, Options<DisconnectSessionLobbyEventsData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await disconnectSessionEvents({
+            const { data } = await disconnectSessionLobbyEvents({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Release a selected-player gameplay stream slot
+ *
+ * Best-effort disconnect signal for a selected-player gameplay stream.
+ */
+export const disconnectPlayerGameplayEventsMutation = (options?: Partial<Options<DisconnectPlayerGameplayEventsData>>): UseMutationOptions<unknown, DisconnectPlayerGameplayEventsError, Options<DisconnectPlayerGameplayEventsData>> => {
+    const mutationOptions: UseMutationOptions<unknown, DisconnectPlayerGameplayEventsError, Options<DisconnectPlayerGameplayEventsData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await disconnectPlayerGameplayEvents({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -696,8 +715,8 @@ export const disconnectSessionEventsMutation = (options?: Partial<Options<Discon
  *
  * Transition session from lobby to gameplay phase (host only)
  */
-export const startGameMutation = (options?: Partial<Options<StartGameData>>): UseMutationOptions<StartGameResponse2, StartGameError, Options<StartGameData>> => {
-    const mutationOptions: UseMutationOptions<StartGameResponse2, StartGameError, Options<StartGameData>> = {
+export const startGameMutation = (options?: Partial<Options<StartGameData>>): UseMutationOptions<StartGameResponse, StartGameError, Options<StartGameData>> => {
+    const mutationOptions: UseMutationOptions<StartGameResponse, StartGameError, Options<StartGameData>> = {
         mutationFn: async (fnOptions) => {
             const { data } = await startGame({
                 ...options,
@@ -710,15 +729,75 @@ export const startGameMutation = (options?: Partial<Options<StartGameData>>): Us
     return mutationOptions;
 };
 
+export const listPlayerActionsQueryKey = (options: Options<ListPlayerActionsData>) => createQueryKey('listPlayerActions', options);
+
 /**
- * Submit generic gameplay input
+ * List current actions for a selected player
  *
- * Submit a gameplay input during gameplay phase. Supports action and promptResponse for clients.
+ * Returns the current server-authored descriptors and action-set revision for the selected player.
  */
-export const submitInputMutation = (options?: Partial<Options<SubmitInputData>>): UseMutationOptions<SubmitInputResponse2, SubmitInputError, Options<SubmitInputData>> => {
-    const mutationOptions: UseMutationOptions<SubmitInputResponse2, SubmitInputError, Options<SubmitInputData>> = {
+export const listPlayerActionsOptions = (options: Options<ListPlayerActionsData>) => queryOptions<ListPlayerActionsResponse, ListPlayerActionsError, ListPlayerActionsResponse, ReturnType<typeof listPlayerActionsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listPlayerActions({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listPlayerActionsQueryKey(options)
+});
+
+export const describePlayerActionQueryKey = (options: Options<DescribePlayerActionData>) => createQueryKey('describePlayerAction', options);
+
+/**
+ * Describe one current action
+ *
+ * Returns the full current descriptor and action-set revision for one selected-player interaction.
+ */
+export const describePlayerActionOptions = (options: Options<DescribePlayerActionData>) => queryOptions<DescribePlayerActionResponse, DescribePlayerActionError, DescribePlayerActionResponse, ReturnType<typeof describePlayerActionQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await describePlayerAction({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: describePlayerActionQueryKey(options)
+});
+
+export const getPlayerActionTargetsQueryKey = (options: Options<GetPlayerActionTargetsData>) => createQueryKey('getPlayerActionTargets', options);
+
+/**
+ * Describe the current valid target/domain values for one action input
+ *
+ * Returns the current server-authored input domain for a selected-player action input.
+ */
+export const getPlayerActionTargetsOptions = (options: Options<GetPlayerActionTargetsData>) => queryOptions<GetPlayerActionTargetsResponse, GetPlayerActionTargetsError, GetPlayerActionTargetsResponse, ReturnType<typeof getPlayerActionTargetsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getPlayerActionTargets({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getPlayerActionTargetsQueryKey(options)
+});
+
+/**
+ * Validate collector-shaped action inputs
+ *
+ * Validates one selected-player action using collector-shaped inputs. Path fields are authoritative; clients do not send a GameInput envelope.
+ */
+export const validatePlayerActionMutation = (options?: Partial<Options<ValidatePlayerActionData>>): UseMutationOptions<ValidatePlayerActionResponse, ValidatePlayerActionError, Options<ValidatePlayerActionData>> => {
+    const mutationOptions: UseMutationOptions<ValidatePlayerActionResponse, ValidatePlayerActionError, Options<ValidatePlayerActionData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await submitInput({
+            const { data } = await validatePlayerAction({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -730,14 +809,14 @@ export const submitInputMutation = (options?: Partial<Options<SubmitInputData>>)
 };
 
 /**
- * Validate gameplay input
+ * Submit collector-shaped action inputs
  *
- * Validate a gameplay input before submitting it. Returns validation result plus the current gameplay version.
+ * Submits one selected-player action using collector-shaped inputs. Path fields are authoritative; clients do not send a GameInput envelope.
  */
-export const validateInputMutation = (options?: Partial<Options<ValidateInputData>>): UseMutationOptions<ValidateInputResponse2, ValidateInputError, Options<ValidateInputData>> => {
-    const mutationOptions: UseMutationOptions<ValidateInputResponse2, ValidateInputError, Options<ValidateInputData>> = {
+export const submitPlayerActionMutation = (options?: Partial<Options<SubmitPlayerActionData>>): UseMutationOptions<SubmitPlayerActionResponse, SubmitPlayerActionError, Options<SubmitPlayerActionData>> => {
+    const mutationOptions: UseMutationOptions<SubmitPlayerActionResponse, SubmitPlayerActionError, Options<SubmitPlayerActionData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await validateInput({
+            const { data } = await submitPlayerAction({
                 ...options,
                 ...fnOptions,
                 throwOnError: true

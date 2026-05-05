@@ -2,7 +2,7 @@
 
 import { client } from './client.gen.js';
 import type { Client, Options as Options2, TDataShape } from './client/index.js';
-import type { AbortSandboxSessionData, AbortSandboxSessionErrors, AbortSandboxSessionResponses, AddSeatData, AddSeatErrors, AddSeatResponses, AssignSeatData, AssignSeatErrors, AssignSeatResponses, CancelConversationJobData, CancelConversationJobErrors, CancelConversationJobResponses, CreateAuthoringStateData, CreateAuthoringStateErrors, CreateAuthoringStateResponses, CreateGameData, CreateGameErrors, CreateGameResponses, CreateGameRuleData, CreateGameRuleErrors, CreateGameRuleResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, CreateSourceBlobUploadSessionData, CreateSourceBlobUploadSessionErrors, CreateSourceBlobUploadSessionResponses, CreateSourceRevisionData, CreateSourceRevisionErrors, CreateSourceRevisionResponses, DeleteConversationData, DeleteConversationErrors, DeleteConversationResponses, DeleteGameData, DeleteGameErrors, DeleteGameResponses, DisconnectSessionEventsData, DisconnectSessionEventsErrors, DisconnectSessionEventsResponses, DownloadGameSourcesData, DownloadGameSourcesErrors, DownloadGameSourcesResponses, FetchUiBundleData, FetchUiBundleErrors, FetchUiBundleResponses, FindManifestsData, FindManifestsErrors, FindManifestsResponses, GetActiveJobData, GetActiveJobErrors, GetActiveJobResponses, GetAgentChatContextData, GetAgentChatContextErrors, GetAgentChatContextResponses, GetApiVersionData, GetApiVersionResponses, GetAuthoringHeadData, GetAuthoringHeadErrors, GetAuthoringHeadResponses, GetCompiledResultData, GetCompiledResultErrors, GetCompiledResultResponses, GetGameBySlugData, GetGameBySlugErrors, GetGameBySlugResponses, GetGameData, GetGameErrors, GetGameResponses, GetGameRuleData, GetGameRuleErrors, GetGameRuleResponses, GetGameScriptsData, GetGameScriptsErrors, GetGameScriptsResponses, GetGameSourcesData, GetGameSourcesErrors, GetGameSourcesResponses, GetJobData, GetJobErrors, GetJobResponses, GetLatestCompiledResultData, GetLatestCompiledResultErrors, GetLatestCompiledResultResponses, GetLatestGameRuleData, GetLatestGameRuleErrors, GetLatestGameRuleResponses, GetManifestData, GetManifestErrors, GetManifestResponses, GetSessionByShortCodeData, GetSessionByShortCodeErrors, GetSessionByShortCodeResponses, GetSessionStatusData, GetSessionStatusErrors, GetSessionStatusResponses, HealthCheckData, HealthCheckResponses, ListCompiledResultsData, ListCompiledResultsErrors, ListCompiledResultsResponses, ListConversationsData, ListConversationsErrors, ListConversationsResponses, ListGameRulesData, ListGameRulesErrors, ListGameRulesResponses, ListGamesData, ListGamesErrors, ListGamesResponses, QueryWorkshopRulebookData, QueryWorkshopRulebookErrors, QueryWorkshopRulebookResponses, QueueCompiledResultJobData, QueueCompiledResultJobErrors, QueueCompiledResultJobResponses, ReceiveSandboxWebhookCompleteData, ReceiveSandboxWebhookCompleteErrors, ReceiveSandboxWebhookCompleteResponses, ReceiveSandboxWebhookEventData, ReceiveSandboxWebhookEventErrors, ReceiveSandboxWebhookEventResponses, RemoveSeatData, RemoveSeatErrors, RemoveSeatResponses, RestoreHistoryData, RestoreHistoryErrors, RestoreHistoryResponses, SandboxAbortData, SandboxAbortErrors, SandboxAbortResponses, SandboxChatData, SandboxChatErrors, SandboxChatResponses, SaveManifestData, SaveManifestErrors, SaveManifestResponses, SendSandboxMessageData, SendSandboxMessageErrors, SendSandboxMessageResponses, StartGameData, StartGameErrors, StartGameResponses, StreamConversationData, StreamConversationErrors, StreamConversationResponses, SubmitInputData, SubmitInputErrors, SubmitInputResponses, SubscribeToGameLogsData, SubscribeToGameLogsErrors, SubscribeToGameLogsResponses, SubscribeToSessionEventsData, SubscribeToSessionEventsErrors, SubscribeToSessionEventsResponses, UnassignSeatData, UnassignSeatErrors, UnassignSeatResponses, UpdateGameData, UpdateGameErrors, UpdateGameResponses, UpdateSeatData, UpdateSeatErrors, UpdateSeatResponses, ValidateInputData, ValidateInputErrors, ValidateInputResponses } from './types.gen.js';
+import type { AbortSandboxSessionData, AbortSandboxSessionErrors, AbortSandboxSessionResponses, AddSeatData, AddSeatErrors, AddSeatResponses, AssignSeatData, AssignSeatErrors, AssignSeatResponses, CancelConversationJobData, CancelConversationJobErrors, CancelConversationJobResponses, CreateAuthoringStateData, CreateAuthoringStateErrors, CreateAuthoringStateResponses, CreateGameData, CreateGameErrors, CreateGameResponses, CreateGameRuleData, CreateGameRuleErrors, CreateGameRuleResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, CreateSourceBlobUploadSessionData, CreateSourceBlobUploadSessionErrors, CreateSourceBlobUploadSessionResponses, CreateSourceRevisionData, CreateSourceRevisionErrors, CreateSourceRevisionResponses, DeleteConversationData, DeleteConversationErrors, DeleteConversationResponses, DeleteGameData, DeleteGameErrors, DeleteGameResponses, DescribePlayerActionData, DescribePlayerActionErrors, DescribePlayerActionResponses, DisconnectPlayerGameplayEventsData, DisconnectPlayerGameplayEventsErrors, DisconnectPlayerGameplayEventsResponses, DisconnectSessionLobbyEventsData, DisconnectSessionLobbyEventsErrors, DisconnectSessionLobbyEventsResponses, DownloadGameSourcesData, DownloadGameSourcesErrors, DownloadGameSourcesResponses, FetchUiBundleData, FetchUiBundleErrors, FetchUiBundleResponses, FindManifestsData, FindManifestsErrors, FindManifestsResponses, GetActiveJobData, GetActiveJobErrors, GetActiveJobResponses, GetAgentChatContextData, GetAgentChatContextErrors, GetAgentChatContextResponses, GetApiVersionData, GetApiVersionResponses, GetAuthoringHeadData, GetAuthoringHeadErrors, GetAuthoringHeadResponses, GetCompiledResultData, GetCompiledResultErrors, GetCompiledResultResponses, GetGameBySlugData, GetGameBySlugErrors, GetGameBySlugResponses, GetGameData, GetGameErrors, GetGameResponses, GetGameRuleData, GetGameRuleErrors, GetGameRuleResponses, GetGameScriptsData, GetGameScriptsErrors, GetGameScriptsResponses, GetGameSourcesData, GetGameSourcesErrors, GetGameSourcesResponses, GetJobData, GetJobErrors, GetJobResponses, GetLatestCompiledResultData, GetLatestCompiledResultErrors, GetLatestCompiledResultResponses, GetLatestGameRuleData, GetLatestGameRuleErrors, GetLatestGameRuleResponses, GetManifestData, GetManifestErrors, GetManifestResponses, GetPlayerActionTargetsData, GetPlayerActionTargetsErrors, GetPlayerActionTargetsResponses, GetSessionBootstrapData, GetSessionBootstrapErrors, GetSessionBootstrapResponses, GetSessionByShortCodeData, GetSessionByShortCodeErrors, GetSessionByShortCodeResponses, HealthCheckData, HealthCheckResponses, ListCompiledResultsData, ListCompiledResultsErrors, ListCompiledResultsResponses, ListConversationsData, ListConversationsErrors, ListConversationsResponses, ListGameRulesData, ListGameRulesErrors, ListGameRulesResponses, ListGamesData, ListGamesErrors, ListGamesResponses, ListPlayerActionsData, ListPlayerActionsErrors, ListPlayerActionsResponses, QueryWorkshopRulebookData, QueryWorkshopRulebookErrors, QueryWorkshopRulebookResponses, QueueCompiledResultJobData, QueueCompiledResultJobErrors, QueueCompiledResultJobResponses, ReceiveSandboxWebhookCompleteData, ReceiveSandboxWebhookCompleteErrors, ReceiveSandboxWebhookCompleteResponses, ReceiveSandboxWebhookEventData, ReceiveSandboxWebhookEventErrors, ReceiveSandboxWebhookEventResponses, RemoveSeatData, RemoveSeatErrors, RemoveSeatResponses, RestoreHistoryData, RestoreHistoryErrors, RestoreHistoryResponses, SandboxAbortData, SandboxAbortErrors, SandboxAbortResponses, SandboxChatData, SandboxChatErrors, SandboxChatResponses, SaveManifestData, SaveManifestErrors, SaveManifestResponses, SendSandboxMessageData, SendSandboxMessageErrors, SendSandboxMessageResponses, StartGameData, StartGameErrors, StartGameResponses, StreamConversationData, StreamConversationErrors, StreamConversationResponses, SubmitPlayerActionData, SubmitPlayerActionErrors, SubmitPlayerActionResponses, SubscribeToGameLogsData, SubscribeToGameLogsErrors, SubscribeToGameLogsResponses, SubscribeToPlayerGameplayEventsData, SubscribeToPlayerGameplayEventsErrors, SubscribeToPlayerGameplayEventsResponses, SubscribeToSessionLobbyEventsData, SubscribeToSessionLobbyEventsErrors, SubscribeToSessionLobbyEventsResponses, UnassignSeatData, UnassignSeatErrors, UnassignSeatResponses, UpdateGameData, UpdateGameErrors, UpdateGameResponses, UpdateSeatData, UpdateSeatErrors, UpdateSeatResponses, ValidatePlayerActionData, ValidatePlayerActionErrors, ValidatePlayerActionResponses } from './types.gen.js';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean> = Options2<TData, ThrowOnError> & {
     /**
@@ -399,35 +399,57 @@ export const getSessionByShortCode = <ThrowOnError extends boolean = false>(opti
 });
 
 /**
- * Get session status
+ * Bootstrap a session
  *
- * Get current status and phase of a game session
+ * Return a deterministic session snapshot for first render before live SSE updates.
  */
-export const getSessionStatus = <ThrowOnError extends boolean = false>(options: Options<GetSessionStatusData, ThrowOnError>) => (options.client ?? client).get<GetSessionStatusResponses, GetSessionStatusErrors, ThrowOnError>({
+export const getSessionBootstrap = <ThrowOnError extends boolean = false>(options: Options<GetSessionBootstrapData, ThrowOnError>) => (options.client ?? client).get<GetSessionBootstrapResponses, GetSessionBootstrapErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/api/sessions/{sessionId}/status',
+    url: '/api/sessions/{sessionId}/bootstrap',
     ...options
 });
 
 /**
- * Subscribe to session events (SSE)
+ * Subscribe to public lobby events (SSE)
  *
- * Server-Sent Events stream for real-time session updates. Every connection starts with a `SESSION_BOOTSTRAP` snapshot that fully describes the durable session state, then emits only future live events generated after the connection is established.
+ * Server-Sent Events stream for public lobby/control updates. Every connection starts with a `lobby.bootstrap` event.
  */
-export const subscribeToSessionEvents = <ThrowOnError extends boolean = false>(options: Options<SubscribeToSessionEventsData, ThrowOnError>) => (options.client ?? client).sse.get<SubscribeToSessionEventsResponses, SubscribeToSessionEventsErrors, ThrowOnError>({
+export const subscribeToSessionLobbyEvents = <ThrowOnError extends boolean = false>(options: Options<SubscribeToSessionLobbyEventsData, ThrowOnError>) => (options.client ?? client).sse.get<SubscribeToSessionLobbyEventsResponses, SubscribeToSessionLobbyEventsErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/api/sessions/{sessionId}/events',
+    url: '/api/sessions/{sessionId}/lobby/events',
     ...options
 });
 
 /**
- * Release a session events stream slot
+ * Release a lobby events stream slot
  *
  * Best-effort disconnect signal used by browser tabs during unload and reconnect transitions so stale event stream slots are released promptly.
  */
-export const disconnectSessionEvents = <ThrowOnError extends boolean = false>(options: Options<DisconnectSessionEventsData, ThrowOnError>) => (options.client ?? client).post<DisconnectSessionEventsResponses, DisconnectSessionEventsErrors, ThrowOnError>({
+export const disconnectSessionLobbyEvents = <ThrowOnError extends boolean = false>(options: Options<DisconnectSessionLobbyEventsData, ThrowOnError>) => (options.client ?? client).post<DisconnectSessionLobbyEventsResponses, DisconnectSessionLobbyEventsErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/api/sessions/{sessionId}/events/disconnect',
+    url: '/api/sessions/{sessionId}/lobby/events/disconnect',
+    ...options
+});
+
+/**
+ * Subscribe to selected-player gameplay events (SSE)
+ *
+ * Server-Sent Events stream for one selected player's private gameplay. Every connection starts with a `gameplay.bootstrap` event.
+ */
+export const subscribeToPlayerGameplayEvents = <ThrowOnError extends boolean = false>(options: Options<SubscribeToPlayerGameplayEventsData, ThrowOnError>) => (options.client ?? client).sse.get<SubscribeToPlayerGameplayEventsResponses, SubscribeToPlayerGameplayEventsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/sessions/{sessionId}/players/{playerId}/gameplay/events',
+    ...options
+});
+
+/**
+ * Release a selected-player gameplay stream slot
+ *
+ * Best-effort disconnect signal for a selected-player gameplay stream.
+ */
+export const disconnectPlayerGameplayEvents = <ThrowOnError extends boolean = false>(options: Options<DisconnectPlayerGameplayEventsData, ThrowOnError>) => (options.client ?? client).post<DisconnectPlayerGameplayEventsResponses, DisconnectPlayerGameplayEventsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/sessions/{sessionId}/players/{playerId}/gameplay/events/disconnect',
     ...options
 });
 
@@ -454,13 +476,46 @@ export const startGame = <ThrowOnError extends boolean = false>(options: Options
 });
 
 /**
- * Submit generic gameplay input
+ * List current actions for a selected player
  *
- * Submit a gameplay input during gameplay phase. Supports action and promptResponse for clients.
+ * Returns the current server-authored descriptors and action-set revision for the selected player.
  */
-export const submitInput = <ThrowOnError extends boolean = false>(options: Options<SubmitInputData, ThrowOnError>) => (options.client ?? client).post<SubmitInputResponses, SubmitInputErrors, ThrowOnError>({
+export const listPlayerActions = <ThrowOnError extends boolean = false>(options: Options<ListPlayerActionsData, ThrowOnError>) => (options.client ?? client).get<ListPlayerActionsResponses, ListPlayerActionsErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/api/sessions/{sessionId}/inputs',
+    url: '/api/sessions/{sessionId}/players/{playerId}/actions',
+    ...options
+});
+
+/**
+ * Describe one current action
+ *
+ * Returns the full current descriptor and action-set revision for one selected-player interaction.
+ */
+export const describePlayerAction = <ThrowOnError extends boolean = false>(options: Options<DescribePlayerActionData, ThrowOnError>) => (options.client ?? client).get<DescribePlayerActionResponses, DescribePlayerActionErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/sessions/{sessionId}/players/{playerId}/actions/{interactionId}',
+    ...options
+});
+
+/**
+ * Describe the current valid target/domain values for one action input
+ *
+ * Returns the current server-authored input domain for a selected-player action input.
+ */
+export const getPlayerActionTargets = <ThrowOnError extends boolean = false>(options: Options<GetPlayerActionTargetsData, ThrowOnError>) => (options.client ?? client).get<GetPlayerActionTargetsResponses, GetPlayerActionTargetsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/sessions/{sessionId}/players/{playerId}/actions/{interactionId}/targets/{inputKey}',
+    ...options
+});
+
+/**
+ * Validate collector-shaped action inputs
+ *
+ * Validates one selected-player action using collector-shaped inputs. Path fields are authoritative; clients do not send a GameInput envelope.
+ */
+export const validatePlayerAction = <ThrowOnError extends boolean = false>(options: Options<ValidatePlayerActionData, ThrowOnError>) => (options.client ?? client).post<ValidatePlayerActionResponses, ValidatePlayerActionErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/sessions/{sessionId}/players/{playerId}/actions/{interactionId}/validate',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -469,13 +524,13 @@ export const submitInput = <ThrowOnError extends boolean = false>(options: Optio
 });
 
 /**
- * Validate gameplay input
+ * Submit collector-shaped action inputs
  *
- * Validate a gameplay input before submitting it. Returns validation result plus the current gameplay version.
+ * Submits one selected-player action using collector-shaped inputs. Path fields are authoritative; clients do not send a GameInput envelope.
  */
-export const validateInput = <ThrowOnError extends boolean = false>(options: Options<ValidateInputData, ThrowOnError>) => (options.client ?? client).post<ValidateInputResponses, ValidateInputErrors, ThrowOnError>({
+export const submitPlayerAction = <ThrowOnError extends boolean = false>(options: Options<SubmitPlayerActionData, ThrowOnError>) => (options.client ?? client).post<SubmitPlayerActionResponses, SubmitPlayerActionErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/api/sessions/{sessionId}/validate-input',
+    url: '/api/sessions/{sessionId}/players/{playerId}/actions/{interactionId}/submit',
     ...options,
     headers: {
         'Content-Type': 'application/json',

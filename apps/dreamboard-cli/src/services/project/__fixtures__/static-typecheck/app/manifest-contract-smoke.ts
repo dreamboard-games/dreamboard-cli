@@ -1,4 +1,5 @@
-import { createReducerBundle } from "@dreamboard/app-sdk/reducer/bundle";
+import { asPlayerId } from "@dreamboard/app-sdk/reducer";
+import { createReducerBundle } from "@dreamboard/app-sdk/reducer";
 import game from "./game";
 import {
   boardHelpers,
@@ -12,7 +13,7 @@ import {
 } from "../shared/manifest-contract";
 
 const bundle = createReducerBundle(game);
-const firstPlayer = literals.playerIds[0] ?? "player-1";
+const firstPlayer = literals.playerIds[0] ?? asPlayerId("player-1");
 const defaultZones = manifestContract.defaults.zones(literals.playerIds);
 const defaultHands = manifestContract.defaults.hands(literals.playerIds);
 const defaultResources = manifestContract.defaults.resources(

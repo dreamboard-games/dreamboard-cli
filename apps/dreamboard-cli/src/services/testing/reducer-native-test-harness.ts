@@ -1,14 +1,26 @@
 import path from "node:path";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { readdir } from "node:fs/promises";
+import { isDeepStrictEqual } from "node:util";
 import type { Browser, Page } from "playwright";
 import type { GameTopologyManifest } from "@dreamboard/sdk-types";
 import {
   createSession,
+  listPlayerActions,
   startGame,
-  submitInput,
+  submitPlayerAction,
   type GameMessage,
 } from "@dreamboard/api-client";
-import { createReducerBundle } from "@dreamboard/app-sdk";
+import * as ReducerContractZod from "@dreamboard/reducer-contract/zod";
+import type * as Wire from "@dreamboard/reducer-contract/wire";
+import { createReducerBundle } from "@dreamboard/app-sdk/reducer";
 import { materializeManifestTable } from "@dreamboard/workspace-codegen";
 import type { ProjectConfig, ResolvedConfig } from "../../types.js";
 import {
@@ -25,8 +37,8 @@ import {
 import { hashContent } from "../../utils/crypto.js";
 import { loadManifest } from "../project/local-files.js";
 import {
-  REDUCER_TESTING_CONTRACT_CONTENT,
   REDUCER_TESTING_TYPES_WRAPPER_CONTENT,
+  buildReducerTestingContractContent,
 } from "../../templates/testing-types-content.js";
 import {
   startEmbeddedHarnessSession,
@@ -51,10 +63,16 @@ type TestRunnerName = "reducer" | "embedded" | "browser";
 
 type TypedBaseDefinition = {
   id: string;
+  seed?: number;
+  players?: number;
+  setupProfileId?: string;
+  extends?: string;
+  setup: (ctx: BaseContext) => void | Promise<void>;
+};
+
+type ResolvedBaseDefinition = TypedBaseDefinition & {
   seed: number;
   players: number;
-  setupProfileId?: string;
-  setup: (ctx: { game: ScenarioGameApi }) => void | Promise<void>;
 };
 
 type TypedScenarioDefinition = {
@@ -62,6 +80,8 @@ type TypedScenarioDefinition = {
   description?: string;
   from: string;
   runners?: readonly TestRunnerName[];
+  phase?: string;
+  stage?: string;
   when: (ctx: SharedScenarioContext) => void | Promise<void>;
   then: (ctx: SharedScenarioContext) => void | Promise<void>;
 };
@@ -90,19 +110,12 @@ type ExpectMatchers = {
 
 type ExpectApi = (actual: unknown) => ExpectMatchers;
 
-type HistoryInput =
-  | {
-      kind: "action";
-      playerId: string;
-      actionType: string;
-      params: Record<string, unknown>;
-    }
-  | {
-      kind: "promptResponse";
-      playerId: string;
-      promptId: string;
-      response: unknown;
-    };
+type HistoryInput = {
+  kind: "interaction";
+  playerId: string;
+  interactionId: string;
+  params: Record<string, unknown>;
+};
 
 type HistoryRecord = {
   input: HistoryInput;
@@ -126,38 +139,33 @@ type BaseStateArtifact = {
     setupProfileId?: string | null;
     compiledResultId?: string;
     gameId?: string;
+    parentBaseId?: string | null;
+    parentFingerprintHash?: string | null;
   };
 };
 
 type BaseStateFile = Record<string, BaseStateArtifact>;
 
-type SharedScenarioContext = {
+type BaseContext = {
   game: ScenarioGameApi;
   players: () => readonly string[];
+  seat: (index: number) => string;
+};
+
+type SharedScenarioContext = BaseContext & {
   state: () => string;
   view: (playerId: string) => unknown;
-  prompts: (playerId: string) => readonly Record<string, unknown>[];
+  interactions: (playerId: string) => readonly Record<string, unknown>[];
   expect: ExpectApi;
 };
 
 type ScenarioGameApi = {
   start: () => Promise<void>;
-  action: (
+  submit: (
     playerId: string,
-    actionOrCommand:
-      | string
-      | { type: string; params?: Record<string, unknown> },
+    interactionId: string,
     params?: Record<string, unknown>,
   ) => Promise<void>;
-  respond: (
-    playerId: string,
-    promptOrId: string | { id: string; promptId?: string },
-    response: unknown,
-  ) => Promise<void>;
-  expectPrompt: (
-    playerId: string,
-    promptId: string,
-  ) => Promise<Record<string, unknown>>;
 };
 
 type SubmissionError = Error & { errorCode?: string };
@@ -168,17 +176,13 @@ type BrowserDriverModule = {
 
 type BrowserRunnerDriver = {
   onReady?: (bridge: BrowserBridgeClient) => Promise<void> | void;
-  action?: (
+  interaction?: (
     bridge: BrowserBridgeClient,
     input: {
       playerId: string;
-      actionType: string;
-      params: Record<string, unknown>;
+      interactionId: string;
+      params: unknown;
     },
-  ) => Promise<boolean | void> | boolean | void;
-  promptResponse?: (
-    bridge: BrowserBridgeClient,
-    input: { playerId: string; promptId: string; response: unknown },
   ) => Promise<boolean | void> | boolean | void;
 };
 
@@ -189,9 +193,8 @@ type BrowserSnapshot = {
   currentPhase: string | null;
   controllingPlayerId: string;
   controllablePlayerIds: string[];
-  seatViewsByPlayerId: Record<string, unknown>;
-  availableActionsByPlayerId?: Record<string, string[]>;
-  prompts: Array<Record<string, unknown>>;
+  view: unknown;
+  availableInteractions?: string[];
 };
 
 export type ReducerNativeScenarioResult = {
@@ -206,17 +209,24 @@ export type ReducerNativeScenarioSummary = {
   results: ReducerNativeScenarioResult[];
 };
 
+export type SeededScenarioSession = {
+  sessionId: string;
+  shortCode: string;
+  gameId: string;
+  seed: number;
+  playerCount: number;
+  setupProfileId: string | null;
+  scenarioId: string;
+  phase: string | null;
+  stage: string | null;
+};
+
 type BrowserBridgeClient = {
   snapshot: () => Promise<BrowserSnapshot>;
-  submitAction: (
+  submitInteraction: (
     playerId: string,
-    actionType: string,
-    params: Record<string, unknown>,
-  ) => Promise<void>;
-  submitPromptResponse: (
-    playerId: string,
-    promptId: string,
-    response: unknown,
+    interactionId: string,
+    params: unknown,
   ) => Promise<void>;
   waitForVersionChange: (
     previousVersion: number,
@@ -226,11 +236,34 @@ type BrowserBridgeClient = {
 
 type GameplaySnapshot = {
   version: number;
+  actionSetVersion: string;
   currentPhase: string | null;
-  seatViewsByPlayerId: Record<string, unknown>;
-  availableActionsByPlayerId: Record<string, string[]>;
-  prompts: Array<Record<string, unknown>>;
+  playerId: string;
+  view: unknown;
+  availableInteractions: string[];
 };
+
+let testingExpectApiFactoryPromise:
+  | Promise<
+      (options?: {
+        matchSnapshot?: (name: string | undefined, actual: unknown) => void;
+      }) => ExpectApi
+    >
+  | undefined;
+
+async function loadTestingExpectApiFactory(): Promise<
+  (options?: {
+    matchSnapshot?: (name: string | undefined, actual: unknown) => void;
+  }) => ExpectApi
+> {
+  testingExpectApiFactoryPromise ??= import("@dreamboard/testing").then(
+    (module) =>
+      module.createExpectApi as (options?: {
+        matchSnapshot?: (name: string | undefined, actual: unknown) => void;
+      }) => ExpectApi,
+  );
+  return testingExpectApiFactoryPromise;
+}
 
 function createSubmissionError(
   errorCode: string | undefined,
@@ -254,69 +287,8 @@ function parseJsonValue(value: unknown): unknown {
   }
 }
 
-function createExpectApi(): ExpectApi {
-  return (actual: unknown) => ({
-    toBe: (expected: unknown) => {
-      if (actual !== expected) {
-        throw new Error(
-          `Expected '${String(actual)}' to be '${String(expected)}'.`,
-        );
-      }
-    },
-    toEqual: (expected: unknown) => {
-      if (!deepEqual(actual, expected)) {
-        throw new Error("Expected values to be deeply equal.");
-      }
-    },
-    toBeDefined: () => {
-      if (actual === undefined) {
-        throw new Error("Expected value to be defined.");
-      }
-    },
-    toBeUndefined: () => {
-      if (actual !== undefined) {
-        throw new Error(
-          `Expected value to be undefined, but received '${String(actual)}'.`,
-        );
-      }
-    },
-    toBeNull: () => {
-      if (actual !== null) {
-        throw new Error(
-          `Expected value to be null, but received '${String(actual)}'.`,
-        );
-      }
-    },
-    toContain: (expected: unknown) => {
-      if (Array.isArray(actual)) {
-        if (!actual.some((item) => deepEqual(item, expected))) {
-          throw new Error("Expected array to contain value.");
-        }
-        return;
-      }
-      if (typeof actual === "string") {
-        if (!actual.includes(String(expected))) {
-          throw new Error("Expected string to contain value.");
-        }
-        return;
-      }
-      throw new Error("toContain expects an array or string actual value.");
-    },
-    toBeGreaterThanOrEqual: (expected: number) => {
-      if (typeof actual !== "number") {
-        throw new Error(
-          "toBeGreaterThanOrEqual expects a number actual value.",
-        );
-      }
-      if (actual < expected) {
-        throw new Error(`Expected ${actual} to be >= ${expected}.`);
-      }
-    },
-  });
-}
-
 function deepEqual(left: unknown, right: unknown): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
+  return isDeepStrictEqual(left, right);
 }
 
 function normalizeScenarioRunners(
@@ -369,14 +341,25 @@ function parseTypedBaseDefinition(value: unknown): TypedBaseDefinition {
     value === null ||
     !("id" in value) ||
     typeof value.id !== "string" ||
-    !("seed" in value) ||
-    typeof value.seed !== "number" ||
-    !("players" in value) ||
-    typeof value.players !== "number" ||
     !("setup" in value) ||
     !isFunction(value.setup)
   ) {
     throw new Error("Invalid reducer-native base definition.");
+  }
+  const parentBaseId =
+    "extends" in value && typeof value.extends === "string"
+      ? value.extends
+      : undefined;
+  const seed =
+    "seed" in value && typeof value.seed === "number" ? value.seed : undefined;
+  const players =
+    "players" in value && typeof value.players === "number"
+      ? value.players
+      : undefined;
+  if ((seed === undefined || players === undefined) && !parentBaseId) {
+    throw new Error(
+      "Invalid reducer-native base definition. Base definitions without --extends must declare numeric seed and players.",
+    );
   }
   const setupProfileId =
     "setupProfileId" in value && typeof value.setupProfileId === "string"
@@ -384,7 +367,10 @@ function parseTypedBaseDefinition(value: unknown): TypedBaseDefinition {
       : undefined;
   return {
     ...(value as TypedBaseDefinition),
+    seed,
+    players,
     setupProfileId,
+    extends: parentBaseId,
   };
 }
 
@@ -403,7 +389,19 @@ function parseTypedScenarioDefinition(value: unknown): TypedScenarioDefinition {
   ) {
     throw new Error("Invalid reducer-native scenario definition.");
   }
-  return value as TypedScenarioDefinition;
+  const phase =
+    "phase" in value && typeof value.phase === "string"
+      ? value.phase
+      : undefined;
+  const stage =
+    "stage" in value && typeof value.stage === "string"
+      ? value.stage
+      : undefined;
+  return {
+    ...(value as TypedScenarioDefinition),
+    phase,
+    stage,
+  };
 }
 
 export async function isReducerNativeTestingWorkspace(
@@ -427,6 +425,24 @@ export async function ensureReducerNativeTestingFiles(
     "generated",
     "testing-contract.ts",
   );
+  const baseStatesPath = path.join(
+    projectRoot,
+    "test",
+    "generated",
+    "base-states.generated.ts",
+  );
+  const baseStatesDtsPath = path.join(
+    projectRoot,
+    "test",
+    "generated",
+    "base-states.generated.d.ts",
+  );
+  const scenarioManifestPath = path.join(
+    projectRoot,
+    "test",
+    "generated",
+    "scenario-manifest.generated.ts",
+  );
 
   await ensureDir(path.dirname(testingTypesPath));
   await ensureDir(path.dirname(testingContractPath));
@@ -439,15 +455,83 @@ export async function ensureReducerNativeTestingFiles(
     );
   }
 
-  const existingTestingContract =
-    await readTextFileIfExists(testingContractPath);
-  if (
-    existingTestingContract === null ||
-    existingTestingContract.trim().length === 0 ||
-    existingTestingContract.startsWith(GENERATED_TESTING_TYPES_PREFIX)
-  ) {
-    await writeTextFile(testingContractPath, REDUCER_TESTING_CONTRACT_CONTENT);
+  const rejectionCodes = await collectKnownRejectionCodes(projectRoot);
+  await writeTextFile(
+    testingContractPath,
+    buildReducerTestingContractContent({ rejectionCodes }),
+  );
+
+  const header =
+    "// Generated by dreamboard test generate. Do not edit by hand.\n";
+  if (!(await exists(baseStatesPath))) {
+    await writeTextFile(
+      baseStatesPath,
+      `${header}export const BASE_STATES = {} as const;\n`,
+    );
   }
+  if (!(await exists(baseStatesDtsPath))) {
+    await writeTextFile(
+      baseStatesDtsPath,
+      `${header}export declare const BASE_STATES: Record<string, unknown>;\n`,
+    );
+  }
+  if (!(await exists(scenarioManifestPath))) {
+    await writeTextFile(
+      scenarioManifestPath,
+      `${header}export const SCENARIO_MANIFEST = [] as const;\n`,
+    );
+  }
+}
+
+const DEFAULT_REJECTION_CODES = [
+  "NOT_YOUR_TURN",
+  "action-unavailable",
+  "invalid-action-params",
+  "prompt-not-owned",
+] as const;
+
+async function collectKnownRejectionCodes(
+  projectRoot: string,
+): Promise<string[]> {
+  const knownCodes = new Set<string>(DEFAULT_REJECTION_CODES);
+  const gamePath = path.join(projectRoot, "app", "game.ts");
+  if (!(await exists(gamePath))) {
+    return Array.from(knownCodes).sort((left, right) =>
+      left.localeCompare(right),
+    );
+  }
+
+  try {
+    const module =
+      await importTypeScriptModule<Record<string, unknown>>(gamePath);
+    const phases =
+      (
+        module.default as {
+          phases?: Record<
+            string,
+            {
+              interactions?: Record<string, { errorCodes?: readonly string[] }>;
+            }
+          >;
+        }
+      )?.phases ?? {};
+    for (const phase of Object.values(phases)) {
+      const interactions = phase.interactions ?? {};
+      for (const interaction of Object.values(interactions)) {
+        for (const errorCode of interaction.errorCodes ?? []) {
+          if (typeof errorCode === "string" && errorCode.length > 0) {
+            knownCodes.add(errorCode);
+          }
+        }
+      }
+    }
+  } catch {
+    // Keep the generated contract usable even if the game module fails to load.
+  }
+
+  return Array.from(knownCodes).sort((left, right) =>
+    left.localeCompare(right),
+  );
 }
 
 export async function loadTypedBases(
@@ -602,13 +686,63 @@ type GeneratedInitialTableFactory = (options?: {
 function resolveEffectiveBaseSetup(options: {
   manifest: GameTopologyManifest;
   base: TypedBaseDefinition;
+  basesById?: Map<string, LoadedBase>;
 }): EffectiveBaseSetup {
+  const inheritedSetupProfileId =
+    options.base.setupProfileId ??
+    (options.base.extends && options.basesById
+      ? resolveEffectiveBaseSetup({
+          manifest: options.manifest,
+          base:
+            options.basesById.get(options.base.extends)?.definition ??
+            (() => {
+              throw new Error(
+                `Base '${options.base.id}' extends unknown parent '${options.base.extends}'.`,
+              );
+            })(),
+          basesById: options.basesById,
+        }).setupProfileId
+      : undefined);
   const selection = resolveSetupProfileSelection({
     manifest: options.manifest,
-    requestedSetupProfileId: options.base.setupProfileId,
+    requestedSetupProfileId: inheritedSetupProfileId ?? undefined,
   });
   return {
     setupProfileId: selection.id,
+  };
+}
+
+function resolveBaseDefinition(
+  base: LoadedBase,
+  basesById: Map<string, LoadedBase>,
+): ResolvedBaseDefinition {
+  const inherited =
+    base.definition.extends !== undefined
+      ? resolveBaseDefinition(
+          basesById.get(base.definition.extends) ??
+            (() => {
+              throw new Error(
+                `Base '${base.definition.id}' extends unknown parent '${base.definition.extends}'.`,
+              );
+            })(),
+          basesById,
+        )
+      : null;
+
+  const seed = base.definition.seed ?? inherited?.seed;
+  const players = base.definition.players ?? inherited?.players;
+  if (seed === undefined || players === undefined) {
+    throw new Error(
+      `Base '${base.definition.id}' must resolve numeric seed and players.`,
+    );
+  }
+
+  return {
+    ...base.definition,
+    seed,
+    players,
+    setupProfileId:
+      base.definition.setupProfileId ?? inherited?.setupProfileId ?? undefined,
   };
 }
 
@@ -753,40 +887,75 @@ class ShadowReducerRuntime {
     return this.state;
   }
 
-  view(playerId: string): unknown {
-    return this.bundle.getView({
+  hydrate(snapshot: Record<string, unknown>): void {
+    this.state = structuredClone(snapshot);
+    this.started = true;
+  }
+
+  projectAllSeats(): {
+    currentStage: string | null;
+    stageSeats: string[];
+    seats: Record<
+      string,
+      {
+        view?: unknown;
+        availableInteractions?: Array<Record<string, unknown>>;
+        zones?: Record<string, unknown>;
+      }
+    >;
+  } {
+    const projection = this.bundle.projectSeatsDynamic({
       state: this.rawState() as never,
-      playerId,
-    });
+      playerIds: this.playerIds as never,
+    }) as {
+      currentStage?: string | null;
+      stageSeats?: string[];
+      seats?: Record<
+        string,
+        {
+          view?: unknown;
+          availableInteractions?: Array<Record<string, unknown>>;
+          zones?: Record<string, unknown>;
+        }
+      >;
+    };
+    return {
+      currentStage: projection.currentStage ?? null,
+      stageSeats: projection.stageSeats ?? [],
+      seats: projection.seats ?? {},
+    };
   }
 
-  async availableActionsByPlayerId(): Promise<Record<string, string[]>> {
-    return Object.fromEntries(
-      await Promise.all(
-        this.playerIds.map(async (playerId) => [
-          playerId,
-          (
-            await this.bundle.getAvailableActions({
-              state: this.rawState() as never,
-              playerId,
-            })
-          )
-            .map((action) => action?.actionType)
-            .filter((actionType): actionType is string => !!actionType),
-        ]),
-      ),
-    );
+  currentStage(): string | null {
+    return this.projectAllSeats().currentStage;
   }
 
-  promptInstances(): Array<Record<string, unknown>> {
-    return ((this.rawState().runtime as { prompts?: unknown[] } | undefined)
-      ?.prompts ?? []) as Array<Record<string, unknown>>;
+  view(playerId: string): unknown {
+    return this.projectAllSeats().seats[playerId]?.view ?? null;
   }
 
-  promptsForPlayer(playerId: string): Array<Record<string, unknown>> {
-    return this.promptInstances().filter((prompt) =>
-      promptTargetsPlayer(prompt, playerId),
-    );
+  availableInteractionsForPlayer(playerId: string): string[] {
+    const projection = this.projectAllSeats();
+    const seat = projection.seats[playerId];
+    const descriptors = seat?.availableInteractions ?? [];
+    return descriptors
+      .filter(
+        (descriptor) =>
+          !!descriptor && typeof descriptor.interactionId === "string",
+      )
+      .map((descriptor) => descriptor.interactionId as string);
+  }
+
+  /**
+   * Phase-kind interaction descriptors (action + prompt) available to
+   * `playerId` in the current phase. Surfaces the same projection the UI
+   * SDK consumes, so scenarios can assert addressee authorization and
+   * availability without reaching into game-specific state. Returned as
+   * loose records — the typed `InteractionDescriptor` shape is narrowed
+   * downstream in the workspace-generated `testing-contract.ts`.
+   */
+  interactionsForPlayer(playerId: string): Array<Record<string, unknown>> {
+    return this.projectAllSeats().seats[playerId]?.availableInteractions ?? [];
   }
 
   clearHistory(): void {
@@ -795,10 +964,15 @@ class ShadowReducerRuntime {
 
   private async applyInput(input: HistoryInput): Promise<void> {
     const parsedInput = toReducerInput(input);
-    const validation = (await this.bundle.validateInput({
-      state: this.rawState() as never,
-      input: parsedInput as never,
-    })) as { valid: boolean; errorCode?: string; message?: string };
+    const validation = parseWirePayload(
+      "validateInput",
+      await this.bundle.validateInput({
+        state: this.rawState() as never,
+        input: parsedInput as never,
+      }),
+      "ReducerInputValidationResult",
+      ReducerContractZod.ReducerInputValidationResultSchema,
+    );
     if (!validation.valid) {
       const record = {
         input,
@@ -814,23 +988,14 @@ class ShadowReducerRuntime {
       );
     }
 
-    const result = (await this.bundle.dispatch({
-      state: this.rawState() as never,
-      input: parsedInput as never,
-    })) as
-      | {
-          type: "accept";
-          state: Record<string, unknown>;
-        }
-      | {
-          type: "reject";
-          errorCode: string;
-          message?: string;
-        };
+    const result = assertDispatchResultWireContract(
+      await this.bundle.dispatch({
+        state: this.rawState() as never,
+        input: parsedInput as never,
+      }),
+    );
 
-    assertDispatchResultWireContract(result);
-
-    if (result.type === "reject") {
+    if (result.kind === "reject") {
       const record = {
         input,
         accepted: false,
@@ -845,76 +1010,56 @@ class ShadowReducerRuntime {
       );
     }
 
-    this.state = result.state;
+    this.state = result.state as Record<string, unknown>;
     this.historyRecords.push({ input, accepted: true });
   }
 
-  async submitAction(
+  async submitInteraction(
     playerId: string,
-    actionType: string,
+    interactionId: string,
     params: Record<string, unknown>,
   ): Promise<void> {
     await this.applyInput({
-      kind: "action",
+      kind: "interaction",
       playerId,
-      actionType,
+      interactionId,
       params,
     });
   }
-
-  async submitPromptResponse(
-    playerId: string,
-    promptId: string,
-    response: unknown,
-  ): Promise<void> {
-    await this.applyInput({
-      kind: "promptResponse",
-      playerId,
-      promptId,
-      response,
-    });
-  }
 }
 
+/**
+ * Translate the harness's history record into the unified `interaction`
+ * wire shape the ingress bundle accepts.
+ */
 function toReducerInput(input: HistoryInput): Record<string, unknown> {
-  switch (input.kind) {
-    case "action":
-      return {
-        kind: "action",
-        playerId: input.playerId,
-        actionType: input.actionType,
-        params: input.params,
-      };
-    case "promptResponse":
-      return {
-        kind: "promptResponse",
-        playerId: input.playerId,
-        promptId: input.promptId,
-        response: input.response,
-      };
-  }
-}
-
-function promptTargetsPlayer(
-  prompt: Record<string, unknown>,
-  playerId: string,
-): boolean {
-  return prompt.to === playerId;
+  return {
+    kind: "interaction",
+    playerId: input.playerId,
+    interactionId: input.interactionId,
+    params: input.params,
+  };
 }
 
 class EmbeddedGameplayTracker {
   private readonly abortController = new AbortController();
   private readonly state: GameplaySnapshot = {
     version: -1,
+    actionSetVersion: "",
     currentPhase: null,
-    seatViewsByPlayerId: {},
-    availableActionsByPlayerId: {},
-    prompts: [],
+    playerId: "player-1",
+    view: null,
+    availableInteractions: [],
   };
   private readonly events: GameMessage[] = [];
   private connected = false;
 
-  constructor(private readonly sessionId: string) {}
+  constructor(
+    private readonly sessionId: string,
+    private readonly playerId: string,
+  ) {
+    this.state.playerId = playerId;
+  }
 
   async connect(): Promise<void> {
     if (this.connected) {
@@ -923,6 +1068,7 @@ class EmbeddedGameplayTracker {
     this.connected = true;
     const { stream } = await subscribeToCliSessionEvents({
       sessionId: this.sessionId,
+      playerId: this.playerId,
       signal: this.abortController.signal,
       clientSource: "dreamboard-cli-test",
     });
@@ -945,46 +1091,35 @@ class EmbeddedGameplayTracker {
   snapshot(): GameplaySnapshot {
     return {
       ...this.state,
-      seatViewsByPlayerId: { ...this.state.seatViewsByPlayerId },
-      availableActionsByPlayerId: { ...this.state.availableActionsByPlayerId },
-      prompts: [...this.state.prompts],
+      availableInteractions: [...this.state.availableInteractions],
     };
   }
 
   private onMessage(message: GameMessage): void {
-    if (message.type === "SESSION_BOOTSTRAP" && message.gameplay) {
+    if (message.type === "gameplay.bootstrap") {
       this.state.version = message.gameplay.version;
+      this.state.actionSetVersion = message.gameplay.actionSetVersion;
+      this.state.playerId = message.gameplay.playerId;
       this.state.currentPhase = message.gameplay.currentPhase;
-      this.state.seatViewsByPlayerId = parseSeatViews(
-        message.gameplay.seatViewsByPlayerId,
-      );
-      this.state.availableActionsByPlayerId = Object.fromEntries(
-        message.gameplay.availableActions.map((entry) => [
-          entry.playerId,
-          entry.actions.map((action) => action.actionType),
-        ]),
-      );
-      this.state.prompts = message.gameplay.prompts as Array<
-        Record<string, unknown>
-      >;
+      this.state.view = parseSeatView(message.gameplay.view);
+      this.state.availableInteractions = (
+        message.gameplay.availableInteractions ?? []
+      ).map((interaction) => interaction.interactionId);
       return;
     }
 
-    if (message.type === "GAMEPLAY_UPDATE") {
+    if (
+      message.type === "gameplay.updated" ||
+      message.type === "gameplay.resynced"
+    ) {
       this.state.version = message.gameplay.version;
+      this.state.actionSetVersion = message.gameplay.actionSetVersion;
+      this.state.playerId = message.gameplay.playerId;
       this.state.currentPhase = message.gameplay.currentPhase;
-      this.state.seatViewsByPlayerId = parseSeatViews(
-        message.gameplay.seatViewsByPlayerId,
-      );
-      this.state.availableActionsByPlayerId = Object.fromEntries(
-        message.gameplay.availableActions.map((entry) => [
-          entry.playerId,
-          entry.actions.map((action) => action.actionType),
-        ]),
-      );
-      this.state.prompts = message.gameplay.prompts as Array<
-        Record<string, unknown>
-      >;
+      this.state.view = parseSeatView(message.gameplay.view);
+      this.state.availableInteractions = (
+        message.gameplay.availableInteractions ?? []
+      ).map((interaction) => interaction.interactionId);
     }
   }
 
@@ -1007,63 +1142,64 @@ class EmbeddedGameplayTracker {
   }
 }
 
-function parseSeatViews(raw: Record<string, string>): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(raw ?? {}).map(([playerId, value]) => [
-      playerId,
-      parseJsonValue(value),
-    ]),
-  );
+function parseSeatView(raw: string | null | undefined): unknown {
+  return raw ? parseJsonValue(raw) : null;
 }
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function assertTaggedByKind(
-  value: unknown,
+function formatIssuePath(
   label: string,
-): asserts value is Record<string, unknown> & { type: string; kind: string } {
-  if (!value || typeof value !== "object") {
-    throw new Error(
-      `Reducer bundle returned invalid payload for 'dispatch': ${label} must be an object.`,
-    );
+  path: ReadonlyArray<PropertyKey>,
+): string {
+  let formatted = label;
+  for (const segment of path) {
+    formatted +=
+      typeof segment === "number" ? `[${segment}]` : `.${String(segment)}`;
   }
-  const tagged = value as { type?: unknown; kind?: unknown };
-  if (typeof tagged.type !== "string") {
-    throw new Error(
-      `Reducer bundle returned invalid payload for 'dispatch': ${label} is missing string property 'type'.`,
-    );
-  }
-  if (tagged.kind !== tagged.type) {
-    throw new Error(
-      `Reducer bundle returned invalid payload for 'dispatch': ${label} must include kind='${tagged.type}'.`,
-    );
-  }
+  return formatted;
 }
 
-export function assertDispatchResultWireContract(result: unknown): void {
-  assertTaggedByKind(result, "DispatchResult");
-  if (result.type !== "accept") {
-    return;
+function parseWirePayload<T>(
+  methodName: string,
+  value: unknown,
+  label: string,
+  schema: {
+    safeParse: (input: unknown) =>
+      | { success: true; data: T }
+      | {
+          success: false;
+          error: {
+            issues: Array<{
+              path: Array<PropertyKey>;
+              message: string;
+            }>;
+          };
+        };
+  },
+): T {
+  const parsed = schema.safeParse(value);
+  if (parsed.success) {
+    return parsed.data;
   }
+  const firstIssue = parsed.error.issues[0];
+  const formattedPath = formatIssuePath(label, firstIssue?.path ?? []);
+  throw new Error(
+    `Reducer bundle returned invalid payload for '${methodName}': ${formattedPath} ${firstIssue?.message ?? "failed schema validation"}.`,
+  );
+}
 
-  const trace = (result as { trace?: unknown }).trace;
-  if (!Array.isArray(trace)) {
-    throw new Error(
-      "Reducer bundle returned invalid payload for 'dispatch': DispatchResult.accept.trace must be an array.",
-    );
-  }
-
-  for (const [index, entry] of trace.entries()) {
-    assertTaggedByKind(entry, `DispatchResult.accept.trace[${index}]`);
-    if (entry.type !== "appliedEffect") {
-      continue;
-    }
-
-    const effect = (entry as { effect?: unknown }).effect;
-    assertTaggedByKind(effect, `DispatchResult.accept.trace[${index}].effect`);
-  }
+export function assertDispatchResultWireContract(
+  result: unknown,
+): Wire.DispatchResult {
+  return parseWirePayload(
+    "dispatch",
+    result,
+    "DispatchResult",
+    ReducerContractZod.DispatchResultSchema,
+  );
 }
 
 async function createBrowserBridgeClient(
@@ -1108,45 +1244,25 @@ async function createBrowserBridgeClient(
           }
         ).__dreamboardTestBridge__.snapshot(),
       ),
-    submitAction: (playerId, actionType, params) =>
+    submitInteraction: (playerId, interactionId, params) =>
       page.evaluate(
-        ([nextPlayerId, nextActionType, nextParams]) =>
+        ([nextPlayerId, nextInteractionId, nextParams]) =>
           (
             window as typeof window & {
               __dreamboardTestBridge__: {
-                submitAction: (
+                submitInteraction: (
                   playerId: string,
-                  actionType: string,
-                  params: Record<string, unknown>,
+                  interactionId: string,
+                  params: unknown,
                 ) => Promise<void>;
               };
             }
-          ).__dreamboardTestBridge__.submitAction(
+          ).__dreamboardTestBridge__.submitInteraction(
             nextPlayerId,
-            nextActionType,
+            nextInteractionId,
             nextParams,
           ),
-        [playerId, actionType, params] as const,
-      ),
-    submitPromptResponse: (playerId, promptId, response) =>
-      page.evaluate(
-        ([nextPlayerId, nextPromptId, nextResponse]) =>
-          (
-            window as typeof window & {
-              __dreamboardTestBridge__: {
-                submitPromptResponse: (
-                  playerId: string,
-                  promptId: string,
-                  response: unknown,
-                ) => Promise<void>;
-              };
-            }
-          ).__dreamboardTestBridge__.submitPromptResponse(
-            nextPlayerId,
-            nextPromptId,
-            nextResponse,
-          ),
-        [playerId, promptId, response] as const,
+        [playerId, interactionId, params] as const,
       ),
     waitForVersionChange: async (
       previousVersion,
@@ -1173,24 +1289,6 @@ async function createBrowserBridgeClient(
   };
 }
 
-function normalizePromptForComparison(
-  prompt: Record<string, unknown>,
-): Record<string, unknown> {
-  return {
-    id: prompt.id,
-    promptId: prompt.promptId,
-    to: prompt.to,
-    title: prompt.title ?? null,
-    payload: prompt.payload ?? null,
-    options: Array.isArray(prompt.options)
-      ? prompt.options.map((option) => ({
-          id: (option as { id?: unknown }).id ?? null,
-          label: (option as { label?: unknown }).label ?? null,
-        }))
-      : [],
-  };
-}
-
 async function assertLiveMatchesShadow(
   runner: TestRunnerName,
   shadow: ShadowReducerRuntime,
@@ -1198,16 +1296,6 @@ async function assertLiveMatchesShadow(
 ): Promise<void> {
   if (runner === "reducer") {
     return;
-  }
-
-  const livePrompts = ("prompts" in live ? live.prompts : []).map(
-    normalizePromptForComparison,
-  );
-  const shadowPrompts = shadow
-    .promptInstances()
-    .map(normalizePromptForComparison);
-  if (!deepEqual(livePrompts, shadowPrompts)) {
-    throw new Error("Live prompt state diverged from reducer shadow state.");
   }
 
   const currentPhase =
@@ -1218,29 +1306,25 @@ async function assertLiveMatchesShadow(
     );
   }
 
-  const liveViews =
-    "seatViewsByPlayerId" in live ? live.seatViewsByPlayerId : {};
-  const shadowViews = Object.fromEntries(
-    await Promise.all(
-      shadow
-        .playerOrder()
-        .map(async (playerId) => [playerId, await shadow.view(playerId)]),
-    ),
-  );
-  if (!deepEqual(liveViews, shadowViews)) {
+  const livePlayerId =
+    "playerId" in live ? live.playerId : live.controllingPlayerId;
+  const liveView = "view" in live ? live.view : null;
+  if (livePlayerId && !deepEqual(liveView, await shadow.view(livePlayerId))) {
     throw new Error("Live projected views diverged from reducer shadow views.");
   }
 
-  const liveActions =
-    "availableActionsByPlayerId" in live
-      ? live.availableActionsByPlayerId
-      : null;
+  const liveInteractions =
+    "availableInteractions" in live ? live.availableInteractions : null;
   if (
-    liveActions &&
-    !deepEqual(liveActions, await shadow.availableActionsByPlayerId())
+    livePlayerId &&
+    liveInteractions &&
+    !deepEqual(
+      liveInteractions,
+      shadow.availableInteractionsForPlayer(livePlayerId),
+    )
   ) {
     throw new Error(
-      "Live available-actions metadata diverged from reducer shadow state.",
+      "Live available-interactions metadata diverged from reducer shadow state.",
     );
   }
 }
@@ -1278,9 +1362,57 @@ async function openBrowserPage(
   return { browser, page };
 }
 
+function sanitizeSnapshotSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]+/g, "-");
+}
+
+function createScenarioSnapshotMatcher(options: {
+  projectRoot: string;
+  scenarioId: string;
+  updateSnapshots: boolean;
+}): (filename: string | undefined, actual: unknown) => void {
+  return (filename, actual) => {
+    const suffix = filename ? `.${sanitizeSnapshotSegment(filename)}` : "";
+    const snapshotPath = path.join(
+      options.projectRoot,
+      "test",
+      "generated",
+      "snapshots",
+      `${sanitizeSnapshotSegment(options.scenarioId)}${suffix}.snapshot.json`,
+    );
+    const wrappedValue = {
+      value: actual,
+    };
+    const serialized = `${JSON.stringify(wrappedValue, null, 2)}\n`;
+
+    mkdirSync(path.dirname(snapshotPath), { recursive: true });
+    if (!existsSync(snapshotPath) || options.updateSnapshots) {
+      writeFileSync(snapshotPath, serialized, "utf8");
+      return;
+    }
+
+    const previous = JSON.parse(readFileSync(snapshotPath, "utf8")) as {
+      value: unknown;
+    };
+    if (!deepEqual(previous.value, actual)) {
+      throw new Error(
+        `Snapshot mismatch for scenario '${options.scenarioId}'. Re-run with --update-snapshots to refresh ${path.relative(options.projectRoot, snapshotPath)}.`,
+      );
+    }
+  };
+}
+
 async function createScenarioContext(options: {
   runner: TestRunnerName;
   shadow: ShadowReducerRuntime;
+  expect: ExpectApi;
+  live?:
+    | {
+        sessionId: string;
+        version: number;
+        actionSetVersion: string;
+      }
+    | undefined;
   embedded?:
     | {
         sessionId: string;
@@ -1294,33 +1426,6 @@ async function createScenarioContext(options: {
       }
     | undefined;
 }): Promise<SharedScenarioContext> {
-  const expect = createExpectApi();
-
-  const resolvePromptInstanceId = (
-    playerId: string,
-    promptOrId: string | { id: string; promptId?: string },
-  ): string => {
-    if (typeof promptOrId !== "string") {
-      return (
-        (promptOrId.id as string | undefined) ??
-        (promptOrId.promptId as string | undefined) ??
-        ""
-      );
-    }
-
-    const directMatch = options.shadow
-      .promptInstances()
-      .find((candidate) => candidate.id === promptOrId);
-    if (directMatch) {
-      return promptOrId;
-    }
-
-    const activePrompt = options.shadow
-      .promptsForPlayer(playerId)
-      .find((candidate) => candidate.promptId === promptOrId);
-    return (activePrompt?.id as string | undefined) ?? promptOrId;
-  };
-
   const api: ScenarioGameApi = {
     start: async () => {
       await options.shadow.start();
@@ -1333,50 +1438,105 @@ async function createScenarioContext(options: {
         await assertLiveMatchesShadow("browser", options.shadow, live);
       }
     },
-    action: async (playerId, actionOrCommand, params) => {
+    submit: async (playerId, interactionId, params) => {
       await api.start();
-      const actionType =
-        typeof actionOrCommand === "string"
-          ? actionOrCommand
-          : actionOrCommand.type;
-      const actionParams =
-        typeof actionOrCommand === "string"
-          ? (params ?? {})
-          : (actionOrCommand.params ?? {});
+      const interactionParams = params ?? {};
 
-      const previousVersion =
-        options.runner === "embedded"
+      const previousVersion = options.live
+        ? options.live.version
+        : options.runner === "embedded"
           ? (options.embedded?.tracker.snapshot().version ?? 0)
           : options.runner === "browser"
             ? ((await options.browser?.bridge.snapshot())?.version ?? 0)
             : 0;
 
-      if (options.runner === "embedded" && options.embedded) {
-        const { data, error } = await submitInput({
-          path: { sessionId: options.embedded.sessionId },
+      if (options.live) {
+        if (!options.live.actionSetVersion) {
+          const { data } = await listPlayerActions({
+            path: { sessionId: options.live.sessionId, playerId },
+          });
+          options.live.actionSetVersion = data?.actionSetVersion ?? "";
+        }
+        const { data, error } = await submitPlayerAction({
+          path: {
+            sessionId: options.live.sessionId,
+            playerId,
+            interactionId,
+          },
           body: {
-            input: {
-              kind: "action",
-              playerId,
-              actionType,
-              params: JSON.stringify(actionParams),
-            },
             expectedVersion: previousVersion,
+            actionSetVersion: options.live.actionSetVersion,
+            inputs:
+              interactionParams &&
+              typeof interactionParams === "object" &&
+              !Array.isArray(interactionParams)
+                ? (interactionParams as never)
+                : {},
           },
         });
         if (error) {
           throw createSubmissionError(
             "api-error",
             undefined,
-            "Failed to submit action",
+            "Failed to submit interaction",
           );
         }
         if (data?.accepted === false) {
-          const shadowError = await tryShadowAction(
+          const shadowError = await tryShadowSubmit(
             options.shadow,
             playerId,
-            actionType,
-            actionParams,
+            interactionId,
+            interactionParams,
+          );
+          if (!shadowError || shadowError.errorCode !== data.errorCode) {
+            throw new Error(
+              "Live session rejection diverged from reducer shadow state.",
+            );
+          }
+          throw createSubmissionError(
+            data.errorCode ?? undefined,
+            data.message ?? undefined,
+            "Interaction rejected",
+          );
+        }
+        options.live.version =
+          typeof data?.version === "number"
+            ? data.version
+            : previousVersion + 1;
+        options.live.actionSetVersion =
+          data?.actionSetVersion ?? options.live.actionSetVersion;
+      } else if (options.runner === "embedded" && options.embedded) {
+        const embeddedSnapshot = options.embedded.tracker.snapshot();
+        const { data, error } = await submitPlayerAction({
+          path: {
+            sessionId: options.embedded.sessionId,
+            playerId,
+            interactionId,
+          },
+          body: {
+            expectedVersion: previousVersion,
+            actionSetVersion: embeddedSnapshot.actionSetVersion,
+            inputs:
+              interactionParams &&
+              typeof interactionParams === "object" &&
+              !Array.isArray(interactionParams)
+                ? (interactionParams as never)
+                : {},
+          },
+        });
+        if (error) {
+          throw createSubmissionError(
+            "api-error",
+            undefined,
+            "Failed to submit interaction",
+          );
+        }
+        if (data?.accepted === false) {
+          const shadowError = await tryShadowSubmit(
+            options.shadow,
+            playerId,
+            interactionId,
+            interactionParams,
           );
           if (!shadowError || shadowError.errorCode !== data.errorCode) {
             throw new Error(
@@ -1386,26 +1546,30 @@ async function createScenarioContext(options: {
           throw createSubmissionError(
             data.errorCode ?? undefined,
             data.message ?? undefined,
-            "Action rejected",
+            "Interaction rejected",
           );
         }
       } else if (options.runner === "browser" && options.browser) {
         const handled =
-          (await options.browser.driver?.action?.(options.browser.bridge, {
+          (await options.browser.driver?.interaction?.(options.browser.bridge, {
             playerId,
-            actionType,
-            params: actionParams,
+            interactionId,
+            params: interactionParams,
           })) === true;
         if (!handled) {
-          await options.browser.bridge.submitAction(
+          await options.browser.bridge.submitInteraction(
             playerId,
-            actionType,
-            actionParams,
+            interactionId,
+            interactionParams,
           );
         }
       }
 
-      await options.shadow.submitAction(playerId, actionType, actionParams);
+      await options.shadow.submitInteraction(
+        playerId,
+        interactionId,
+        interactionParams,
+      );
 
       if (options.runner === "embedded" && options.embedded) {
         await options.embedded.tracker.waitForVersionChange(previousVersion);
@@ -1420,141 +1584,37 @@ async function createScenarioContext(options: {
           await options.browser.bridge.waitForVersionChange(previousVersion);
         await assertLiveMatchesShadow("browser", options.shadow, live);
       }
-    },
-    respond: async (playerId, promptOrId, response) => {
-      await api.start();
-      const promptId = resolvePromptInstanceId(playerId, promptOrId);
-
-      const previousVersion =
-        options.runner === "embedded"
-          ? (options.embedded?.tracker.snapshot().version ?? 0)
-          : options.runner === "browser"
-            ? ((await options.browser?.bridge.snapshot())?.version ?? 0)
-            : 0;
-
-      if (options.runner === "embedded" && options.embedded) {
-        const { data, error } = await submitInput({
-          path: { sessionId: options.embedded.sessionId },
-          body: {
-            input: {
-              kind: "promptResponse",
-              playerId,
-              promptId,
-              response: JSON.stringify(response),
-            },
-            expectedVersion: previousVersion,
-          },
-        });
-        if (error) {
-          throw createSubmissionError(
-            "api-error",
-            undefined,
-            "Failed to submit prompt response",
-          );
-        }
-        if (data?.accepted === false) {
-          const shadowError = await tryShadowPrompt(
-            options.shadow,
-            playerId,
-            promptId,
-            response,
-          );
-          if (!shadowError || shadowError.errorCode !== data.errorCode) {
-            throw new Error(
-              "Embedded prompt rejection diverged from reducer shadow state.",
-            );
-          }
-          throw createSubmissionError(
-            data.errorCode ?? undefined,
-            data.message ?? undefined,
-            "Prompt response rejected",
-          );
-        }
-      } else if (options.runner === "browser" && options.browser) {
-        const handled =
-          (await options.browser.driver?.promptResponse?.(
-            options.browser.bridge,
-            {
-              playerId,
-              promptId,
-              response,
-            },
-          )) === true;
-        if (!handled) {
-          await options.browser.bridge.submitPromptResponse(
-            playerId,
-            promptId,
-            response,
-          );
-        }
-      }
-
-      await options.shadow.submitPromptResponse(playerId, promptId, response);
-
-      if (options.runner === "embedded" && options.embedded) {
-        await options.embedded.tracker.waitForVersionChange(previousVersion);
-        await assertLiveMatchesShadow(
-          "embedded",
-          options.shadow,
-          options.embedded.tracker.snapshot(),
-        );
-      }
-      if (options.runner === "browser" && options.browser) {
-        const live =
-          await options.browser.bridge.waitForVersionChange(previousVersion);
-        await assertLiveMatchesShadow("browser", options.shadow, live);
-      }
-    },
-    expectPrompt: async (playerId, promptId) => {
-      await api.start();
-      const started = Date.now();
-      while (Date.now() - started < DEFAULT_TIMEOUT_MS) {
-        const prompt =
-          options.shadow
-            .promptsForPlayer(playerId)
-            .find((candidate) => candidate.promptId === promptId) ?? null;
-        if (prompt) {
-          if (options.runner === "embedded" && options.embedded) {
-            await assertLiveMatchesShadow(
-              "embedded",
-              options.shadow,
-              options.embedded.tracker.snapshot(),
-            );
-          }
-          if (options.runner === "browser" && options.browser) {
-            await assertLiveMatchesShadow(
-              "browser",
-              options.shadow,
-              await options.browser.bridge.snapshot(),
-            );
-          }
-          return prompt;
-        }
-        await sleep(20);
-      }
-      throw new Error(`Timed out waiting for prompt '${promptId}'.`);
     },
   };
 
   return {
     game: api,
     players: () => options.shadow.playerOrder(),
+    seat: (index: number) => {
+      const order = options.shadow.playerOrder();
+      if (!Number.isInteger(index) || index < 0 || index >= order.length) {
+        throw new Error(
+          `seat(${index}) is out of range; scenario has ${order.length} player(s).`,
+        );
+      }
+      return order[index]!;
+    },
     state: () => options.shadow.phase(),
     view: (playerId) => options.shadow.view(playerId),
-    prompts: (playerId) => options.shadow.promptsForPlayer(playerId),
-    expect,
+    interactions: (playerId) => options.shadow.interactionsForPlayer(playerId),
+    expect: options.expect,
   };
 }
 
-async function tryShadowAction(
+async function tryShadowSubmit(
   shadow: ShadowReducerRuntime,
   playerId: string,
-  actionType: string,
+  interactionId: string,
   params: Record<string, unknown>,
 ): Promise<SubmissionError | null> {
   try {
-    await shadow.submitAction(playerId, actionType, params);
-    throw new Error("Expected shadow action to reject.");
+    await shadow.submitInteraction(playerId, interactionId, params);
+    throw new Error("Expected shadow interaction to reject.");
   } catch (error) {
     if (
       error instanceof Error &&
@@ -1566,28 +1626,266 @@ async function tryShadowAction(
   }
 }
 
-async function tryShadowPrompt(
-  shadow: ShadowReducerRuntime,
-  playerId: string,
-  promptId: string,
-  response: unknown,
-): Promise<SubmissionError | null> {
-  try {
-    await shadow.submitPromptResponse(playerId, promptId, response);
-    throw new Error("Expected shadow prompt response to reject.");
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      (error as SubmissionError).name === "SubmissionError"
-    ) {
-      return error as SubmissionError;
-    }
-    throw error;
+export async function createSessionFromScenario(options: {
+  projectRoot: string;
+  scenarioId: string;
+  compiledResultId: string;
+  gameId: string;
+  debug?: boolean;
+}): Promise<SeededScenarioSession> {
+  await ensureReducerNativeTestingFiles(options.projectRoot);
+
+  const [
+    bases,
+    scenarios,
+    generatedBaseStates,
+    manifest,
+    gameModule,
+    manifestContractModule,
+  ] = await Promise.all([
+    loadTypedBases(options.projectRoot),
+    loadTypedScenarios(options.projectRoot, {}),
+    loadGeneratedBaseStates(options.projectRoot),
+    loadManifest(options.projectRoot),
+    importTypeScriptModule<Record<string, unknown>>(
+      path.join(options.projectRoot, "app", "game.ts"),
+    ),
+    importTypeScriptModule<Record<string, unknown>>(
+      path.join(options.projectRoot, "shared", "manifest-contract.ts"),
+    ),
+  ]);
+
+  const matchingScenarios = scenarios.filter(
+    (scenario) => scenario.definition.id === options.scenarioId,
+  );
+  if (matchingScenarios.length === 0) {
+    throw new Error(
+      `Unknown scenario '${options.scenarioId}'. Available scenarios: ${scenarios
+        .map((scenario) => scenario.definition.id)
+        .sort()
+        .join(", ")}`,
+    );
   }
+  if (matchingScenarios.length > 1) {
+    throw new Error(
+      `Scenario id '${options.scenarioId}' is defined more than once. Keep one scenario per file and one unique id per workspace.`,
+    );
+  }
+
+  const scenario = matchingScenarios[0]!;
+  const basesById = new Map(bases.map((base) => [base.definition.id, base]));
+  validateTypedScenarioBases([scenario], basesById);
+  const base = basesById.get(scenario.definition.from);
+  if (!base) {
+    throw new Error(
+      `Missing typed base '${scenario.definition.from}' for scenario '${scenario.definition.id}'.`,
+    );
+  }
+
+  const generatedBase = generatedBaseStates?.[baseStateKey(base.definition.id)];
+  if (!generatedBase) {
+    throw new Error(
+      `Missing generated base artifact for '${base.definition.id}'. Run 'dreamboard test generate' before using --from-scenario.`,
+    );
+  }
+
+  validateGeneratedFingerprint({
+    generated: generatedBase.fingerprint,
+    current: await currentFingerprint({
+      projectRoot: options.projectRoot,
+      base,
+      basesById,
+      compiledResultId: options.compiledResultId,
+      gameId: options.gameId,
+    }),
+  });
+
+  const createInitialTable =
+    typeof manifestContractModule.createInitialTable === "function"
+      ? (manifestContractModule.createInitialTable as GeneratedInitialTableFactory)
+      : null;
+  const resolvedBase = resolveBaseDefinition(base, basesById);
+  const effectiveSetup = resolveEffectiveBaseSetup({
+    manifest,
+    base: base.definition,
+    basesById,
+  });
+  const shadow = new ShadowReducerRuntime(
+    manifest,
+    gameModule.default,
+    createInitialTable,
+    resolvedBase.seed,
+    resolvedBase.players,
+    effectiveSetup.setupProfileId,
+    options.debug ?? false,
+  );
+  if (base.definition.extends) {
+    const parentArtifact =
+      generatedBaseStates?.[baseStateKey(base.definition.extends)];
+    if (!parentArtifact) {
+      throw new Error(
+        `Base '${base.definition.id}' extends '${base.definition.extends}', but the parent artifact is missing. Run 'dreamboard test generate' first.`,
+      );
+    }
+    shadow.hydrate(parentArtifact.snapshot);
+  }
+
+  const { data: session, error: sessionError } = await createSession({
+    path: { gameId: options.gameId },
+    body: {
+      compiledResultId: options.compiledResultId,
+      seed: resolvedBase.seed,
+      playerCount: resolvedBase.players,
+      autoAssignSeats: true,
+      setupProfileId: effectiveSetup.setupProfileId ?? undefined,
+    },
+  });
+  if (!session || sessionError) {
+    throw new Error(
+      `Failed to create seeded scenario session for '${scenario.definition.id}'.`,
+    );
+  }
+
+  const { error: startError } = await startGame({
+    path: { sessionId: session.sessionId },
+  });
+  if (startError) {
+    throw new Error(
+      `Failed to start seeded scenario session for '${scenario.definition.id}'.`,
+    );
+  }
+
+  const context = await createScenarioContext({
+    runner: "reducer",
+    shadow,
+    expect: (await loadTestingExpectApiFactory())(),
+    live: {
+      sessionId: session.sessionId,
+      version: 0,
+      actionSetVersion: "",
+    },
+  });
+
+  await context.game.start();
+  await base.definition.setup({
+    game: context.game,
+    players: context.players,
+    seat: context.seat,
+  });
+  shadow.clearHistory();
+  await scenario.definition.when(context);
+  if (
+    scenario.definition.phase &&
+    shadow.phase() !== scenario.definition.phase
+  ) {
+    throw new Error(
+      `Scenario '${scenario.definition.id}' expected phase '${scenario.definition.phase}' but reached '${shadow.phase()}'.`,
+    );
+  }
+  if (
+    scenario.definition.stage &&
+    shadow.currentStage() !== scenario.definition.stage
+  ) {
+    throw new Error(
+      `Scenario '${scenario.definition.id}' expected stage '${scenario.definition.stage}' but reached '${
+        shadow.currentStage() ?? "null"
+      }'.`,
+    );
+  }
+
+  return {
+    sessionId: session.sessionId,
+    shortCode: session.shortCode,
+    gameId: session.gameId,
+    seed: resolvedBase.seed,
+    playerCount: resolvedBase.players,
+    setupProfileId: effectiveSetup.setupProfileId,
+    scenarioId: scenario.definition.id,
+    phase: shadow.phase(),
+    stage: shadow.currentStage(),
+  };
 }
 
 function baseStateKey(baseId: string): string {
   return baseId;
+}
+
+function fingerprintHash(
+  fingerprint: BaseStateArtifact["fingerprint"],
+): string {
+  return hashContent(JSON.stringify(fingerprint));
+}
+
+function sortBasesForArtifacts(
+  bases: LoadedBase[],
+  basesById: Map<string, LoadedBase>,
+): LoadedBase[] {
+  const ordered: LoadedBase[] = [];
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+
+  const visit = (base: LoadedBase) => {
+    if (visited.has(base.definition.id)) {
+      return;
+    }
+    if (visiting.has(base.definition.id)) {
+      throw new Error(
+        `Cyclic reducer-native base inheritance detected at '${base.definition.id}'.`,
+      );
+    }
+    visiting.add(base.definition.id);
+    if (base.definition.extends) {
+      const parent = basesById.get(base.definition.extends);
+      if (!parent) {
+        throw new Error(
+          `Base '${base.definition.id}' extends unknown parent '${base.definition.extends}'.`,
+        );
+      }
+      visit(parent);
+    }
+    visiting.delete(base.definition.id);
+    visited.add(base.definition.id);
+    ordered.push(base);
+  };
+
+  for (const base of bases) {
+    visit(base);
+  }
+
+  return ordered;
+}
+
+function writeProjectionSnapshots(options: {
+  projectRoot: string;
+  baseId: string;
+  shadow: ShadowReducerRuntime;
+}): void {
+  const projectionDir = path.join(
+    options.projectRoot,
+    "test",
+    "generated",
+    "bases",
+    options.baseId,
+  );
+  rmSync(projectionDir, { recursive: true, force: true });
+  mkdirSync(projectionDir, { recursive: true });
+  const projection = options.shadow.projectAllSeats();
+  for (const [playerId, seatProjection] of Object.entries(projection.seats)) {
+    const outputPath = path.join(projectionDir, `${playerId}.projection.json`);
+    writeFileSync(
+      outputPath,
+      `${JSON.stringify(
+        {
+          currentStage: projection.currentStage,
+          stageSeats: projection.stageSeats,
+          ...seatProjection,
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+  }
 }
 
 function validateTypedScenarioBases(
@@ -1648,34 +1946,75 @@ export async function writeReducerNativeGeneratedFiles(options: {
     typeof manifestContractModule.createInitialTable === "function"
       ? (manifestContractModule.createInitialTable as GeneratedInitialTableFactory)
       : null;
-  for (const base of options.bases) {
+  const basesById = new Map(
+    options.bases.map((base) => [base.definition.id, base]),
+  );
+  for (const base of sortBasesForArtifacts(options.bases, basesById)) {
+    const resolvedBase = resolveBaseDefinition(base, basesById);
     const effectiveSetup = resolveEffectiveBaseSetup({
       manifest,
       base: base.definition,
+      basesById,
     });
     const shadow = new ShadowReducerRuntime(
       manifest,
       gameModule.default,
       createInitialTable,
-      base.definition.seed,
-      base.definition.players,
+      resolvedBase.seed,
+      resolvedBase.players,
       effectiveSetup.setupProfileId,
       options.debug ?? false,
     );
+    let parentFingerprintHash: string | null = null;
+    if (base.definition.extends) {
+      const parentArtifact = baseStates[baseStateKey(base.definition.extends)];
+      if (!parentArtifact) {
+        throw new Error(
+          `Base '${base.definition.id}' extends '${base.definition.extends}', but the parent artifact does not exist yet.`,
+        );
+      }
+      if (parentArtifact.fingerprint.seed !== resolvedBase.seed) {
+        throw new Error(
+          `Base '${base.definition.id}' extends '${base.definition.extends}' but changes seed from ${parentArtifact.fingerprint.seed} to ${resolvedBase.seed}.`,
+        );
+      }
+      if (parentArtifact.fingerprint.players !== resolvedBase.players) {
+        throw new Error(
+          `Base '${base.definition.id}' extends '${base.definition.extends}' but changes players from ${parentArtifact.fingerprint.players} to ${resolvedBase.players}.`,
+        );
+      }
+      if (
+        (parentArtifact.fingerprint.setupProfileId ?? null) !==
+        (effectiveSetup.setupProfileId ?? null)
+      ) {
+        throw new Error(
+          `Base '${base.definition.id}' extends '${base.definition.extends}' but changes setup profile from ${
+            parentArtifact.fingerprint.setupProfileId ?? "none"
+          } to ${effectiveSetup.setupProfileId ?? "none"}.`,
+        );
+      }
+      parentFingerprintHash = fingerprintHash(parentArtifact.fingerprint);
+      shadow.hydrate(parentArtifact.snapshot);
+    }
     const context = await createScenarioContext({
       runner: "reducer",
       shadow,
+      expect: (await loadTestingExpectApiFactory())(),
     });
     await context.game.start();
-    await base.definition.setup({ game: context.game });
+    await base.definition.setup({
+      game: context.game,
+      players: context.players,
+      seat: context.seat,
+    });
     baseStates[baseStateKey(base.definition.id)] = {
       key: baseStateKey(base.definition.id),
       base: base.definition.id,
       snapshot: shadow.rawState(),
       fingerprint: {
         base: base.definition.id,
-        seed: base.definition.seed,
-        players: base.definition.players,
+        seed: resolvedBase.seed,
+        players: resolvedBase.players,
         baseBundleHash: base.bundleHash,
         manifestHash,
         appBundleHash,
@@ -1683,8 +2022,15 @@ export async function writeReducerNativeGeneratedFiles(options: {
         setupProfileId: effectiveSetup.setupProfileId,
         compiledResultId: options.compiledResultId,
         gameId: options.gameId,
+        parentBaseId: base.definition.extends ?? null,
+        parentFingerprintHash,
       },
     };
+    writeProjectionSnapshots({
+      projectRoot: options.projectRoot,
+      baseId: base.definition.id,
+      shadow,
+    });
   }
 
   const header =
@@ -1777,6 +2123,18 @@ function validateGeneratedFingerprint(options: {
   ) {
     mismatches.push("base setup profile changed");
   }
+  if (
+    (options.generated.parentBaseId ?? null) !==
+    (options.current.parentBaseId ?? null)
+  ) {
+    mismatches.push("base parent changed");
+  }
+  if (
+    (options.generated.parentFingerprintHash ?? null) !==
+    (options.current.parentFingerprintHash ?? null)
+  ) {
+    mismatches.push("parent base artifact changed");
+  }
   if (mismatches.length > 0) {
     throw new Error(
       `${mismatches.join("; ")}. Run 'dreamboard test generate' to refresh reducer-native base artifacts.`,
@@ -1787,18 +2145,42 @@ function validateGeneratedFingerprint(options: {
 async function currentFingerprint(options: {
   projectRoot: string;
   base: LoadedBase;
+  basesById?: Map<string, LoadedBase>;
   compiledResultId?: string;
   gameId?: string;
 }): Promise<BaseStateArtifact["fingerprint"]> {
   const manifest = await loadManifest(options.projectRoot);
+  const resolvedBase = resolveBaseDefinition(
+    options.base,
+    options.basesById ?? new Map([[options.base.definition.id, options.base]]),
+  );
   const effectiveSetup = resolveEffectiveBaseSetup({
     manifest,
     base: options.base.definition,
+    basesById: options.basesById,
   });
+  let parentFingerprintHash: string | null = null;
+  if (options.base.definition.extends) {
+    const parentBase = options.basesById?.get(options.base.definition.extends);
+    if (!parentBase) {
+      throw new Error(
+        `Base '${options.base.definition.id}' extends unknown parent '${options.base.definition.extends}'.`,
+      );
+    }
+    parentFingerprintHash = fingerprintHash(
+      await currentFingerprint({
+        projectRoot: options.projectRoot,
+        base: parentBase,
+        basesById: options.basesById,
+        compiledResultId: options.compiledResultId,
+        gameId: options.gameId,
+      }),
+    );
+  }
   return {
     base: options.base.definition.id,
-    seed: options.base.definition.seed,
-    players: options.base.definition.players,
+    seed: resolvedBase.seed,
+    players: resolvedBase.players,
     baseBundleHash: options.base.bundleHash,
     manifestHash: hashContent(JSON.stringify(manifest)),
     appBundleHash: hashContent(
@@ -1814,6 +2196,8 @@ async function currentFingerprint(options: {
     setupProfileId: effectiveSetup.setupProfileId,
     compiledResultId: options.compiledResultId,
     gameId: options.gameId,
+    parentBaseId: options.base.definition.extends ?? null,
+    parentFingerprintHash,
   };
 }
 
@@ -1857,13 +2241,14 @@ export async function runReducerNativeScenarios(options: {
   gameId?: string;
   webBaseUrl?: string;
   debug?: boolean;
+  updateSnapshots?: boolean;
 }): Promise<ReducerNativeScenarioSummary> {
   await ensureReducerNativeTestingFiles(options.projectRoot);
 
   const [
     bases,
     scenarios,
-    generatedBaseStates,
+    initialGeneratedBaseStates,
     manifest,
     gameModule,
     manifestContractModule,
@@ -1881,6 +2266,7 @@ export async function runReducerNativeScenarios(options: {
       path.join(options.projectRoot, "shared", "manifest-contract.ts"),
     ),
   ]);
+  let generatedBaseStates = initialGeneratedBaseStates;
   const createInitialTable =
     typeof manifestContractModule.createInitialTable === "function"
       ? (manifestContractModule.createInitialTable as GeneratedInitialTableFactory)
@@ -1888,6 +2274,18 @@ export async function runReducerNativeScenarios(options: {
 
   const basesById = new Map(bases.map((base) => [base.definition.id, base]));
   validateTypedScenarioBases(scenarios, basesById);
+
+  if (options.updateSnapshots) {
+    await writeReducerNativeGeneratedFiles({
+      projectRoot: options.projectRoot,
+      bases,
+      scenarios,
+      compiledResultId: options.compiledResultId,
+      gameId: options.gameId,
+      debug: options.debug,
+    });
+    generatedBaseStates = await loadGeneratedBaseStates(options.projectRoot);
+  }
 
   const runnerScenarios = scenarios.filter((scenario) =>
     normalizeScenarioRunners(scenario.definition.runners).includes(
@@ -1945,6 +2343,7 @@ export async function runReducerNativeScenarios(options: {
           current: await currentFingerprint({
             projectRoot: options.projectRoot,
             base,
+            basesById,
             compiledResultId: options.compiledResultId,
             gameId: options.gameId,
           }),
@@ -1956,19 +2355,31 @@ export async function runReducerNativeScenarios(options: {
       }
 
       try {
+        const resolvedBase = resolveBaseDefinition(base, basesById);
         const effectiveSetup = resolveEffectiveBaseSetup({
           manifest,
           base: base.definition,
+          basesById,
         });
         const shadow = new ShadowReducerRuntime(
           manifest,
           gameModule.default,
           createInitialTable,
-          base.definition.seed,
-          base.definition.players,
+          resolvedBase.seed,
+          resolvedBase.players,
           effectiveSetup.setupProfileId,
           options.debug ?? false,
         );
+        if (base.definition.extends) {
+          const parentArtifact =
+            generatedBaseStates?.[baseStateKey(base.definition.extends)];
+          if (!parentArtifact) {
+            throw new Error(
+              `Base '${base.definition.id}' extends '${base.definition.extends}', but the parent artifact is missing. Run 'dreamboard test generate' first.`,
+            );
+          }
+          shadow.hydrate(parentArtifact.snapshot);
+        }
 
         let embedded:
           | {
@@ -1982,8 +2393,8 @@ export async function runReducerNativeScenarios(options: {
               path: { gameId: embeddedHarness.gameId },
               body: {
                 compiledResultId: embeddedHarness.compiledResultId,
-                seed: base.definition.seed,
-                playerCount: base.definition.players,
+                seed: resolvedBase.seed,
+                playerCount: resolvedBase.players,
                 autoAssignSeats: true,
                 setupProfileId: effectiveSetup.setupProfileId ?? undefined,
               },
@@ -1991,7 +2402,10 @@ export async function runReducerNativeScenarios(options: {
             if (!session || sessionError) {
               throw new Error("Failed to create embedded harness session.");
             }
-            const tracker = new EmbeddedGameplayTracker(session.sessionId);
+            const tracker = new EmbeddedGameplayTracker(
+              session.sessionId,
+              "player-1",
+            );
             const { error: startError } = await startGame({
               path: { sessionId: session.sessionId },
             });
@@ -2020,8 +2434,8 @@ export async function runReducerNativeScenarios(options: {
               path: { gameId },
               body: {
                 compiledResultId,
-                seed: base.definition.seed,
-                playerCount: base.definition.players,
+                seed: resolvedBase.seed,
+                playerCount: resolvedBase.players,
                 autoAssignSeats: true,
                 setupProfileId: effectiveSetup.setupProfileId ?? undefined,
               },
@@ -2036,7 +2450,7 @@ export async function runReducerNativeScenarios(options: {
               throw new Error("Failed to start browser-runner session.");
             }
             await page.goto(
-              `${options.webBaseUrl ?? options.projectConfig.webBaseUrl}/_dev/play/${started.shortCode}`,
+              `${options.webBaseUrl ?? options.projectConfig.webBaseUrl}/_dev/play/${started.session.shortCode}`,
               { waitUntil: "domcontentloaded" },
             );
             await waitForGameReady(page);
@@ -2047,6 +2461,13 @@ export async function runReducerNativeScenarios(options: {
           const context = await createScenarioContext({
             runner: options.runner,
             shadow,
+            expect: (await loadTestingExpectApiFactory())({
+              matchSnapshot: createScenarioSnapshotMatcher({
+                projectRoot: options.projectRoot,
+                scenarioId: scenario.definition.id,
+                updateSnapshots: options.updateSnapshots ?? false,
+              }),
+            }),
             embedded,
             browser:
               options.runner === "browser" && browserBridge
@@ -2058,9 +2479,31 @@ export async function runReducerNativeScenarios(options: {
           });
 
           await context.game.start();
-          await base.definition.setup({ game: context.game });
+          await base.definition.setup({
+            game: context.game,
+            players: context.players,
+            seat: context.seat,
+          });
           shadow.clearHistory();
           await scenario.definition.when(context);
+          if (
+            scenario.definition.phase &&
+            shadow.phase() !== scenario.definition.phase
+          ) {
+            throw new Error(
+              `Scenario '${scenario.definition.id}' expected phase '${scenario.definition.phase}' but reached '${shadow.phase()}'.`,
+            );
+          }
+          if (
+            scenario.definition.stage &&
+            shadow.currentStage() !== scenario.definition.stage
+          ) {
+            throw new Error(
+              `Scenario '${scenario.definition.id}' expected stage '${scenario.definition.stage}' but reached '${
+                shadow.currentStage() ?? "null"
+              }'.`,
+            );
+          }
           await scenario.definition.then(context);
           passed += 1;
           results.push({

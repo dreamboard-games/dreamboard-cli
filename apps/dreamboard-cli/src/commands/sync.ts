@@ -52,8 +52,20 @@ import { applyWorkspaceCodegen } from "../services/project/workspace-codegen.js"
 import {
   didLocalMaintainerSnapshotChange,
   ensureLocalMaintainerSnapshot,
+  isLocalMaintainerRegistryEnabled,
 } from "../services/project/local-maintainer-registry.js";
 import { reconcileWorkspaceDependencies } from "../services/project/workspace-dependencies.js";
+import { assertReducerContractPreflight } from "../services/project/reducer-contract-preflight.js";
+import { assertReducerBundleSmoke } from "../services/project/reducer-bundle-preflight.js";
+import { runLocalTypecheck } from "../services/project/local-typecheck.js";
+
+async function runLoggedStep<T>(
+  message: string,
+  task: () => Promise<T>,
+): Promise<T> {
+  consola.start(message);
+  return task();
+}
 
 function isSourceRevisionPath(filePath: string): boolean {
   return (
@@ -284,9 +296,14 @@ export default defineCommand({
     const { projectRoot, projectConfig, config } =
       await resolveProjectContext(parsedArgs);
     let nextProjectConfig = projectConfig;
-    const localMaintainerRegistry = await ensureLocalMaintainerSnapshot(
+    const localMaintainerEnabled = isLocalMaintainerRegistryEnabled(
       config.apiBaseUrl,
     );
+    const localMaintainerRegistry = localMaintainerEnabled
+      ? await runLoggedStep("Checking local SDK snapshot...", () =>
+          ensureLocalMaintainerSnapshot(config.apiBaseUrl),
+        )
+      : await ensureLocalMaintainerSnapshot(config.apiBaseUrl);
     const localMaintainerSnapshotChanged = didLocalMaintainerSnapshotChange(
       getProjectLocalMaintainerRegistry(projectConfig),
       localMaintainerRegistry,
@@ -296,16 +313,28 @@ export default defineCommand({
         nextProjectConfig,
         localMaintainerRegistry,
       );
+      consola.info(
+        localMaintainerSnapshotChanged
+          ? "Local SDK snapshot refreshed."
+          : "Using existing local SDK snapshot.",
+      );
     }
 
-    await scaffoldStaticWorkspace(projectRoot, "update", {
-      localMaintainerRegistry,
-    });
-    await applyWorkspaceCodegen({
-      projectRoot,
-      manifest: await loadManifest(projectRoot),
-    });
-    const dependencyState = await reconcileWorkspaceDependencies(projectRoot);
+    await runLoggedStep("Refreshing static scaffold...", () =>
+      scaffoldStaticWorkspace(projectRoot, "update", {
+        localMaintainerRegistry,
+      }),
+    );
+    await runLoggedStep("Applying workspace codegen...", async () =>
+      applyWorkspaceCodegen({
+        projectRoot,
+        manifest: await loadManifest(projectRoot),
+      }),
+    );
+    const dependencyState = await runLoggedStep(
+      "Reconciling workspace dependencies...",
+      () => reconcileWorkspaceDependencies(projectRoot),
+    );
     if (
       dependencyState.packageManagerNormalized ||
       dependencyState.lockfileGenerated ||
@@ -313,7 +342,34 @@ export default defineCommand({
       localMaintainerSnapshotChanged
     ) {
       consola.info("Workspace dependencies reconciled.");
+    } else {
+      consola.info("Workspace dependencies already up to date.");
     }
+    await runLoggedStep("Validating reducer contract...", () =>
+      assertReducerContractPreflight(projectRoot),
+    );
+    const typecheckResult = await runLoggedStep(
+      "Running local typecheck...",
+      () => runLocalTypecheck(projectRoot),
+    );
+    if (typecheckResult.skipped) {
+      if (typecheckResult.output) {
+        consola.warn(typecheckResult.output);
+      }
+    } else if (!typecheckResult.success) {
+      if (typecheckResult.output) {
+        consola.error(typecheckResult.output);
+      }
+      throw new Error(
+        "Local typecheck failed. Fix the diagnostics before syncing.",
+      );
+    }
+    await runLoggedStep("Smoke-testing reducer bundle...", async () =>
+      assertReducerBundleSmoke({
+        projectRoot,
+        manifest: await loadManifest(projectRoot),
+      }),
+    );
 
     const localDiff = await getLocalDiff(projectRoot);
     await assertCliStaticScaffoldComplete(projectRoot, localDiff.deleted);

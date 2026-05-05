@@ -17,6 +17,10 @@ const UI_SDK_NODE_MODULES = path.join(UI_SDK_PACKAGE_ROOT, "node_modules");
 const UI_SDK_DIST = path.join(UI_SDK_PACKAGE_ROOT, "dist");
 const APP_SDK_PACKAGE_ROOT = path.join(REPO_ROOT, "packages/app-sdk");
 const APP_SDK_DIST = path.join(APP_SDK_PACKAGE_ROOT, "dist");
+const SDK_TYPES_PACKAGE_ROOT = path.join(REPO_ROOT, "packages/sdk-types");
+const SDK_TYPES_DIST = path.join(SDK_TYPES_PACKAGE_ROOT, "dist");
+const API_CLIENT_PACKAGE_ROOT = path.join(REPO_ROOT, "packages/api-client");
+const API_CLIENT_DIST = path.join(API_CLIENT_PACKAGE_ROOT, "dist");
 
 async function loadLocalTypecheck() {
   return import(`./local-typecheck.ts?test=${Math.random()}`);
@@ -48,8 +52,9 @@ async function pathExists(p: string): Promise<boolean> {
 
 /**
  * The tests run `tsc --noEmit` against the scaffolded workspace, which resolves
- * `@dreamboard/ui-sdk` and `@dreamboard/app-sdk` via their `package.json` source
- * entry points. Walking the full SDK source trees on every test invocation costs
+ * `@dreamboard/ui-sdk`, `@dreamboard/app-sdk`, `@dreamboard/sdk-types`, and
+ * `@dreamboard/api-client` via their `package.json` entry points. Walking the
+ * full SDK source trees on every test invocation costs
  * ~20 seconds per tsc run and is duplicative - we only care that the generated
  * workspace's user-authored code types against the SDK public surface, not that
  * the SDK re-typechecks itself.
@@ -61,10 +66,18 @@ async function pathExists(p: string): Promise<boolean> {
 async function ensureSdkDistsBuilt(): Promise<void> {
   const uiDistMarker = path.join(UI_SDK_DIST, "index.d.ts");
   const appDistMarker = path.join(APP_SDK_DIST, "index.d.ts");
+  const sdkTypesDistMarker = path.join(SDK_TYPES_DIST, "index.d.ts");
+  const apiClientDistMarker = path.join(API_CLIENT_DIST, "index.d.ts");
 
   const missing: string[] = [];
   if (!(await pathExists(uiDistMarker))) missing.push("@dreamboard/ui-sdk");
   if (!(await pathExists(appDistMarker))) missing.push("@dreamboard/app-sdk");
+  if (!(await pathExists(sdkTypesDistMarker))) {
+    missing.push("@dreamboard/sdk-types");
+  }
+  if (!(await pathExists(apiClientDistMarker))) {
+    missing.push("@dreamboard/api-client");
+  }
 
   if (missing.length === 0) return;
 
@@ -584,8 +597,9 @@ async function writeDynamicFilesForManifest(
 /**
  * Layers the families of tsconfig augments that the scaffolded tsconfigs need
  * to typecheck the generated workspace:
- *   1. `@dreamboard/ui-sdk` + `@dreamboard/app-sdk` redirected to their
- *      prebuilt `.d.ts` trees (speed optimization; see `ensureSdkDistsBuilt`).
+ *   1. Dreamboard SDK packages redirected to their prebuilt `dist` trees:
+ *      `@dreamboard/ui-sdk`, `@dreamboard/app-sdk`, `@dreamboard/sdk-types`,
+ *      and the `@dreamboard/api-client` subpaths consumed by those packages.
  *   2. `@dreamboard/manifest` / `@dreamboard/ui-args` aliases used by the
  *      fixture-based UI smoke files.
  *   3. Incremental compilation enabled with per-project `tsBuildInfoFile`s
@@ -598,10 +612,28 @@ async function applyTsConfigPathAugments(tempRoot: string): Promise<void> {
   const distOverrides: Record<string, string[]> = {
     "@dreamboard/ui-sdk": [path.join(UI_SDK_DIST, "index")],
     "@dreamboard/ui-sdk/*": [path.join(UI_SDK_DIST, "*")],
-    "@dreamboard/app-sdk": [path.join(APP_SDK_DIST, "index")],
     "@dreamboard/app-sdk/reducer": [path.join(APP_SDK_DIST, "reducer")],
-    "@dreamboard/app-sdk/reducer/*": [path.join(APP_SDK_DIST, "reducer/*")],
-    "@dreamboard/app-sdk/internal": [path.join(APP_SDK_DIST, "internal")],
+    "@dreamboard/sdk-types": [path.join(SDK_TYPES_DIST, "index")],
+    "@dreamboard/api-client": [path.join(API_CLIENT_DIST, "index")],
+    "@dreamboard/api-client/client.gen": [
+      path.join(API_CLIENT_DIST, "client.gen"),
+    ],
+    "@dreamboard/api-client/types.gen": [
+      path.join(API_CLIENT_DIST, "types.gen"),
+    ],
+    "@dreamboard/api-client/react-query": [
+      path.join(API_CLIENT_DIST, "@tanstack", "react-query.gen"),
+    ],
+    "@dreamboard/api-client/problem-types": [
+      path.join(API_CLIENT_DIST, "generated", "problem-types.gen"),
+    ],
+    "@dreamboard/api-client/storage-paths": [
+      path.join(API_CLIENT_DIST, "storage-paths"),
+    ],
+    "@dreamboard/api-client/source-revisions": [
+      path.join(API_CLIENT_DIST, "source-revisions"),
+    ],
+    "@dreamboard/api-client/zod.gen": [path.join(API_CLIENT_DIST, "zod.gen")],
   };
   const uiFixtureAliases: Record<string, string[]> = {
     "@dreamboard/manifest": ["../shared/manifest.ts"],
@@ -671,6 +703,7 @@ async function clearPriorFixtureOverrides(tempRoot: string): Promise<void> {
   const overrideTargets = [
     "app/reducer-query-typing-smoke.ts",
     "ui/board-typing-smoke.tsx",
+    "ui/player-hooks-typing-smoke.tsx",
   ];
   for (const rel of overrideTargets) {
     await rm(path.join(tempRoot, rel), { force: true });
@@ -794,8 +827,27 @@ test("runLocalTypecheck supports docs-guided reducer helpers without casts", asy
   });
 }, 60_000);
 
+test("runLocalTypecheck preserves typed player ids in ui hooks", async () => {
+  const { runLocalTypecheck } = await loadLocalTypecheck();
+  const tempRoot = await prepareSharedWorkspaceForManifest(
+    FULL_TYPECHECK_MANIFEST,
+  );
+
+  await writeFixtureOverride(
+    tempRoot,
+    "ui/player-hooks-typing-smoke.tsx",
+    "ui/player-hooks-typing-smoke.tsx",
+  );
+
+  await expect(runLocalTypecheck(tempRoot)).resolves.toEqual({
+    success: true,
+    output: "",
+  });
+}, 60_000);
+
 test("runLocalTypecheck prefers project-local TypeScript without workspace symlinks", async () => {
   const { runLocalTypecheck } = await loadLocalTypecheck();
+  const { scaffoldStaticWorkspace } = await loadStaticScaffold();
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "db-local-typecheck-"));
   const localTscPath = path.join(
     tempRoot,
@@ -806,6 +858,7 @@ test("runLocalTypecheck prefers project-local TypeScript without workspace symli
   );
 
   try {
+    await scaffoldStaticWorkspace(tempRoot, "new");
     await mkdir(path.dirname(localTscPath), { recursive: true });
 
     await Bun.write(

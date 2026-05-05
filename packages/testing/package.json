@@ -1,0 +1,41 @@
+{
+  "name": "@dreamboard/testing",
+  "version": "0.1.0",
+  "description": "Dreamboard authored testing helpers and reducer-native UI test runtime",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "lint": "eslint 'src/**/*.ts'",
+    "test": "bun test"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "dependencies": {
+    "@dreamboard/api-client": "workspace:*",
+    "@dreamboard/app-sdk": "workspace:*",
+    "@dreamboard/reducer-contract": "workspace:*",
+    "@dreamboard/ui-sdk": "workspace:*",
+    "zustand": "^5.0.4"
+  },
+  "devDependencies": {
+    "@dreamboard/eslint-config": "workspace:*",
+    "@dreamboard/typescript-config": "workspace:*",
+    "@dreamboard/ui-host-runtime": "workspace:*",
+    "@types/node": "^24.5.2",
+    "eslint": "^9.39.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.2"
+  }
+}

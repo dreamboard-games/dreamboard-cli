@@ -3,6 +3,8 @@ import { createRequire } from "node:module";
 import react from "@vitejs/plugin-react";
 import tailwindcssPostcss from "@tailwindcss/postcss";
 import { createServer, type ViteDevServer } from "vite";
+import type { ResolvedConfig } from "../types.js";
+import { createDevApiProxyPlugin } from "./dev-api-proxy-plugin.js";
 import { createDevRuntimePlatform } from "./dev-runtime-platform.js";
 import { createVirtualDevModulesPlugin } from "./dev-virtual-modules-plugin.js";
 import { createDevLogRelayPlugin } from "./dev-log-relay-plugin.js";
@@ -19,12 +21,13 @@ export async function startDreamboardDevServer(options: {
   sessionFilePath: string;
   port?: number;
   runtimeConfig: DreamboardDevRuntimeConfig;
+  config: ResolvedConfig;
 }): Promise<{
   url: string;
   close: () => Promise<void>;
   server: ViteDevServer;
 }> {
-  const { projectRoot, port, runtimeConfig } = options;
+  const { projectRoot, port, runtimeConfig, config } = options;
   const platform = createDevRuntimePlatform({
     importMetaUrl: import.meta.url,
     projectRoot,
@@ -47,9 +50,11 @@ export async function startDreamboardDevServer(options: {
         runtimeConfig,
         generatedFallbackStylesheetPath,
       }),
+      createDevApiProxyPlugin({ config }),
       createDevLogRelayPlugin({
         sessionFilePath: options.sessionFilePath,
         runtimeConfig,
+        config,
         diagnosticsLevel: platform.diagnosticsLevel,
       }),
     ],

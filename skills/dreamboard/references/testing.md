@@ -1,262 +1,157 @@
-# Testing
+# Testing overview
 
-Reference for Dreamboard's reducer-native test framework.
+Generate and run Dreamboard reducer-native tests.
 
-Dreamboard's scaffolded test workspace is reducer-native. It uses typed base
-definitions and typed scenarios that run against your compiled reducer and
-generated contracts.
+Dreamboard tests are reducer-native. They run authored scenarios against the
+same reducer contract that powers the game, using generated workspace types for
+player ids, interaction ids, params, phases, views, and assertion helpers.
 
-## What the test harness does
+Use tests for repeatable gameplay coverage:
 
-Use the scaffolded test workspace for:
-
-- reusable seeded base states
-- reducer and view assertions
-- happy-path coverage
-- rejection and turn-gating coverage
-- deterministic regression testing in CI or local development
+- opening-state invariants
+- setup checkpoints reused by many scenarios
+- happy paths across a turn, round, or full game
+- rejection paths for illegal actors or params
+- prompt recipient and availability checks
+- UI component probes against reducer-projected plugin state
 
 ## Workspace layout
 
-The current scaffold uses these paths:
+| Path | Ownership | Purpose |
+| --- | --- | --- |
+| `test/bases/*.base.ts` | Authored | Reusable seeded starting states via `defineBase`. |
+| `test/scenarios/*.scenario.ts` | Authored | Reducer-native scenario files via `defineScenario`. |
+| `test/ui/*.test.tsx` | Authored | Optional UI tests using `createTestRuntime`. |
+| `test/testing-types.ts` | Generated | Workspace-narrowed test import surface. |
+| `test/generated/*` | Generated | Base snapshots, testing contract, scenario manifest, projections, snapshots, and metadata. |
 
-- `test/README.md`
-- `test/bases/*.base.ts`
-- `test/scenarios/*.scenario.ts`
-- `test/testing-types.ts`
-- `test/generated/*`
-
-Generated files under `test/generated/*` are owned by Dreamboard and should not
-be edited manually.
+Import test helpers from `../testing-types`. Do not import directly from
+`test/generated/*` and do not edit generated files by hand.
 
 ## Command flow
 
-Generate reducer-native test artifacts:
+Generate or refresh reducer-native artifacts:
 
 ```bash
 dreamboard test generate
 ```
 
-Run all scenarios:
+Run all reducer scenarios:
 
 ```bash
 dreamboard test run
 ```
 
-Run one scenario:
+Run one scenario file:
 
 ```bash
-dreamboard test run --scenario test/scenarios/win-the-game.scenario.ts
+dreamboard test run --scenario test/scenarios/trade-full-lifecycle.scenario.ts
 ```
 
-Re-run `dreamboard test generate` after changes that affect the runtime shape of
-the game, including:
+Refresh scenario snapshots while running:
+
+```bash
+dreamboard test run --update-snapshots
+```
+
+Public workspaces should normally omit `--runner`. The default runner is the
+reducer runner. Internal source-checkout lanes may also use `embedded` or
+`browser`, but those are parity lanes rather than the public authoring loop.
+
+## What generate does
+
+`dreamboard test generate`:
+
+1. Ensures `test/testing-types.ts` and `test/generated/testing-contract.ts`
+   exist and match the current workspace contract.
+2. Loads `test/bases/*.base.ts` and `test/scenarios/*.scenario.ts`.
+3. Validates that every scenario references an existing base.
+4. Executes base setup against the reducer to produce deterministic base
+   snapshots.
+5. Writes generated artifacts under `test/generated/`.
+
+Regenerate after changes that affect runtime or type shape:
 
 - `manifest.ts`
-- reducer code under `app/`
-- setup-profile behavior
-- generated contract output
+- `app/game.ts`
+- phase files, interactions, card actions, targets, or views
+- setup profiles
+- generated `shared/generated/ui-contract.ts`
+- stale base fingerprints reported by `dreamboard test run`
 
-## Base definitions
+## What run does
 
-A base is a named, seeded checkpoint that scenarios can reuse.
+`dreamboard test run`:
 
-Use `defineBase(...)` from `test/testing-types.ts`.
+1. Ensures generated testing files exist.
+2. Loads bases, scenarios, generated base states, manifest, and game reducer.
+3. Checks generated base fingerprints against the current workspace.
+4. Starts each scenario from its base.
+5. Runs `when`.
+6. Checks optional `phase` and `stage`.
+7. Runs `then`.
+8. Prints one pass or fail line per scenario plus a summary.
 
-| Field            | Required | Notes                                                                                                      |
-| ---------------- | -------- | ---------------------------------------------------------------------------------------------------------- |
-| `id`             | Yes      | Stable base identifier referenced by scenarios                                                             |
-| `seed`           | Yes      | Deterministic random seed                                                                                  |
-| `players`        | Yes      | Player count used for that base                                                                            |
-| `setupProfileId` | No       | Manifest setup profile used before `setup(...)`; omit to use the implicit single or first declared profile |
-| `setup`          | Yes      | Async setup callback that prepares the checkpoint                                                          |
+If the base artifact is stale, the runner fails before pretending the scenario
+is meaningful. Regenerate instead of debugging against an old snapshot.
+
+## Minimal base and scenario
 
 ```ts
+// test/bases/initial-turn.base.ts
 import { defineBase } from "../testing-types";
 
 export default defineBase({
   id: "initial-turn",
   seed: 1337,
-  players: 2,
-  setupProfileId: "standard-expedition",
-  setup: async ({ game }) => {
-    await game.start();
-  },
+  players: 4,
+  setup: async () => undefined,
 });
 ```
 
-The base `seed` drives runtime-owned randomness. Effects such as
-`fx.rollDie(...)` and `fx.shuffleSharedZone(...)` consume the seeded reducer
-RNG, so repeated test runs with the same base seed are reproducible.
-
-Checked-in test startup state belongs on the base via `setupProfileId`.
-When a base omits it, Dreamboard uses the manifest default resolution order:
-the single declared profile, otherwise the first declared profile, otherwise no
-profile when the manifest defines none.
-
-Use bases for:
-
-- opening-state invariants
-- post-setup checkpoints shared by many scenarios
-- seeded states that would be noisy to rebuild inline
-
-Keep bases small and composable. A base should represent one meaningful
-checkpoint, not a full playthrough.
-
-## Scenario definitions
-
-Scenarios are typed files under `test/scenarios/*.scenario.ts`.
-
-Use `defineScenario(...)` from `test/testing-types.ts`.
-
-| Field         | Required | Notes                                               |
-| ------------- | -------- | --------------------------------------------------- |
-| `id`          | Yes      | Scenario identifier                                 |
-| `description` | No       | Short human-readable summary                        |
-| `from`        | Yes      | Base ID from `test/bases/*.base.ts`                 |
-| `runners`     | No       | `"reducer"` (default), `"embedded"`, or `"browser"` |
-| `when`        | Yes      | Async action flow                                   |
-| `then`        | Yes      | Assertions over state, view, and history            |
-
 ```ts
+// test/scenarios/smoke-initial-turn.scenario.ts
 import { defineScenario } from "../testing-types";
 
 export default defineScenario({
-  id: "player-two-wins",
-  description: "The deterministic roll sequence lets player 2 reach ten first",
+  id: "smoke-initial-turn",
   from: "initial-turn",
-  when: async ({ game }) => {
-    await game.action("player-1", "rollDie");
-    await game.action("player-2", "rollDie");
-    await game.action("player-1", "rollDie");
-    await game.action("player-2", "rollDie");
-    await game.action("player-1", "rollDie");
-    await game.action("player-2", "rollDie");
-  },
-  then: ({ state, view, expect }) => {
-    expect(state()).toBe("takeTurn");
-    expect(view("player-2").winnerPlayerId).toBe("player-2");
-    expect(view("player-1").scores["player-1"]).toBe(9);
-    expect(view("player-2").scores["player-2"]).toBe(12);
+  phase: "setup",
+  when: async () => undefined,
+  then: ({ state, interactions, expect, seat }) => {
+    expect(state()).toBe("setup");
+    expect(interactions(seat(0))).toHaveInteraction("placeSetupSettlement");
   },
 });
 ```
 
-## Scenario context
-
-`when(...)` and `then(...)` receive typed helpers from `test/testing-types.ts`.
-
-### `game`
-
-`game` is the typed scenario driver.
-
-Use it to:
-
-- `start()` the game inside base setup
-- `action(playerId, actionType, params)` for reducer actions
-- `action(playerId, command)` for generated command objects
-- `respond(...)` for prompt responses
-- `expectPrompt(...)` to wait for a prompt addressed to a player
-
-### Shared state helpers
-
-Use these in `when(...)` and `then(...)`:
-
-| Helper              | Notes                                              |
-| ------------------- | -------------------------------------------------- |
-| `state()`           | Current phase name (`StateName`)                   |
-| `view(playerId)`    | Projected `GameView` for one player                |
-| `players()`         | Ordered `PlayerId[]` for the session               |
-| `prompts(playerId)` | Active `PromptInstance[]` addressed to that player |
-| `expect(value)`     | Built-in assertion API (see matchers below)        |
-
-`state()` returns the phase name, not the raw reducer state. Assert game-specific
-values through `view(playerId)`, which returns the typed `GameView` projected by
-your reducer.
-
-### `expect` matchers
-
-| Matcher                      | Notes                                             |
-| ---------------------------- | ------------------------------------------------- |
-| `.toBe(expected)`            | Strict equality (`===`)                           |
-| `.toEqual(expected)`         | Deep equality                                     |
-| `.toBeDefined()`             | Not `undefined`                                   |
-| `.toBeUndefined()`           | Is `undefined`                                    |
-| `.toBeNull()`                | Is `null`                                         |
-| `.toContain(expected)`       | Array includes value or string includes substring |
-| `.toBeGreaterThanOrEqual(n)` | Numeric `>=`                                      |
-
-## Generated testing types
-
-The scaffold writes `test/testing-types.ts` as the test-facing import surface.
-
-It re-exports:
-
-- `defineBase(...)`
-- `defineScenario(...)`
-- `phaseCommands`
-- Types: `GameView`, `ActionName`, `ActionParams<Name>`, `ActionCommandForPhase<Name>`, `StateName`, `PlayerId`, `PromptId`, `PromptResponse<Name>`
-- `TestRunner` (`"reducer" | "embedded" | "browser"`)
-
-Generated zero-param command factories stay zero-arg in tests, so prefer:
-
-```ts
-await game.action("player-1", phaseCommands.takeTurn.rollDie());
-```
-
-instead of passing an empty params object.
-
-Import from `../testing-types` instead of reaching into `test/generated/*`
-directly.
+Use `seat(0)`, `seat(1)`, and `players()` instead of hard-coded `"player-1"`
+strings. This keeps tests portable across player counts and generated player id
+unions.
 
 ## Recommended coverage
 
-Every game should have at least:
+Every game should have:
 
-- one opening-state scenario that asserts the initial phase, active player, and
-  starting view
-- one happy-path scenario that completes a typical turn or round
-- one winning-condition scenario
-- one rejection scenario for out-of-turn or otherwise illegal input
+- one opening-state scenario
+- one normal turn or round scenario
+- one scenario that crosses a phase boundary
+- one rejection scenario for out-of-turn or invalid params
+- one prompt recipient scenario if the game uses prompts
+- one setup-profile or setup-completion scenario when setup is non-trivial
 
-When the game uses prompts, add at least one scenario that exercises that
-prompt flow end to end.
+For larger games, create bases for expensive checkpoints such as post-setup,
+mid-game economy, pending trade, pending combat, or near-endgame. Do not make
+one scenario replay a full game just to test a late rule.
 
-## Rejection-path coverage
+## Split pages
 
-Rejection scenarios are part of the main test harness, not a separate workflow.
-
-Prefer direct reducer-native assertions for:
-
-- wrong player acting out of turn
-- wrong action for the current phase
-- invalid parameters
-- action attempts after game end
-- repeated submission of one-time actions
-
-Typical checks:
-
-```ts
-then: ({ state, view, expect }) => {
-  expect(state()).toBe("takeTurn");
-  expect(view("player-1").winnerPlayerId).toBeNull();
-};
-```
-
-## Failure and staleness signals
-
-If the generated test artifacts no longer match the compiled game, refresh them:
-
-- `dreamboard test generate`
-
-Common symptoms:
-
-- generated files missing under `test/generated/*`
-- type errors caused by stale generated contracts
-- scenario runs using an outdated runtime shape after reducer or manifest edits
-
-## Related workflows
-
-This page documents the scaffolded reducer-native test workspace.
-
-Use `dreamboard dev` to play the game manually in the browser. Use `dreamboard test` for automated reducer-native assertions.
+- [Bases](./testing-bases.md) explains seeded checkpoints and inheritance.
+- [Scenarios](./testing-scenarios.md) explains `defineScenario` and scenario
+  flow.
+- [Runtime assertions](./testing-runtime-assertions.md) lists context helpers
+  and matchers.
+- [UI tests](./testing-ui-tests.md) shows `createTestRuntime` with React
+  providers.
+- [Generated testing contracts](./testing-generated-contracts.md) explains
+  generated files and stale-artifact failures.

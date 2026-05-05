@@ -1,38 +1,52 @@
 import { z } from "zod";
 import {
-  defineAction,
-  defineFlow,
   defineGame,
   definePhase,
+  defineInteraction,
+  choiceTarget,
+  promptInput,
 } from "@dreamboard/app-sdk/reducer";
 import { gameContract } from "./game-contract";
 
-const chooseBonusFlow = defineFlow<typeof gameContract>()({
-  type: "choicePrompt",
-  id: "choose-bonus",
-  title: "Choose bonus",
-  options: [
+const setupPhaseStateSchema = z.object({});
+
+const bonusChoiceTarget = choiceTarget
+  .options([
     { id: "energy", label: "Energy" },
     { id: "steel", label: "Steel" },
-  ] as const,
-  context: z.object({
-    source: z.string(),
-  }),
+  ] as const)
+  .build();
+
+const chooseBonus = defineInteraction<
+  typeof gameContract,
+  typeof setupPhaseStateSchema
+>()({
+  surface: "inbox",
+  label: "Choose bonus",
+  title: "Choose bonus",
+  inputs: {
+    choice: promptInput({
+      schema: z.enum(["energy", "steel"]),
+      target: bonusChoiceTarget,
+    }),
+  },
+  to: ({ state }) => state.publicState.currentPlayerId,
   reduce({ state, accept }) {
     return accept(state);
   },
 });
 
-const writeNoteFlow = defineFlow<typeof gameContract>()({
-  type: "prompt",
-  id: "write-note",
+const writeNote = defineInteraction<
+  typeof gameContract,
+  typeof setupPhaseStateSchema
+>()({
+  surface: "inbox",
+  label: "Write note",
   title: "Write note",
-  responseSchema: z.object({
-    note: z.string(),
-  }),
-  context: z.object({
-    source: z.string(),
-  }),
+  inputs: {
+    note: promptInput({ schema: z.string() }),
+  },
+  to: ({ state }) => state.publicState.currentPlayerId,
   reduce({ state, accept }) {
     return accept(state);
   },
@@ -52,24 +66,11 @@ export default defineGame({
   phases: {
     setup: definePhase<typeof gameContract>()({
       kind: "player",
-      state: z.object({}),
+      state: setupPhaseStateSchema,
       initialState: () => ({}),
-      flows: {
-        chooseBonusFlow,
-        writeNoteFlow,
-      },
-      actions: {
-        openChoice: defineAction<typeof gameContract>()({
-          params: z.object({}),
-          reduce({ state, accept, fx }) {
-            return accept(state, [
-              fx.open(chooseBonusFlow, {
-                to: "player-1",
-                context: { source: "smoke" },
-              }),
-            ]);
-          },
-        }),
+      interactions: {
+        chooseBonus,
+        writeNote,
       },
     }),
   },

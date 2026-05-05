@@ -1,0 +1,194 @@
+# Custom renderers
+
+Customize board, hand, and surface rendering without forking framework plumbing.
+
+Default surfaces are intentionally plain. They prove the interaction is
+reachable and accessible, but most finished games will customize important
+actions with render maps, hand zone renderers, and board render props.
+
+Customize rendering; keep interaction ownership in the reducer and generated
+contract.
+
+## Surface render maps
+
+Most surfaces accept a map from interaction key to render function:
+
+```tsx
+<WorkspaceGameShell
+  surfaces={{
+    panel: {
+      "playerTurn.tradeWithBank": (descriptor, handle) => (
+        <BankTradeCard descriptor={descriptor} handle={handle} />
+      ),
+    },
+  }}
+/>;
+```
+
+A render function receives:
+
+| Argument | Meaning |
+| --- | --- |
+| `descriptor` | Projected interaction metadata for the current seat. |
+| `handle` | Bound `InteractionHandle` for draft, validation, arming, and submit. |
+
+The generated `WorkspaceGameShell` narrows the map per surface, so a missing or
+misspelled phase-qualified key is caught by TypeScript.
+
+## InteractionHandle
+
+Use the handle instead of direct runtime calls:
+
+```tsx
+function BankTradeCard({ handle }: Props) {
+  const validation = handle.validateDraft();
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        void handle.submitDraft();
+      }}
+    >
+      <ResourcePicker
+        value={handle.draft.give}
+        onChange={(give) => handle.setInput("give", give)}
+      />
+      <button disabled={!validation.ok}>Trade</button>
+    </form>
+  );
+}
+```
+
+Important handle fields:
+
+| Field | Use |
+| --- | --- |
+| `descriptor` | Labels, availability, ids, surface metadata. |
+| `available` / `unavailableReason` | Disable or explain controls. |
+| `draft` | Current local draft params for this interaction key. |
+| `values` | Draft params with authored `defaultValue`s applied. |
+| `setInput` / `clearInput` | Edit local draft params. |
+| `validateDraft` | Client-side validation using generated schemas. |
+| `validateDraftServer` | Server validation without submit. |
+| `submit` | Submit explicit params. |
+| `submitDraft` | Validate and submit the current draft. |
+| `arm` / `disarm` | Mark this interaction as the active board/hand tool. |
+
+## Fallback renderer
+
+If most interactions can share one style, use `renderItem` on the lower-level
+surface:
+
+```tsx
+import { PanelSurface } from "@dreamboard/ui-sdk/components";
+
+<PanelSurface
+  renderItem={(descriptor, handle) => (
+    <ToolbarButton
+      icon={descriptor.icon}
+      label={descriptor.shortLabel ?? descriptor.label}
+      disabled={!descriptor.available}
+      onClick={() => void handle.submit({})}
+    />
+  )}
+/>;
+```
+
+`WorkspaceGameShell` exposes per-key maps. Reach for direct surface composition
+when you need a shared fallback renderer, custom grouping, or a different
+layout.
+
+## Default button
+
+`DefaultInteractionButton` is the SDK fallback used by panel, inbox, chrome,
+blocker, and descriptor-mode hand surfaces:
+
+```tsx
+import { DefaultInteractionButton } from "@dreamboard/ui-sdk/components";
+
+<DefaultInteractionButton
+  descriptor={descriptor}
+  handle={handle}
+  compact
+/>;
+```
+
+It honors descriptor metadata such as `label`, `shortLabel`, `description`,
+`icon`, `emphasis`, `available`, and `unavailableReason`. Use it inside custom
+cards when you want the standard submit behavior but different framing.
+
+## Exhaustiveness audit
+
+`WorkspaceGameShell` mounts `ExhaustivenessAudit` in development. It warns when
+projected interactions fall through to default renderers. This is useful while
+iterating: a new authored interaction should either intentionally use the
+default button or receive a renderer.
+
+For custom shells, mount it yourself:
+
+```tsx
+import { ExhaustivenessAudit } from "@dreamboard/ui-sdk/components";
+
+<ExhaustivenessAudit
+  panel={panelRenderers}
+  hand={handRenderers}
+  handledHandZoneIds={["dev-hand"]}
+  inbox={inboxRenderers}
+/>;
+```
+
+Production builds are no-ops.
+
+## Board render props
+
+Board rendering is always custom. Use a render prop or
+`useBoardInteractions`:
+
+```tsx
+<WorkspaceGameShell
+  board={({ eligible, select }) => (
+    <ZoneMap
+      zones={zones}
+      highlightedZones={eligible.space}
+      onZoneClick={(zone) => select.space(zone.id)}
+    />
+  )}
+/>;
+```
+
+The board renderer owns geometry and visuals. The board surface owns descriptor
+routing.
+
+## Hand renderers
+
+Prefer zone renderers for real hands:
+
+```tsx
+<WorkspaceGameShell
+  surfaces={{
+    hand: {
+      zones: {
+        market: (cards, contexts) => (
+          <MarketRow cards={cards} contexts={contexts} />
+        ),
+      },
+    },
+  }}
+/>;
+```
+
+Use descriptor renderers for one-off hand actions that do not map cleanly to a
+zone.
+
+## Renderer checklist
+
+- Use descriptor labels and reasons unless the game has a stronger authored
+  label in view data.
+- Keep disabled state tied to `descriptor.available` or `handle.available`.
+- Submit through `handle.submit`, `handle.submitDraft`, `BoardSurface.select`,
+  or `useBoardInteractions`.
+- Keep expensive view projections memoized in React, but keep legality in
+  authoring targets and validation.
+- Return `null` only when another part of the screen intentionally renders the
+  same interaction.

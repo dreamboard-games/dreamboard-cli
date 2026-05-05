@@ -64,33 +64,15 @@
 <ParamField path="className" type="string">
   `className` value
 </ParamField>
-<ParamField path="interactiveEdges" type="boolean">
+<ParamField path="interactiveEdges" type="InteractiveTargetLayer">
   `interactiveEdges` value
 </ParamField>
-<ParamField path="interactiveVertices" type="boolean">
+<ParamField path="interactiveVertices" type="InteractiveTargetLayer">
   `interactiveVertices` value
 </ParamField>
-<ParamField path="onInteractiveEdgeClick" type="(edge: InteractiveSquareEdge) => void">
-  `onInteractiveEdgeClick` value
-</ParamField>
-<ParamField path="onInteractiveEdgeEnter" type="(edge: InteractiveSquareEdge) => void">
-  `onInteractiveEdgeEnter` value
-</ParamField>
-<ParamField path="onInteractiveEdgeLeave" type="(edge: InteractiveSquareEdge) => void">
-  `onInteractiveEdgeLeave` value
-</ParamField>
-<ParamField path="onInteractiveVertexClick" type="(vertex: InteractiveSquareVertex) => void">
-  `onInteractiveVertexClick` value
-</ParamField>
-<ParamField path="onInteractiveVertexEnter" type="(vertex: InteractiveSquareVertex) => void">
-  `onInteractiveVertexEnter` value
-</ParamField>
-<ParamField path="onInteractiveVertexLeave" type="(vertex: InteractiveSquareVertex) => void">
-  `onInteractiveVertexLeave` value
-</ParamField>
-<ParamField path="renderInteractiveEdge" type="(edge: InteractiveSquareEdge, isHovered: boolean) => ReactNode">
+<ParamField path="renderInteractiveEdge" type="(edge: InteractiveSquareEdge, position: SquareEdgePosition, state: InteractiveTargetRenderState) => ReactNode">
   `renderInteractiveEdge` value
 </ParamField>
-<ParamField path="renderInteractiveVertex" type="(vertex: InteractiveSquareVertex, isHovered: boolean) => ReactNode">
+<ParamField path="renderInteractiveVertex" type="(vertex: InteractiveSquareVertex, position: SquareVertexPosition, state: InteractiveTargetRenderState) => ReactNode">
   `renderInteractiveVertex` value
 </ParamField>

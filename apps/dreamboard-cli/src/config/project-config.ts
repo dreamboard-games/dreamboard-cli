@@ -1,7 +1,8 @@
 import path from "node:path";
 import type { ProjectConfig } from "../types.js";
 import { PROJECT_DIR_NAME, PROJECT_CONFIG_FILE } from "../constants.js";
-import { ensureDir, exists, readJsonFile, writeJsonFile } from "../utils/fs.js";
+import { ensureDir, exists, readJsonFile } from "../utils/fs.js";
+import { atomicWriteFile } from "../utils/atomic-file.js";
 
 function normalizeProjectConfig(config: ProjectConfig): ProjectConfig {
   return {
@@ -28,9 +29,16 @@ export async function updateProjectState(
 ): Promise<void> {
   const dir = path.join(rootDir, PROJECT_DIR_NAME);
   await ensureDir(dir);
-  await writeJsonFile(
+  // Use the atomic-file primitive so a crash during `dreamboard sync`
+  // cannot leave `.dreamboard/project.json` truncated. A truncated
+  // project file would break `findProjectRoot` and force the user to
+  // re-clone the workspace. `0o644` (world-readable) is intentional:
+  // this file is not secret and users frequently mount workspaces into
+  // containers running under a different uid.
+  await atomicWriteFile(
     path.join(dir, PROJECT_CONFIG_FILE),
-    normalizeProjectConfig(config),
+    `${JSON.stringify(normalizeProjectConfig(config), null, 2)}\n`,
+    { mode: 0o644 },
   );
 }
 

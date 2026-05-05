@@ -1,57 +1,19 @@
-import { createRequire } from "node:module";
-import { existsSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
 import { zGameTopologyManifest } from "@dreamboard/api-client";
 import type { GameTopologyManifest } from "@dreamboard/sdk-types";
 import { validateManifestAuthoring } from "@dreamboard/workspace-codegen";
 import { MANIFEST_FILE, MATERIALIZED_MANIFEST_FILE } from "../../constants.js";
+import { createRepoLocalPackageResolutionPlugin } from "../../utils/repo-local-package-resolution.js";
 import {
   exists,
   readTextFile,
   writeJsonFile,
   writeTextFile,
 } from "../../utils/fs.js";
-
-const REQUIRE = createRequire(import.meta.url);
-const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
-
-function resolveRepoLocalSdkTypesEntry(): string | null {
-  let currentDir = MODULE_DIR;
-
-  while (true) {
-    const candidate = path.join(currentDir, "packages/sdk-types/src/index.ts");
-    if (existsSync(candidate)) {
-      return candidate;
-    }
-
-    const parentDir = path.dirname(currentDir);
-    if (parentDir === currentDir) {
-      return null;
-    }
-    currentDir = parentDir;
-  }
-}
-
-function resolveSdkTypesEntry(): string {
-  try {
-    return REQUIRE.resolve("@dreamboard/sdk-types");
-  } catch {
-    const repoLocalEntry = resolveRepoLocalSdkTypesEntry();
-    if (repoLocalEntry) {
-      return repoLocalEntry;
-    }
-
-    throw new Error(
-      "Could not resolve @dreamboard/sdk-types while evaluating manifest.ts.",
-    );
-  }
-}
-
-const SDK_TYPES_ENTRY = resolveSdkTypesEntry();
 
 function formatIssuePath(pathSegments: ReadonlyArray<string | number>): string {
   if (pathSegments.length === 0) {
@@ -115,19 +77,7 @@ async function evaluateManifestSource(
       target: ["node20"],
       write: false,
       logLevel: "silent",
-      plugins: [
-        {
-          name: "resolve-dreamboard-sdk-types",
-          setup(buildContext) {
-            buildContext.onResolve(
-              { filter: /^@dreamboard\/sdk-types$/ },
-              () => ({
-                path: SDK_TYPES_ENTRY,
-              }),
-            );
-          },
-        },
-      ],
+      plugins: [createRepoLocalPackageResolutionPlugin()],
     });
     outputText = buildResult.outputFiles[0]?.text;
   } catch (error) {

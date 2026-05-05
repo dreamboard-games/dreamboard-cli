@@ -1,0 +1,170 @@
+---
+title: "UI components"
+description: "Browse reusable Dreamboard UI components and generated prop references."
+---
+
+import CardPropsTable from "/snippets/props/card-props.mdx";
+import HandPropsTable from "/snippets/props/hand-props.mdx";
+import PlayAreaPropsTable from "/snippets/props/play-area-props.mdx";
+import ActionButtonPropsTable from "/snippets/props/action-button-props.mdx";
+import ActionPanelPropsTable from "/snippets/props/action-panel-props.mdx";
+import ActionGroupPropsTable from "/snippets/props/action-group-props.mdx";
+import PlayerInfoPropsTable from "/snippets/props/player-info-props.mdx";
+import DiceRollerPropsTable from "/snippets/props/dice-roller-props.mdx";
+import PhaseIndicatorPropsTable from "/snippets/props/phase-indicator-props.mdx";
+import GameEndDisplayPropsTable from "/snippets/props/game-end-display-props.mdx";
+import TrackBoardPropsTable from "/snippets/props/track-board-props.mdx";
+import SquareGridPropsTable from "/snippets/props/square-grid-props.mdx";
+import HexGridPropsTable from "/snippets/props/hex-grid-props.mdx";
+import NetworkGraphPropsTable from "/snippets/props/network-graph-props.mdx";
+import ZoneMapPropsTable from "/snippets/props/zone-map-props.mdx";
+import SlotSystemPropsTable from "/snippets/props/slot-system-props.mdx";
+
+Dreamboard ships generic presentational components in
+`@dreamboard/ui-sdk/components`. They are useful building blocks, but they are
+not the game contract. Use generated hooks and surfaces to decide what is legal;
+use these components to draw the result.
+
+```tsx
+import {
+  Card,
+  Hand,
+  HexGrid,
+  PhaseIndicator,
+} from "@dreamboard/ui-sdk/components";
+```
+
+## Runtime shell components
+
+| Component | Use |
+| --- | --- |
+| `PluginRuntime` | Provides runtime, session, and plugin-state context to authored hooks. Usually scaffolded at the root. |
+| `ErrorBoundary` | Keeps authored render failures inside the plugin frame. |
+| `GameSkeleton` | Loading and empty-state shell. |
+| `ToastProvider` / `useToast` | Local transient UI feedback that is not reducer state. |
+
+Most workspaces receive these through scaffolded local files. Keep them near the
+root and render game UI underneath.
+
+## Surface components
+
+| Component | Use |
+| --- | --- |
+| `GameShell` | Generic composed shell. Most authored workspaces should use the generated `WorkspaceGameShell` from `@dreamboard/ui-contract`. |
+| `PanelSurface` | Renders `surface: "panel"` interactions. |
+| `InboxSurface` | Renders prompt-kind and inbox interactions. |
+| `HandSurface` | Renders zone-backed hands or hand descriptors. |
+| `BoardSurface` | Exposes board target routing for custom geometry. |
+| `BlockerSurface` | Renders mandatory blocking interactions. |
+| `ChromeSurface` | Renders persistent chrome interactions. |
+| `DefaultInteractionButton` | Standard fallback button for descriptor renderers. |
+| `ExhaustivenessAudit` | Development warning for interactions that fall through to defaults. |
+
+See [WorkspaceGameShell](/docs/ui/game-shell) and [Custom renderers](/docs/ui/custom-renderers)
+before composing these directly.
+
+## Board primitives
+
+| Component | Good fit |
+| --- | --- |
+| `HexGrid` | Hex maps with spaces, vertices, edges, pan/zoom, custom tile rendering. |
+| `SquareGrid` | Square boards, cells, orthogonal edges, vertices, chess-like layouts. |
+| `NetworkGraph` | Node-link maps, routes, influence graphs, path games. |
+| `TrackBoard` | Score tracks, progress tracks, rondels, race tracks. |
+| `ZoneMap` | Area-control maps, Venn zones, regions, abstract areas. |
+| `SlotSystem` | Worker placement, tableau slots, market rows, equipment slots. |
+
+These components do not replace manifest topology or board target rules. Feed
+them static geometry and projected eligibility from the view or board surfaces.
+
+## Card and action primitives
+
+| Component | Good fit |
+| --- | --- |
+| `Card` | One card face, selected/disabled/playable state, custom content. |
+| `Hand` | Fan or row layout for a list of cards. |
+| `PlayArea` | Shared play zones or tableau regions. |
+| `ActionButton` / `PrimaryButton` | Local buttons when a surface renderer needs custom framing. |
+| `ActionPanel` / `ActionGroup` | Grouped action areas outside the default `PanelSurface`. |
+
+For playable cards, prefer [Hand surfaces](/docs/ui/hand-surfaces) so card
+eligibility comes from descriptors rather than local checks.
+
+## Status primitives
+
+| Component | Good fit |
+| --- | --- |
+| `PlayerInfo` | Player badge, color, name, and active status. |
+| `PhaseIndicator` | Current phase or step display. |
+| `DiceRoller` | Dice result display and roll affordance. |
+| `GameEndDisplay` | Winner and score summary. |
+| `ResourceCounter` / `CostDisplay` | Resource amounts and costs. |
+
+Status components should receive reducer view data or lobby/session data. They
+should not query or mutate gameplay directly.
+
+## Prop reference
+
+### Card
+
+<CardPropsTable />
+
+### Hand
+
+<HandPropsTable />
+
+### PlayArea
+
+<PlayAreaPropsTable />
+
+### ActionButton
+
+<ActionButtonPropsTable />
+
+### ActionPanel
+
+<ActionPanelPropsTable />
+
+### ActionGroup
+
+<ActionGroupPropsTable />
+
+### PlayerInfo
+
+<PlayerInfoPropsTable />
+
+### DiceRoller
+
+<DiceRollerPropsTable />
+
+### PhaseIndicator
+
+<PhaseIndicatorPropsTable />
+
+### GameEndDisplay
+
+<GameEndDisplayPropsTable />
+
+### TrackBoard
+
+<TrackBoardPropsTable />
+
+### SquareGrid
+
+<SquareGridPropsTable />
+
+### HexGrid
+
+<HexGridPropsTable />
+
+### NetworkGraph
+
+<NetworkGraphPropsTable />
+
+### ZoneMap
+
+<ZoneMapPropsTable />
+
+### SlotSystem
+
+<SlotSystemPropsTable />

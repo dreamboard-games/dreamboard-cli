@@ -70,7 +70,8 @@ test("applyWorkspaceCodegen reseeds ui/App.tsx when the local file is blank", as
     );
 
     expect(appContent.trim().length).toBeGreaterThan(0);
-    expect(appContent).toContain("Game UI");
+    expect(appContent).toContain("@dreamboard/ui-contract");
+    expect(appContent).toContain("GameShell");
     expect(appContent).not.toBe("\n");
     expect(result.written).toContain("ui/App.tsx");
     expect(result.skipped).not.toContain("ui/App.tsx");

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Dreamboard Join Bot"
+  short_description: "Control Dreamboard sessions with JSONL bots"
+  default_prompt: "Use $dreamboard-join to join a Dreamboard game session as a bot and play through available actions."

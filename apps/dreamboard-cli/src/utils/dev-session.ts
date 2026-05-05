@@ -1,15 +1,8 @@
 import { randomInt } from "node:crypto";
+import { exists, readJsonFile } from "./fs.js";
 
 export type PersistedDevSession = {
   sessionId: string;
-  shortCode: string;
-  gameId: string;
-  seed?: number;
-  compiledResultId?: string;
-  setupProfileId?: string;
-  createdAt: string;
-  controllablePlayerIds: string[];
-  yourTurnCount: number;
 };
 
 const DEFAULT_DEV_SEED = 1337;
@@ -21,23 +14,24 @@ const MAX_SAFE_SEED = BigInt(Number.MAX_SAFE_INTEGER);
 
 export function createPersistedDevSession(input: {
   sessionId: string;
-  shortCode: string;
-  gameId: string;
-  seed?: number;
-  compiledResultId?: string;
-  setupProfileId?: string;
-  createdAt?: string;
 }): PersistedDevSession {
   return {
     sessionId: input.sessionId,
-    shortCode: input.shortCode,
-    gameId: input.gameId,
-    seed: input.seed,
-    compiledResultId: input.compiledResultId,
-    setupProfileId: input.setupProfileId,
-    createdAt: input.createdAt ?? new Date().toISOString(),
-    controllablePlayerIds: [],
-    yourTurnCount: 0,
+  };
+}
+
+export async function loadPersistedDevSession(
+  sessionFilePath: string,
+): Promise<PersistedDevSession | null> {
+  if (!(await exists(sessionFilePath))) {
+    return null;
+  }
+  const value = await readJsonFile<PersistedDevSession>(sessionFilePath);
+  if (!value.sessionId) {
+    return null;
+  }
+  return {
+    sessionId: value.sessionId,
   };
 }
 

@@ -14,6 +14,7 @@ import {
 } from "../config/resolve.js";
 import { parseCloneCommandArgs } from "../flags.js";
 import { loadGlobalConfig } from "../config/global-config.js";
+import { getStoredSession } from "../config/credential-store.js";
 import { normalizeSlug } from "../utils/strings.js";
 import { ensureDir } from "../utils/fs.js";
 import { CONFIG_FLAG_ARGS } from "../command-args.js";
@@ -58,7 +59,16 @@ export default defineCommand({
       throw new Error("Slug must contain at least one alphanumeric character.");
     }
 
-    const config = resolveConfig(await loadGlobalConfig(), parsedArgs);
+    const [globalConfig, storedSession] = await Promise.all([
+      loadGlobalConfig(),
+      getStoredSession(),
+    ]);
+    const config = resolveConfig(
+      globalConfig,
+      parsedArgs,
+      undefined,
+      storedSession,
+    );
     requireAuth(config);
     await configureClient(config);
     const localMaintainerRegistry = await ensureLocalMaintainerSnapshot(

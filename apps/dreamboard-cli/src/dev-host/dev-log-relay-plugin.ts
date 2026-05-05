@@ -1,18 +1,22 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import consola from "consola";
 import type { Plugin } from "vite";
+import type { ResolvedConfig } from "../types.js";
 import { createPersistedDevSession } from "../utils/dev-session.js";
-import { writeJsonFile } from "../utils/fs.js";
+import { exists, readJsonFile, writeJsonFile } from "../utils/fs.js";
+import { resolveDevBearer } from "./dev-api-proxy-plugin.js";
 import {
   shouldRelayDevLog,
   type DevDiagnosticsLevel,
   type DevLogEnvelope,
 } from "./dev-diagnostics.js";
 import type { DreamboardDevRuntimeConfig } from "./dev-runtime-config.js";
+import type { ActiveSession } from "./dev-host-storage.js";
 
 export function createDevLogRelayPlugin(options: {
   sessionFilePath: string;
   runtimeConfig: DreamboardDevRuntimeConfig;
+  config: ResolvedConfig;
   diagnosticsLevel: DevDiagnosticsLevel;
 }): Plugin {
   return {
@@ -61,23 +65,109 @@ export function createDevLogRelayPlugin(options: {
       });
 
       server.middlewares.use(
+        "/__dreamboard_dev/session/bootstrap",
+        createBootstrapSessionHandler({
+          sessionFilePath: options.sessionFilePath,
+          runtimeConfig: options.runtimeConfig,
+          config: options.config,
+        }),
+      );
+      server.middlewares.use(
         "/__dreamboard_dev/session/new",
         createNewSessionHandler({
           sessionFilePath: options.sessionFilePath,
           runtimeConfig: options.runtimeConfig,
+          config: options.config,
+        }),
+      );
+      server.middlewares.use(
+        "/__dreamboard_dev/session/start",
+        createStartSessionHandler({
+          sessionFilePath: options.sessionFilePath,
+          runtimeConfig: options.runtimeConfig,
+          config: options.config,
         }),
       );
     },
   };
 }
 
-function createNewSessionHandler(options: {
+export function createBootstrapSessionHandler(options: {
   sessionFilePath: string;
   runtimeConfig: DreamboardDevRuntimeConfig;
+  config: ResolvedConfig;
+}): (req: IncomingMessage, res: ServerResponse) => void {
+  return (req, res) => {
+    void handleBootstrapSessionRequest(req, res, options);
+  };
+}
+
+export function createNewSessionHandler(options: {
+  sessionFilePath: string;
+  runtimeConfig: DreamboardDevRuntimeConfig;
+  config: ResolvedConfig;
 }): (req: IncomingMessage, res: ServerResponse) => void {
   return (req, res) => {
     void handleNewSessionRequest(req, res, options);
   };
+}
+
+export function createStartSessionHandler(options: {
+  sessionFilePath: string;
+  runtimeConfig: DreamboardDevRuntimeConfig;
+  config: ResolvedConfig;
+}): (req: IncomingMessage, res: ServerResponse) => void {
+  return (req, res) => {
+    void handleStartSessionRequest(req, res, options);
+  };
+}
+
+async function handleBootstrapSessionRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  options: {
+    sessionFilePath: string;
+    runtimeConfig: DreamboardDevRuntimeConfig;
+    config: ResolvedConfig;
+  },
+): Promise<void> {
+  if (req.method !== "GET") {
+    respondJson(res, 405, { error: "Method not allowed" });
+    return;
+  }
+
+  try {
+    const session = await loadCurrentSession(options);
+    const requestedPlayerId = extractQueryParam(req, "playerId");
+    let bootstrap = await fetchBackendJson(
+      options.config,
+      appendQuery(`/api/sessions/${session.sessionId}/bootstrap`, {
+        playerId: requestedPlayerId,
+      }),
+    );
+    if (
+      options.runtimeConfig.autoStartGame &&
+      isStartableLobbyBootstrap(bootstrap)
+    ) {
+      bootstrap = await fetchBackendJson(
+        options.config,
+        `/api/sessions/${session.sessionId}/start`,
+        { method: "POST" },
+      );
+      if (requestedPlayerId) {
+        bootstrap = await fetchBackendJson(
+          options.config,
+          appendQuery(`/api/sessions/${session.sessionId}/bootstrap`, {
+            playerId: requestedPlayerId,
+          }),
+        );
+      }
+      await persistSessionId(options.sessionFilePath, session.sessionId);
+    }
+    respondJson(res, 200, attachLocalSeed(bootstrap, session.seed ?? null));
+  } catch (error) {
+    respondJson(res, statusForError(error), { error: formatUnknown(error) });
+  }
 }
 
 async function handleNewSessionRequest(
@@ -86,52 +176,86 @@ async function handleNewSessionRequest(
   options: {
     sessionFilePath: string;
     runtimeConfig: DreamboardDevRuntimeConfig;
+    config: ResolvedConfig;
   },
 ): Promise<void> {
   if (req.method !== "POST") {
-    res.statusCode = 405;
-    res.setHeader("content-type", "application/json");
-    res.end(JSON.stringify({ error: "Method not allowed" }));
+    respondJson(res, 405, { error: "Method not allowed" });
     return;
   }
 
   try {
     const body = await readJsonBody(req);
-    const seed = normalizeSeed(body.seed);
-    const session = await createRemoteSession({
-      runtimeConfig: options.runtimeConfig,
-      seed,
-    });
-
-    const persistedSession = createPersistedDevSession({
-      sessionId: session.sessionId,
-      shortCode: session.shortCode,
-      gameId: session.gameId,
-      seed,
-      compiledResultId: options.runtimeConfig.compiledResultId,
-      setupProfileId: options.runtimeConfig.setupProfileId ?? undefined,
-    });
-    await writeJsonFile(options.sessionFilePath, persistedSession);
-
-    res.statusCode = 200;
-    res.setHeader("content-type", "application/json");
-    res.end(
-      JSON.stringify({
-        sessionId: session.sessionId,
-        shortCode: session.shortCode,
-        gameId: session.gameId,
-        seed,
-        setupProfileId: options.runtimeConfig.setupProfileId,
-      }),
+    const seed = Number.parseInt(String(body.seed ?? ""), 10);
+    if (!Number.isSafeInteger(seed)) {
+      throw new Error("Seed must be a safe integer.");
+    }
+    const created = await fetchBackendJson(
+      options.config,
+      `/api/games/${options.runtimeConfig.gameId}/sessions`,
+      {
+        method: "POST",
+        body: {
+          compiledResultId: options.runtimeConfig.compiledResultId,
+          seed,
+          playerCount: options.runtimeConfig.playerCount,
+          autoAssignSeats: true,
+          setupProfileId: options.runtimeConfig.setupProfileId ?? undefined,
+        },
+      },
     );
+    const sessionId = requireString(
+      (created as { sessionId?: unknown }).sessionId,
+      "sessionId",
+    );
+    let bootstrap = await fetchBackendJson(
+      options.config,
+      `/api/sessions/${sessionId}/bootstrap`,
+    );
+    if (
+      options.runtimeConfig.autoStartGame &&
+      isStartableLobbyBootstrap(bootstrap)
+    ) {
+      bootstrap = await fetchBackendJson(
+        options.config,
+        `/api/sessions/${sessionId}/start`,
+        {
+          method: "POST",
+        },
+      );
+    }
+    await persistSessionId(options.sessionFilePath, sessionId);
+    respondJson(res, 200, attachLocalSeed(bootstrap, seed));
   } catch (error) {
-    res.statusCode = 400;
-    res.setHeader("content-type", "application/json");
-    res.end(
-      JSON.stringify({
-        error: formatUnknown(error),
-      }),
+    respondJson(res, statusForError(error), { error: formatUnknown(error) });
+  }
+}
+
+async function handleStartSessionRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  options: {
+    sessionFilePath: string;
+    runtimeConfig: DreamboardDevRuntimeConfig;
+    config: ResolvedConfig;
+  },
+): Promise<void> {
+  if (req.method !== "POST") {
+    respondJson(res, 405, { error: "Method not allowed" });
+    return;
+  }
+
+  try {
+    const session = await loadCurrentSession(options);
+    const bootstrap = await fetchBackendJson(
+      options.config,
+      `/api/sessions/${session.sessionId}/start`,
+      { method: "POST" },
     );
+    await persistSessionId(options.sessionFilePath, session.sessionId);
+    respondJson(res, 200, attachLocalSeed(bootstrap, session.seed ?? null));
+  } catch (error) {
+    respondJson(res, statusForError(error), { error: formatUnknown(error) });
   }
 }
 
@@ -150,57 +274,157 @@ async function readJsonBody(
   return text ? (JSON.parse(text) as Record<string, unknown>) : {};
 }
 
-function normalizeSeed(value: unknown): number {
-  if (typeof value !== "number" || !Number.isSafeInteger(value)) {
-    throw new Error("Seed must be a safe integer.");
+function requireString(value: unknown, field: string): string {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`Missing required field: ${field}`);
   }
   return value;
 }
 
-async function createRemoteSession(options: {
-  runtimeConfig: DreamboardDevRuntimeConfig;
-  seed: number;
-}): Promise<{ sessionId: string; shortCode: string; gameId: string }> {
-  const response = await fetch(
-    `${options.runtimeConfig.apiBaseUrl}/api/games/${options.runtimeConfig.gameId}/sessions`,
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...(options.runtimeConfig.authToken
-          ? { Authorization: `Bearer ${options.runtimeConfig.authToken}` }
-          : {}),
-      },
-      body: JSON.stringify({
-        compiledResultId: options.runtimeConfig.compiledResultId,
-        seed: options.seed,
-        playerCount: options.runtimeConfig.playerCount,
-        autoAssignSeats: true,
-        setupProfileId: options.runtimeConfig.setupProfileId,
-      }),
-    },
+function extractQueryParam(req: IncomingMessage, name: string): string | null {
+  const rawUrl = req.url ?? "";
+  const value = new URL(rawUrl, "http://dreamboard.local").searchParams.get(
+    name,
   );
+  return value?.trim() || null;
+}
 
-  const text = await response.text();
+function appendQuery(
+  path: string,
+  query: Record<string, string | null | undefined>,
+): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value) {
+      params.set(key, value);
+    }
+  }
+  const serialized = params.toString();
+  return serialized ? `${path}?${serialized}` : path;
+}
+
+async function loadCurrentSession(options: {
+  sessionFilePath: string;
+  runtimeConfig: DreamboardDevRuntimeConfig;
+}): Promise<ActiveSession> {
+  if (!(await exists(options.sessionFilePath))) {
+    return options.runtimeConfig.initialSession;
+  }
+
+  const payload = await readJsonFile<unknown>(options.sessionFilePath);
+  const session = parsePersistedSessionPointer(payload, options.runtimeConfig);
+  if (!session) {
+    throw new Error("Session file did not contain a valid session pointer.");
+  }
+  return session;
+}
+
+async function persistSessionId(
+  sessionFilePath: string,
+  sessionId: string,
+): Promise<void> {
+  await writeJsonFile(
+    sessionFilePath,
+    createPersistedDevSession({ sessionId }),
+  );
+}
+
+async function fetchBackendJson(
+  config: ResolvedConfig,
+  path: string,
+  options: {
+    method?: "GET" | "POST";
+    body?: Record<string, unknown>;
+  } = {},
+): Promise<unknown> {
+  const bearer = await resolveDevBearer(config);
+  if (bearer.kind === "permanent_invalid") {
+    throw new HttpError(401, bearer.message);
+  }
+
+  const response = await fetch(`${config.apiBaseUrl}${path}`, {
+    method: options.method ?? "GET",
+    headers: {
+      ...(bearer.token ? { authorization: `Bearer ${bearer.token}` } : {}),
+      ...(options.body ? { "content-type": "application/json" } : {}),
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  });
   if (!response.ok) {
-    throw new Error(
-      `Failed to create session (${response.status}): ${text || response.statusText}`,
+    const text = await response.text().catch(() => "");
+    throw new HttpError(
+      response.status,
+      text || `Backend request failed with ${response.status}`,
     );
   }
+  return response.json();
+}
 
-  const parsed = JSON.parse(text) as Partial<{
-    sessionId: string;
-    shortCode: string;
-    gameId: string;
-  }>;
-  if (!parsed.sessionId || !parsed.shortCode || !parsed.gameId) {
-    throw new Error("Backend returned an incomplete session response.");
+function attachLocalSeed(bootstrap: unknown, seed: number | null): unknown {
+  if (!bootstrap || typeof bootstrap !== "object") {
+    return bootstrap;
   }
-
+  const session = (bootstrap as { session?: unknown }).session;
+  if (!session || typeof session !== "object") {
+    return bootstrap;
+  }
   return {
-    sessionId: parsed.sessionId,
-    shortCode: parsed.shortCode,
-    gameId: parsed.gameId,
+    ...(bootstrap as Record<string, unknown>),
+    session: {
+      ...(session as Record<string, unknown>),
+      seed,
+    },
+  };
+}
+
+function isStartableLobbyBootstrap(bootstrap: unknown): boolean {
+  if (!bootstrap || typeof bootstrap !== "object") {
+    return false;
+  }
+  const session = (bootstrap as { session?: { phase?: unknown } }).session;
+  const lobby = (bootstrap as { lobby?: { canStart?: unknown } }).lobby;
+  return session?.phase === "lobby" && lobby?.canStart === true;
+}
+
+function respondJson(
+  res: ServerResponse,
+  statusCode: number,
+  payload: unknown,
+): void {
+  res.statusCode = statusCode;
+  res.setHeader("content-type", "application/json");
+  res.end(JSON.stringify(payload));
+}
+
+function statusForError(error: unknown): number {
+  return error instanceof HttpError ? error.statusCode : 500;
+}
+
+class HttpError extends Error {
+  constructor(
+    readonly statusCode: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+function parsePersistedSessionPointer(
+  value: unknown,
+  runtimeConfig: DreamboardDevRuntimeConfig,
+): DreamboardDevRuntimeConfig["initialSession"] | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const sessionId = (value as { sessionId?: unknown }).sessionId;
+  if (typeof sessionId !== "string" || sessionId.length === 0) {
+    return null;
+  }
+  return {
+    sessionId,
+    shortCode: "Unknown",
+    gameId: runtimeConfig.gameId,
+    seed: null,
   };
 }
 

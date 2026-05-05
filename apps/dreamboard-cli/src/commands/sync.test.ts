@@ -289,6 +289,66 @@ test("sync aborts before upload when dependency reconciliation fails", async () 
   expect(state.calls.createSourceRevisionSdk).toHaveLength(0);
 });
 
+test("sync fails before upload when reducer contract preflight rejects manifest-scoped id branding", async () => {
+  const state = currentState();
+  state.getLocalDiffResult = {
+    modified: ["app/game-contract.ts"],
+    added: [],
+    deleted: [],
+  };
+  state.reducerContractPreflightError = new Error(
+    "Dreamboard could not validate `app/game-contract.ts` during `dreamboard sync`. This happens because a state field name looks like a manifest-scoped id, but the schema uses a plain string instead of the manifest-backed id schema. Workaround: use `gameContract.schemas.<id>` (or `manifest.ids.<id>`) for manifest ids. If the field is intentionally free-form text, rename it so it does not look like a manifest id field. Original error: defineGameContract: state.public.robberSpaceId uses a raw z.string() but its name identifies it as a manifest-scoped 'spaceId'. Use gameContract.schemas.spaceId (or manifest.ids.spaceId) so the branded literal union flows through state types.",
+  );
+
+  await expect(
+    syncCommand.run({
+      args: {
+        env: "local",
+        force: false,
+        yes: false,
+      },
+    }),
+  ).rejects.toThrow("state.public.robberSpaceId uses a raw z.string()");
+
+  expect(state.calls.assertReducerContractPreflight).toEqual([
+    "/tmp/dreamboard-project",
+  ]);
+  expect(state.calls.createSourceRevisionSdk).toHaveLength(0);
+  expect(state.calls.createAuthoringStateSdk).toHaveLength(0);
+});
+
+test("sync fails before upload when the reducer bundle smoke preflight rejects a scenario", async () => {
+  const state = currentState();
+  state.getLocalDiffResult = {
+    modified: ["app/phases/setup.ts"],
+    added: [],
+    deleted: [],
+  };
+  state.reducerBundleSmokeError = new Error(
+    [
+      "Reducer bundle preflight failed during `dreamboard sync`.",
+      "Fix the reported scenarios locally before syncing so the backend does not catch them after start-game:",
+      "• [INITIALIZE] setup profile 'default-setup', 3 players: Missing entry for player id 'player-3'",
+    ].join("\n"),
+  );
+
+  await expect(
+    syncCommand.run({
+      args: {
+        env: "local",
+        force: false,
+        yes: false,
+      },
+    }),
+  ).rejects.toThrow("Reducer bundle preflight failed");
+
+  expect(state.calls.assertReducerBundleSmoke).toEqual([
+    { projectRoot: "/tmp/dreamboard-project" },
+  ]);
+  expect(state.calls.createSourceRevisionSdk).toHaveLength(0);
+  expect(state.calls.createAuthoringStateSdk).toHaveLength(0);
+});
+
 test("sync includes newly seeded phase files in the same source revision when the manifest changes", async () => {
   const state = currentState();
   state.getLocalDiffResult = {
@@ -971,6 +1031,117 @@ test("sync refreshes static scaffold even without authored changes", async () =>
       (call) =>
         call.level === "info" &&
         call.args.includes("No local authored changes to sync."),
+    ),
+  ).toBe(true);
+});
+
+test("sync logs each visible preflight step before a no-op local sync", async () => {
+  const state = currentState();
+  state.config.apiBaseUrl = "http://localhost:8080";
+  state.ensureLocalMaintainerSnapshotResult = {
+    registryUrl: "http://127.0.0.1:4873",
+    snapshotId: "snapshot-1",
+    fingerprint: "fingerprint-1",
+    publishedAt: "2026-04-19T10:00:00.000Z",
+    packages: {
+      "@dreamboard/api-client": "0.1.0-local.1",
+      "@dreamboard/app-sdk": "0.0.40-local.1",
+      "@dreamboard/sdk-types": "0.1.0-local.1",
+      "@dreamboard/ui-sdk": "0.0.40-local.1",
+    },
+  };
+  state.getLocalDiffResult = {
+    modified: [],
+    added: [],
+    deleted: [],
+  };
+  state.getAuthoringHeadSdkResult = {
+    ...state.getAuthoringHeadSdkResult!,
+    authoringStateId: "authoring-1",
+    sourceRevisionId: "source-revision-1",
+    sourceTreeHash: "tree-hash-1",
+  };
+  state.projectConfig.authoring = {
+    authoringStateId: "authoring-1",
+    sourceRevisionId: "source-revision-1",
+    sourceTreeHash: "tree-hash-1",
+    manifestId: "manifest-1",
+    manifestContentHash: "content-hash-1",
+    ruleId: "rule-1",
+  };
+
+  await syncCommand.run({
+    args: {
+      env: "local",
+      force: false,
+      yes: false,
+    },
+  });
+
+  expect(
+    state.consoleCalls
+      .filter((call) => call.level === "start")
+      .map((call) => call.args[0]),
+  ).toEqual([
+    "Checking local SDK snapshot...",
+    "Refreshing static scaffold...",
+    "Applying workspace codegen...",
+    "Reconciling workspace dependencies...",
+    "Validating reducer contract...",
+    "Running local typecheck...",
+    "Smoke-testing reducer bundle...",
+  ]);
+  expect(
+    state.consoleCalls.some(
+      (call) =>
+        call.level === "info" &&
+        call.args.includes("Using existing local SDK snapshot."),
+    ),
+  ).toBe(true);
+  expect(
+    state.consoleCalls.some(
+      (call) =>
+        call.level === "info" &&
+        call.args.includes("Workspace dependencies already up to date."),
+    ),
+  ).toBe(true);
+});
+
+test("sync aborts before upload when local typecheck fails", async () => {
+  const state = currentState();
+  state.getLocalDiffResult = {
+    modified: ["app/game.ts"],
+    added: [],
+    deleted: [],
+  };
+  state.localTypecheckResult = {
+    success: false,
+    output:
+      "app/game.ts(44,5): error TS2322: Type 'string' is not assignable to type 'SpaceId'.",
+  };
+
+  await expect(
+    syncCommand.run({
+      args: {
+        env: "local",
+        force: false,
+        yes: false,
+      },
+    }),
+  ).rejects.toThrow(
+    "Local typecheck failed. Fix the diagnostics before syncing.",
+  );
+
+  expect(state.calls.runLocalTypecheck).toEqual(["/tmp/dreamboard-project"]);
+  expect(state.calls.createSourceRevisionSdk).toHaveLength(0);
+  expect(state.calls.createAuthoringStateSdk).toHaveLength(0);
+  expect(
+    state.consoleCalls.some(
+      (call) =>
+        call.level === "error" &&
+        call.args.includes(
+          "app/game.ts(44,5): error TS2322: Type 'string' is not assignable to type 'SpaceId'.",
+        ),
     ),
   ).toBe(true);
 });

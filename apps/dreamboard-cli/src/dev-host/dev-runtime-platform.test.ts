@@ -61,6 +61,17 @@ describe("createDevRuntimePlatform", () => {
     expect(findAliasReplacement(platform, "^@dreamboard\\/ui-contract$")).toBe(
       path.resolve(projectRoot, "shared/generated/ui-contract.ts"),
     );
+    expect(findAliasReplacement(platform, "^@dreamboard\\/ui-sdk$")).toBe(
+      path.resolve(platform.repoRoot, "packages/ui-sdk/src/index.ts"),
+    );
+    expect(
+      findAliasReplacement(platform, "^@dreamboard\\/ui-sdk\\/components$"),
+    ).toBe(
+      path.resolve(
+        platform.repoRoot,
+        "packages/ui-sdk/src/components/index.ts",
+      ),
+    );
     expect(findAliasReplacement(platform, "^@shared\\/(.*)$")).toBe(
       path.resolve(projectRoot, "shared/$1"),
     );

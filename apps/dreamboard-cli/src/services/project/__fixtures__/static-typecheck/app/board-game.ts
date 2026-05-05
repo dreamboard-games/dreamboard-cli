@@ -2,16 +2,19 @@ import { z } from "zod";
 import {
   createReducerOps,
   createStateQueries,
-  defineAction,
   defineGame,
   definePhase,
+  defineInteraction,
   defineView,
+  formInput,
   pipe,
 } from "@dreamboard/app-sdk/reducer";
 import { gameContract, type GameState } from "./game-contract";
 import { ids } from "../shared/manifest-contract";
 
 const ops = createReducerOps<GameState>();
+
+const setupPhaseStateSchema = z.object({});
 
 const playerView = defineView<typeof gameContract>()({
   project({ state }) {
@@ -23,37 +26,53 @@ const playerView = defineView<typeof gameContract>()({
   },
 });
 
-const claimHexEdge = defineAction<typeof gameContract>()({
-  params: z.object({
-    edgeId: ids.edgeId,
-  }),
+const claimHexEdge = defineInteraction<
+  typeof gameContract,
+  typeof setupPhaseStateSchema
+>()({
+  surface: "panel",
+  inputs: {
+    edgeId: formInput(ids.edgeId),
+  },
   reduce({ state, accept }) {
     return accept(state);
   },
 });
 
-const claimHexVertex = defineAction<typeof gameContract>()({
-  params: z.object({
-    vertexId: ids.vertexId,
-  }),
+const claimHexVertex = defineInteraction<
+  typeof gameContract,
+  typeof setupPhaseStateSchema
+>()({
+  surface: "panel",
+  inputs: {
+    vertexId: formInput(ids.vertexId),
+  },
   reduce({ state, accept }) {
     return accept(state);
   },
 });
 
-const claimSquareEdge = defineAction<typeof gameContract>()({
-  params: z.object({
-    edgeId: ids.edgeId,
-  }),
+const claimSquareEdge = defineInteraction<
+  typeof gameContract,
+  typeof setupPhaseStateSchema
+>()({
+  surface: "panel",
+  inputs: {
+    edgeId: formInput(ids.edgeId),
+  },
   reduce({ state, accept }) {
     return accept(state);
   },
 });
 
-const claimSquareVertex = defineAction<typeof gameContract>()({
-  params: z.object({
-    vertexId: ids.vertexId,
-  }),
+const claimSquareVertex = defineInteraction<
+  typeof gameContract,
+  typeof setupPhaseStateSchema
+>()({
+  surface: "panel",
+  inputs: {
+    vertexId: formInput(ids.vertexId),
+  },
   reduce({ state, accept }) {
     return accept(state);
   },
@@ -73,12 +92,12 @@ export default defineGame({
   phases: {
     setup: definePhase<typeof gameContract>()({
       kind: "player",
-      state: z.object({}),
+      state: setupPhaseStateSchema,
       initialState: () => ({}),
       enter({ state, playerOrder, accept }) {
         return accept(pipe(state, ops.setActivePlayers(playerOrder)));
       },
-      actions: {
+      interactions: {
         claimHexEdge,
         claimHexVertex,
         claimSquareEdge,

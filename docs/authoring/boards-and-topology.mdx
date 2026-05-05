@@ -1,0 +1,101 @@
+---
+title: "Boards and topology"
+description: "Model generic, hex, and square boards with typed spaces, edges, vertices, containers, and board refs."
+---
+
+Boards are manifest-defined topology. They can be generic, hex, or square, shared or per-player, inline or based on a template.
+
+## Board layouts
+
+| Layout | Use for |
+| --- | --- |
+| `generic` | Free-form spaces and relations, tracks, maps, abstract zones. |
+| `hex` | Hex grids with spaces, edges, and vertices. |
+| `square` | Square grids with rows, columns, spaces, edges, and vertices. |
+
+All layouts can have spaces and containers. Tiled layouts also expose typed edge and vertex ids.
+
+## Inline board
+
+```ts
+boards: [
+  {
+    id: "action-board",
+    name: "Action Board",
+    layout: "square",
+    scope: "shared",
+    spaces: [
+      { id: "plaza", row: 0, col: 0, typeId: "action" },
+    ],
+  },
+];
+```
+
+Use inline boards when a board appears once. Use templates when several board instances share topology.
+
+## Templates
+
+```ts
+boardTemplates: [
+  {
+    id: "market-template",
+    name: "Market Template",
+    layout: "generic",
+    spaces: [
+      { id: "auction", typeId: "action" },
+      { id: "harvest", typeId: "action" },
+    ],
+  },
+],
+boards: [
+  {
+    id: "market-board",
+    name: "Market Board",
+    templateId: "market-template",
+    layout: "generic",
+    scope: "shared",
+  },
+];
+```
+
+Template-backed boards still get their own board id. Reducer and UI code should address runtime board data by board id, not by template id.
+
+## Shared and per-player boards
+
+`scope: "shared"` creates one board instance for the session. `scope: "perPlayer"` creates one board per player.
+
+Use shared boards for central maps and markets. Use per-player boards for player mats, personal tracks, and private layouts.
+
+## Runtime board queries
+
+Inside reducer callbacks, views, derived values, and target rules, read board data through injected `q`:
+
+```ts
+const board = q.board.hex("island");
+const edge = q.board.edge("island", edgeId);
+const adjacent = q.board.incidentVertices("island", edgeId);
+```
+
+Use `q.board.get` for layout-agnostic access, `q.board.hex` / `q.board.square` for layout-specific topology, and traversal helpers such as `incidentEdges`, `incidentVertices`, `spaceEdges`, `spaceVertices`, and `squareNeighbors` for rules.
+
+## Static board projection
+
+Static board topology belongs in [Static views](/docs/authoring/static-views), not in dynamic player views.
+
+```ts
+export const boardStatic = defineStaticView<GameContract>()({
+  project: ({ q }) => {
+    const board = q.board.hex("island");
+    return {
+      ...board,
+      portsByVertexId: computePorts(board),
+    };
+  },
+});
+```
+
+Keep game-specific decoration local, but use SDK static board queries for reusable topology access.
+
+## Deep topology reference
+
+For exact square/hex edge and vertex id rules, see [Tiled board topology](/docs/reference/tiled-board-topology).

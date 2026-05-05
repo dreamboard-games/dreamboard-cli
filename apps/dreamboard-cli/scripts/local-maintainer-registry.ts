@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { spawn } from "node:child_process";
+import { rmSync } from "node:fs";
 import {
   copyFile,
   mkdtemp,
@@ -23,11 +24,17 @@ import {
   readJsonFile,
   writeJsonFile,
 } from "../src/utils/fs.js";
+import {
+  acquireDirectoryLock,
+  type DirectoryLockOwner,
+} from "../src/services/project/directory-lock.js";
+import { readPackagePublishFingerprint } from "../src/services/project/local-snapshot-fingerprint.js";
 import { resolveCliRepoRoot } from "../src/utils/repo-root.js";
 import {
   LOCAL_REGISTRY_HOST,
   LOCAL_REGISTRY_PORT,
   LOCAL_REGISTRY_URL,
+  LOCAL_SNAPSHOT_FORMAT_VERSION,
   SDK_PUBLISH_ORDER,
   type PackageJsonShape,
   type SnapshotManifest,
@@ -56,14 +63,26 @@ const LOCAL_SNAPSHOT_MANIFEST_PATH = path.join(
   LOCAL_REGISTRY_ROOT,
   "sdk-snapshots.json",
 );
+const LOCAL_SNAPSHOT_LOCK_PATH = path.join(
+  LOCAL_REGISTRY_ROOT,
+  "sdk-snapshots.lock",
+);
 const VERDACCIO_VERSION = "6.1.3";
 const LOCAL_REGISTRY_PUBLISH_USER = "dreamboard-local-publisher";
 const LOCAL_REGISTRY_PUBLISH_PASSWORD = "dreamboard-local-publisher";
 const LOCAL_REGISTRY_PUBLISH_EMAIL = "dreamboard-local@example.com";
+let activeSnapshotLockOwnerPid: number | null = null;
+let snapshotLockCleanupHandlersInstalled = false;
 const SDK_PACKAGE_PATHS: Record<LocalMaintainerSdkPackageName, string> = {
   "@dreamboard/api-client": path.join(repoRoot, "packages", "api-client"),
+  "@dreamboard/reducer-contract": path.join(
+    repoRoot,
+    "packages",
+    "reducer-contract",
+  ),
   "@dreamboard/app-sdk": path.join(repoRoot, "packages", "app-sdk"),
   "@dreamboard/sdk-types": path.join(repoRoot, "packages", "sdk-types"),
+  "@dreamboard/testing": path.join(repoRoot, "packages", "testing"),
   "@dreamboard/ui-sdk": path.join(repoRoot, "packages", "ui-sdk"),
 };
 
@@ -93,6 +112,56 @@ async function writeSnapshotManifest(
 ): Promise<void> {
   await ensureDir(path.dirname(LOCAL_SNAPSHOT_MANIFEST_PATH));
   await writeJsonFile(LOCAL_SNAPSHOT_MANIFEST_PATH, manifest);
+}
+
+async function acquireSnapshotLock(): Promise<() => Promise<void>> {
+  installSnapshotLockCleanupHandlers();
+  const releaseDirectoryLock = await acquireDirectoryLock({
+    lockPath: LOCAL_SNAPSHOT_LOCK_PATH,
+    owner: buildSnapshotLockOwner(),
+    isProcessAlive,
+  });
+  activeSnapshotLockOwnerPid = process.pid;
+
+  return async () => {
+    activeSnapshotLockOwnerPid = null;
+    await releaseDirectoryLock();
+  };
+}
+
+function buildSnapshotLockOwner(): DirectoryLockOwner {
+  return {
+    pid: process.pid,
+    createdAt: new Date().toISOString(),
+    command: process.argv.slice(1),
+    cwd: process.cwd(),
+  };
+}
+
+function installSnapshotLockCleanupHandlers(): void {
+  if (snapshotLockCleanupHandlersInstalled) {
+    return;
+  }
+
+  snapshotLockCleanupHandlersInstalled = true;
+
+  process.once("SIGINT", () => {
+    cleanupOwnedSnapshotLockSync();
+    process.exit(130);
+  });
+  process.once("SIGTERM", () => {
+    cleanupOwnedSnapshotLockSync();
+    process.exit(143);
+  });
+}
+
+function cleanupOwnedSnapshotLockSync(): void {
+  if (activeSnapshotLockOwnerPid !== process.pid) {
+    return;
+  }
+
+  activeSnapshotLockOwnerPid = null;
+  rmSync(LOCAL_SNAPSHOT_LOCK_PATH, { recursive: true, force: true });
 }
 
 async function fetchRegistryHealth(url: string): Promise<boolean> {
@@ -344,54 +413,11 @@ async function ensureLocalMaintainerVerdaccio(): Promise<string> {
   return LOCAL_REGISTRY_URL;
 }
 
-async function walkPublishableFiles(
-  rootDir: string,
-  currentDir: string,
-  files: string[],
-): Promise<void> {
-  const entries = await readdir(currentDir, { withFileTypes: true });
-  for (const entry of entries) {
-    const fullPath = path.join(currentDir, entry.name);
-    const relativePath = path.relative(rootDir, fullPath);
-    if (entry.isDirectory()) {
-      if (entry.name === "node_modules" || entry.name === "dist") {
-        continue;
-      }
-      await walkPublishableFiles(rootDir, fullPath, files);
-      continue;
-    }
-    if (!entry.isFile()) {
-      continue;
-    }
-    files.push(relativePath);
-  }
-}
-
-async function readPackagePublishFingerprint(
-  packageRoot: string,
-): Promise<string> {
-  const files = ["package.json"];
-  const srcDir = path.join(packageRoot, "src");
-  if (await pathExists(srcDir)) {
-    await walkPublishableFiles(packageRoot, srcDir, files);
-  }
-  const uniqueFiles = Array.from(new Set(files)).sort();
-  const parts: string[] = [];
-  for (const relativePath of uniqueFiles) {
-    const content = await readFile(
-      path.join(packageRoot, relativePath),
-      "utf8",
-    );
-    parts.push(`${relativePath}\n${content}`);
-  }
-  return crypto
-    .createHash("sha256")
-    .update(parts.join("\n---\n"))
-    .digest("hex");
-}
-
 async function computeLocalSnapshotFingerprint(): Promise<string> {
-  const parts: string[] = [];
+  const parts: string[] = [
+    `snapshot-format:${LOCAL_SNAPSHOT_FORMAT_VERSION}`,
+    `publish-order:${SDK_PUBLISH_ORDER.join(",")}`,
+  ];
   for (const packageName of SDK_PUBLISH_ORDER) {
     const packageRoot = SDK_PACKAGE_PATHS[packageName];
     parts.push(
@@ -456,8 +482,13 @@ function normalizePublishedPackageJson(
 ): PackageJsonShape {
   const dependencies = { ...(packageJson.dependencies ?? {}) };
   for (const dependencyName of SDK_PUBLISH_ORDER) {
-    if (dependencyName in dependencies) {
-      dependencies[dependencyName] = versions[dependencyName];
+    const dependencyVersion = versions[dependencyName];
+    if (
+      dependencyName in dependencies &&
+      typeof dependencyVersion === "string" &&
+      dependencyVersion.length > 0
+    ) {
+      dependencies[dependencyName] = dependencyVersion;
     }
   }
 
@@ -470,9 +501,41 @@ function normalizePublishedPackageJson(
     types: packageJson.types,
     exports: packageJson.exports,
     typesVersions: packageJson.typesVersions,
+    files: packageJson.files,
     dependencies,
     peerDependencies: packageJson.peerDependencies,
   };
+}
+
+function getPublishedPackageEntries(packageJson: PackageJsonShape): string[] {
+  const entries =
+    packageJson.files?.filter(
+      (entry) => typeof entry === "string" && entry.trim().length > 0,
+    ) ?? [];
+  if (entries.length > 0) {
+    return Array.from(
+      new Set(entries.map((entry) => entry.replace(/\/+$/, ""))),
+    ).sort((left, right) => left.localeCompare(right));
+  }
+  return ["dist"];
+}
+
+async function copyPublishEntry(options: {
+  sourcePath: string;
+  targetPath: string;
+}): Promise<void> {
+  if (!(await pathExists(options.sourcePath))) {
+    return;
+  }
+
+  const sourceStat = await stat(options.sourcePath);
+  if (sourceStat.isDirectory()) {
+    await copyDirectoryContents(options.sourcePath, options.targetPath);
+    return;
+  }
+
+  await mkdir(path.dirname(options.targetPath), { recursive: true });
+  await copyFile(options.sourcePath, options.targetPath);
 }
 
 async function createNormalizedPackageDirectory(options: {
@@ -490,10 +553,12 @@ async function createNormalizedPackageDirectory(options: {
   );
   await rm(normalizedRoot, { recursive: true, force: true });
   await ensureDir(normalizedRoot);
-  await copyDirectoryContents(
-    path.join(packageRoot, "src"),
-    path.join(normalizedRoot, "src"),
-  );
+  for (const entry of getPublishedPackageEntries(sourcePackageJson)) {
+    await copyPublishEntry({
+      sourcePath: path.join(packageRoot, entry),
+      targetPath: path.join(normalizedRoot, entry),
+    });
+  }
   await writeJsonFile(
     path.join(normalizedRoot, "package.json"),
     normalizePublishedPackageJson(
@@ -503,6 +568,16 @@ async function createNormalizedPackageDirectory(options: {
     ),
   );
   return normalizedRoot;
+}
+
+async function buildSdkPackages(): Promise<void> {
+  for (const packageName of SDK_PUBLISH_ORDER) {
+    await runCommand({
+      command: "pnpm",
+      args: ["--filter", packageName, "build"],
+      cwd: repoRoot,
+    });
+  }
 }
 
 async function runCommand(options: {
@@ -697,22 +772,36 @@ async function ensureSnapshot(
     return null;
   }
 
-  const registryUrl = await ensureLocalMaintainerVerdaccio();
-  const fingerprint = await computeLocalSnapshotFingerprint();
-  const manifest = await readSnapshotManifest();
-  const existing = manifest.snapshotsByFingerprint[fingerprint];
-  if (existing) {
-    return existing;
-  }
+  const releaseSnapshotLock = await acquireSnapshotLock();
+  try {
+    const prebuildFingerprint = await computeLocalSnapshotFingerprint();
+    const manifest = await readSnapshotManifest();
+    const existing = manifest.snapshotsByFingerprint[prebuildFingerprint];
+    const registryUrl = await ensureLocalMaintainerVerdaccio();
+    if (existing) {
+      return existing;
+    }
 
-  const snapshot = await publishLocalSnapshot(fingerprint, registryUrl);
-  await writeSnapshotManifest({
-    snapshotsByFingerprint: {
-      ...manifest.snapshotsByFingerprint,
-      [fingerprint]: snapshot,
-    },
-  });
-  return snapshot;
+    await buildSdkPackages();
+    const fingerprint = await computeLocalSnapshotFingerprint();
+    const manifestAfterBuild = await readSnapshotManifest();
+    const existingAfterBuild =
+      manifestAfterBuild.snapshotsByFingerprint[fingerprint];
+    if (existingAfterBuild) {
+      return existingAfterBuild;
+    }
+
+    const snapshot = await publishLocalSnapshot(fingerprint, registryUrl);
+    await writeSnapshotManifest({
+      snapshotsByFingerprint: {
+        ...manifestAfterBuild.snapshotsByFingerprint,
+        [fingerprint]: snapshot,
+      },
+    });
+    return snapshot;
+  } finally {
+    await releaseSnapshotLock();
+  }
 }
 
 async function readWorkspace(
@@ -735,7 +824,9 @@ async function readWorkspace(
       snapshot.packages["@dreamboard/ui-sdk"] ===
         inferred.packages["@dreamboard/ui-sdk"] &&
       snapshot.packages["@dreamboard/sdk-types"] ===
-        inferred.packages["@dreamboard/sdk-types"],
+        inferred.packages["@dreamboard/sdk-types"] &&
+      (snapshot.packages["@dreamboard/testing"] ?? undefined) ===
+        (inferred.packages["@dreamboard/testing"] ?? undefined),
   );
   return matched ?? inferred;
 }

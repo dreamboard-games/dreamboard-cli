@@ -14,10 +14,10 @@ changes:
 
 - **`manifest.ts`** declares the components: players, boards, pieces, dice,
   cards, zones, and setup options.
-- **The reducer** (everything under `app/`) owns the rules: phases, actions,
-  prompts, views, and state. It is a pure function.
-- **The UI** (everything under `ui/`) presents projected views and dispatches
-  typed actions. It never re-implements rules.
+- **The reducer** (everything under `app/`) owns the rules: phases,
+  interactions, prompts, card actions, views, and state. It is a pure function.
+- **The UI** (everything under `ui/`) presents projected views and submits
+  typed interactions. It never re-implements rules.
 
 `rule.md` sits above all three as the plain-language source of intent. It
 does not execute — you and your coding agent edit it to agree on what the
@@ -25,7 +25,7 @@ game is.
 
 The **CLI** (`dreamboard`) orchestrates the authoring loop against the
 Dreamboard backend. The **runtime** executes your compiled reducer and
-applies queued effects (randomness, prompts, phase transitions).
+applies queued runtime instructions such as effects and phase transitions.
 
 ### The iteration loop
 
@@ -38,25 +38,29 @@ applies queued effects (randomness, prompts, phase transitions).
    replays the scenarios under `test/`.
 6. Dreamboard keeps the three layers aligned as rules and components change.
 
-### What happens on every action
+### What happens on every interaction
 
-1. The UI dispatches a typed action from `useActions()`.
-2. Dreamboard routes it to the active phase's matching `action.validate(...)`.
-3. If legal, `action.reduce(...)` composes state transitions with
-   `pipe(state, ...ops)` and queues any runtime effects with `fx.*`.
-4. The runtime executes queued `fx.*` effects outside the pure reducer.
-5. `project(...)` produces a player-facing view and the UI re-renders.
+1. The UI submits through `useInteractionByKey`, a surface handle, or
+   `useBoardInteractions`.
+2. Dreamboard routes it to the active phase's matching interaction.
+3. The trusted bundle checks actor authorization, stage and step gates, costs,
+   target rules, availability, and validation.
+4. If legal, `reduce(...)` composes state transitions with
+   `pipe(state, ...ops)` and may queue runtime instructions with `fx.*`.
+5. The runtime applies the result, runs queued instructions, projects a
+   player-facing view, and the UI re-renders.
 
 Everything else in the docs is either a detail inside one of those layers or
 a helper in the surrounding toolchain.
 
 ## Glossary
 
-### Action
-A single player move defined with `defineAction(...)`. Lives inside a phase.
-Has typed params, a `validate(...)` callback that gates legality, and a
+### Interaction
+A single player-facing move or prompt defined with `defineInteraction(...)`.
+Lives inside a phase. Has typed input collectors, optional availability and
+validation callbacks, reducer-authored presentation metadata, and a
 `reduce(...)` callback that returns the next state. See
-[Reducer](/docs/reference/reducer).
+[Interactions](/docs/authoring/interactions).
 
 ### Authored head
 The committed snapshot of your `rule.md`, `manifest.ts`, reducer, UI, and
@@ -68,7 +72,7 @@ workspace.
 Testing primitives. A **base** (`test/bases/*.base.ts`) is a reusable seeded
 starting state. A **scenario** (`test/scenarios/*.scenario.ts`) replays
 actions from a base and asserts on the result. See
-[Testing](/docs/reference/testing).
+[Testing](/docs/testing).
 
 ### Compile
 `dreamboard compile` runs a local typecheck, then produces a reducer bundle
@@ -80,14 +84,10 @@ A typed game object declared in the manifest — a piece, die, card, or
 zone. Components have typed IDs generated from the manifest and can be moved
 between spaces, containers, edges, vertices, or zones via `ops.*`.
 
-### Flow (and continuation)
-A typed reducer callback that reacts to an observable outcome: an effect
-result (`rollDie`, `shuffleSharedZone`) or a prompt response. Defined with
-`defineFlow(...)` and attached to an effect or prompt through a `resume`
-token. The SDK types `input.response` from the declared `type`, so forgetting
-to react to an effect is a compile error. `defineFlow({ type: "prompt", ... })`
-and `defineFlow({ type: "choicePrompt", ... })` are the prompt-flavored
-entry points.
+### Continuation
+A typed reducer callback attached to a runtime effect such as `rollDie` or
+`shuffleSharedZone`. Authored with `defineEffect(...).reduce` and dispatched
+with `fx.effect(...)`. Prompts are interactions, not continuations.
 
 ### Derived
 Computed aggregates exposed to reducer callbacks as `derived`, defined with
@@ -96,15 +96,12 @@ Computed aggregates exposed to reducer callbacks as `derived`, defined with
 [Reducer](/docs/reference/reducer).
 
 ### Effect (`fx`)
-An injected helper for queuing runtime side effects such as
-`fx.transition("nextPhase")`, `fx.shuffleSharedZone(zoneId, { resume? })`,
-`fx.rollDie(dieId, { resume })`, and `fx.open(flow, options)` for opening a
-registered flow instance (including prompt flows). `fx.close(flow, { to })`
-closes every matching open instance for a player. `fx.*` calls return effect
-descriptors; the runtime executes them after the pure reducer step. Effects
-that produce a value (for example a die roll) take a **typed flow** as their
-`resume` token so the follow-up reducer runs automatically with the new
-state.
+An injected helper for queuing runtime work. Current authored effects are
+registered with `defineEffect(...)` and dispatched with `fx.effect(effect,
+options)`. Supported effect types include `rollDie` and `shuffleSharedZone`.
+Use `rngInput.*` when randomness belongs to one interaction submit; use
+`defineEffect` when the runtime instruction should be queued and optionally
+resume through an effect continuation.
 
 ### Manifest
 The `manifest.ts` file and its `defineTopologyManifest(...)` call. Declares
@@ -120,7 +117,7 @@ ops with `pipe(state, ...)` inside `reduce(...)` and `enter(...)`.
 ### Phase
 A named slice of game flow defined with `definePhase(...)`. Owns its own
 `state` schema, `initialState(...)`, an optional `enter(...)` hook, and a map
-of actions. Phase `kind` is `"player"` (waits for a player action) or
+of interactions. Phase `kind` is `"player"` (waits for a player interaction) or
 `"auto"` (resolves immediately from reducer logic).
 
 ### Pipe
@@ -134,14 +131,10 @@ callback. The UI reads the view; it never reads raw reducer state. The
 projected payload type is inferred from `project(...)`'s return value.
 
 ### Prompt
-A reducer-owned question to a specific player, opened with
-`fx.open(promptFlow, { to, ... })` and resolved by the flow's typed
-continuation. Prompts let one action pause for input (choose a card, pick a
-space) without leaving the phase. Responses are authorized by `prompt.to`,
-not `state.flow.activePlayers`, so prompts are also the sanctioned
-mechanism for out-of-turn interactions such as trade offers, reactions,
-and interrupts — open one (or fan it out to several players at once) and
-resume when each target responds.
+A reducer-owned question to one or more players. Prompts are ordinary
+`defineInteraction(...)` entries that use `promptInput(...)`, route to players
+with `to`, and usually render on the `inbox` or `blocker` surface. Responses
+submit through the same interaction path as every other action.
 
 ### Query (`q`)
 An injected read-only accessor namespace for reducer state and the table:
@@ -149,8 +142,9 @@ An injected read-only accessor namespace for reducer state and the table:
 `q.*` over direct `state.table` reads.
 
 ### Reducer
-Your game's pure-function rule engine under `app/*`. Owns phases, actions,
-prompts, views, and setup flows. Wired together with `defineGame(...)` and
+Your game's pure-function rule engine under `app/*`. Owns phases,
+interactions, card actions, effects, views, and setup. Wired together with
+`defineGame(...)` and
 helpers from `@dreamboard/app-sdk/reducer`.
 
 ### `reducer-support.ts`
@@ -195,9 +189,8 @@ a hand). Read zone contents with `q.zone.*` and move cards with
 
 ## Where to go next
 
-- [Quickstart](/docs/quickstart) to install the CLI and create a game.
-- [Building your first game](/docs/tutorials/building-your-first-game) for
-  a full end-to-end walkthrough.
+- [Quickstart](/docs/start/quickstart) to install the CLI and create a game.
+- [Ring arena](/docs/tutorials/ring-arena) for a compact checked-in example.
 - [Reducer](/docs/reference/reducer),
   [Manifest authoring](/docs/reference/manifest-authoring), and
   [UI library](/docs/reference/ui-library) once you have a workspace to iterate on.

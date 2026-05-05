@@ -36,6 +36,68 @@ mock.module("./global-config.js", () => ({
   saveGlobalConfig,
 }));
 
+// In-memory credential backend. All CredentialStore exports are wired up
+// against the same snapshot so `withCredentialLock`, `getStoredSession`,
+// and any rotated `writeFull` calls stay consistent across a test.
+type StoredSnapshot = { accessToken?: string; refreshToken?: string } | null;
+let storedSnapshot: StoredSnapshot = null;
+
+async function backendRead() {
+  return storedSnapshot;
+}
+async function backendWriteFull(creds: {
+  accessToken: string;
+  refreshToken: string;
+}) {
+  storedSnapshot = {
+    accessToken: creds.accessToken,
+    refreshToken: creds.refreshToken,
+  };
+}
+async function backendWriteAccessOnly(accessToken: string) {
+  storedSnapshot = { accessToken };
+}
+async function backendClear() {
+  storedSnapshot = null;
+}
+
+const getStoredSession = mock(async () => storedSnapshot);
+const getCredentials = mock(async () => {
+  if (!storedSnapshot) return null;
+  if (!storedSnapshot.accessToken || !storedSnapshot.refreshToken) return null;
+  return {
+    accessToken: storedSnapshot.accessToken,
+    refreshToken: storedSnapshot.refreshToken,
+  };
+});
+const setCredentials = mock(backendWriteFull);
+const setAccessOnlySession = mock(backendWriteAccessOnly);
+const clearCredentials = mock(backendClear);
+const getActiveCredentialBackendName = mock(async () => "file" as const);
+const withCredentialLock = mock(async (fn: any) => {
+  return fn({
+    backendName: "file" as const,
+    read: backendRead,
+    writeFull: backendWriteFull,
+    writeAccessOnly: backendWriteAccessOnly,
+    clear: backendClear,
+  });
+});
+
+mock.module("./credential-store.js", () => ({
+  clearCredentials,
+  getActiveCredentialBackendName,
+  getCredentialFilePath: () => "/tmp/.dreamboard/auth.json",
+  getCredentials,
+  getStoredSession,
+  setAccessOnlySession,
+  setCredentials,
+  withCredentialLock,
+}));
+
+const { _resetRefreshCoordinatorForTests } = await import(
+  "../auth/refresh-coordinator.ts"
+);
 const { configureClient, resolveConfig } = await import("./resolve.ts");
 
 const originalEnvToken = process.env.DREAMBOARD_TOKEN;
@@ -61,6 +123,16 @@ beforeEach(() => {
   setClientConfig.mockClear();
   loadGlobalConfig.mockClear();
   saveGlobalConfig.mockClear();
+  getStoredSession.mockClear();
+  getCredentials.mockClear();
+  setCredentials.mockClear();
+  setAccessOnlySession.mockClear();
+  clearCredentials.mockClear();
+  getActiveCredentialBackendName.mockClear();
+  withCredentialLock.mockClear();
+
+  storedSnapshot = null;
+  _resetRefreshCoordinatorForTests();
 
   setSession.mockImplementation(async () => ({
     data: {
@@ -164,19 +236,24 @@ test("environment variable base URLs override resolved environment defaults", ()
 
 test("configureClient does not eagerly refresh active stored sessions", async () => {
   const activeToken = createJwt(3600);
+  storedSnapshot = {
+    accessToken: activeToken,
+    refreshToken: "stored-refresh-token",
+  };
 
   const config = resolveConfig(
     {
       environment: "prod",
-      authToken: activeToken,
-      refreshToken: "stored-refresh-token",
     },
     {},
+    undefined,
+    storedSnapshot,
   );
 
   await configureClient(config);
 
   expect(setSession).not.toHaveBeenCalled();
+  expect(setCredentials).not.toHaveBeenCalled();
   expect(saveGlobalConfig).not.toHaveBeenCalled();
   expect(setClientConfig).toHaveBeenCalledWith({
     baseUrl: config.apiBaseUrl,
@@ -188,20 +265,18 @@ test("configureClient does not eagerly refresh active stored sessions", async ()
 
 test("configureClient persists rotated stored sessions when the access token is expired", async () => {
   const expiredToken = createJwt(-3600);
-
-  loadGlobalConfig.mockImplementation(async () => ({
-    environment: "prod",
-    authToken: expiredToken,
+  storedSnapshot = {
+    accessToken: expiredToken,
     refreshToken: "stored-refresh-token",
-  }));
+  };
 
   const config = resolveConfig(
     {
       environment: "prod",
-      authToken: expiredToken,
-      refreshToken: "stored-refresh-token",
     },
     {},
+    undefined,
+    storedSnapshot,
   );
 
   await configureClient(config);
@@ -210,9 +285,14 @@ test("configureClient persists rotated stored sessions when the access token is 
     access_token: expiredToken,
     refresh_token: "stored-refresh-token",
   });
-  expect(saveGlobalConfig).toHaveBeenCalledWith({
-    environment: "prod",
-    authToken: "refreshed-access-token",
+  // New invariant: the refresh-coordinator persists rotated tokens
+  // through the in-lock ops handle, NOT through saveGlobalConfig and
+  // NOT through the public setCredentials export. Assert that the
+  // disk state (our in-memory backend) was updated.
+  expect(saveGlobalConfig).not.toHaveBeenCalled();
+  expect(setCredentials).not.toHaveBeenCalled();
+  expect(storedSnapshot).toEqual({
+    accessToken: "refreshed-access-token",
     refreshToken: "refreshed-refresh-token",
   });
   expect(setClientConfig).toHaveBeenCalledWith({
@@ -223,14 +303,16 @@ test("configureClient persists rotated stored sessions when the access token is 
   });
 });
 
-test("configureClient preserves the access token when the stored refresh token is invalid", async () => {
+test("configureClient throws a permanent-session error when the stored refresh token is invalid", async () => {
+  // Access token expires within the 5-minute refresh window, so the
+  // refresh-coordinator will attempt rotation. Supabase returns a
+  // permanent-invalid error; resolve.ts should surface it as a clear
+  // "run dreamboard login" message without wiping disk state.
   const expiringToken = createJwt(60);
-
-  loadGlobalConfig.mockImplementation(async () => ({
-    environment: "prod",
-    authToken: expiringToken,
+  storedSnapshot = {
+    accessToken: expiringToken,
     refreshToken: "stale-refresh-token",
-  }));
+  };
   setSession.mockImplementation(async () => ({
     data: {
       session: null,
@@ -243,21 +325,60 @@ test("configureClient preserves the access token when the stored refresh token i
   const config = resolveConfig(
     {
       environment: "prod",
-      authToken: expiringToken,
-      refreshToken: "stale-refresh-token",
     },
     {},
+    undefined,
+    storedSnapshot,
   );
 
-  await expect(configureClient(config)).resolves.toBeUndefined();
+  await expect(configureClient(config)).rejects.toThrow(
+    "Stored Dreamboard session is expired or invalid (Invalid Refresh Token: Refresh Token Not Found). Run `dreamboard login` to authenticate again.",
+  );
 
-  expect(config.authToken).toBe(expiringToken);
-  expect(config.refreshToken).toBeUndefined();
-  expect(saveGlobalConfig).toHaveBeenCalledWith({
-    environment: "prod",
-    authToken: expiringToken,
-    refreshToken: undefined,
+  // CRITICAL: the stored refresh token must not be wiped on a
+  // permanent-invalid classification. Only `dreamboard login` is allowed
+  // to replace it.
+  expect(storedSnapshot).toEqual({
+    accessToken: expiringToken,
+    refreshToken: "stale-refresh-token",
   });
+  expect(saveGlobalConfig).not.toHaveBeenCalled();
+  expect(setCredentials).not.toHaveBeenCalled();
+  expect(clearCredentials).not.toHaveBeenCalled();
+});
+
+test("configureClient keeps the access token and preserves disk state on transient refresh failures", async () => {
+  // An expiring (but still valid) access token plus a transient
+  // Supabase outage: we should continue with the existing access token
+  // and leave disk state untouched.
+  const expiringToken = createJwt(60);
+  storedSnapshot = {
+    accessToken: expiringToken,
+    refreshToken: "stored-refresh-token",
+  };
+  setSession.mockImplementation(async () => ({
+    data: { session: null },
+    error: { message: "fetch failed" },
+  }));
+
+  const config = resolveConfig(
+    {
+      environment: "prod",
+    },
+    {},
+    undefined,
+    storedSnapshot,
+  );
+
+  await configureClient(config);
+
+  expect(storedSnapshot).toEqual({
+    accessToken: expiringToken,
+    refreshToken: "stored-refresh-token",
+  });
+  expect(saveGlobalConfig).not.toHaveBeenCalled();
+  expect(setCredentials).not.toHaveBeenCalled();
+  expect(clearCredentials).not.toHaveBeenCalled();
   expect(setClientConfig).toHaveBeenCalledWith({
     baseUrl: config.apiBaseUrl,
     headers: {
@@ -268,12 +389,10 @@ test("configureClient preserves the access token when the stored refresh token i
 
 test("configureClient fails fast when the stored refresh token is invalid and the access token is expired", async () => {
   const expiredToken = createJwt(-3600);
-
-  loadGlobalConfig.mockImplementation(async () => ({
-    environment: "prod",
-    authToken: expiredToken,
+  storedSnapshot = {
+    accessToken: expiredToken,
     refreshToken: "stale-refresh-token",
-  }));
+  };
   setSession.mockImplementation(async () => ({
     data: {
       session: null,
@@ -286,92 +405,69 @@ test("configureClient fails fast when the stored refresh token is invalid and th
   const config = resolveConfig(
     {
       environment: "prod",
-      authToken: expiredToken,
-      refreshToken: "stale-refresh-token",
     },
     {},
+    undefined,
+    storedSnapshot,
   );
 
   await expect(configureClient(config)).rejects.toThrow(
     "Stored Dreamboard session is expired or invalid (Invalid Refresh Token: Refresh Token Not Found). Run `dreamboard login` to authenticate again.",
   );
 
-  expect(config.authToken).toBe(expiredToken);
-  expect(config.refreshToken).toBeUndefined();
-  expect(saveGlobalConfig).toHaveBeenCalledWith({
-    environment: "prod",
-    authToken: expiredToken,
-    refreshToken: undefined,
+  expect(storedSnapshot).toEqual({
+    accessToken: expiredToken,
+    refreshToken: "stale-refresh-token",
   });
+  expect(saveGlobalConfig).not.toHaveBeenCalled();
+  expect(setCredentials).not.toHaveBeenCalled();
   expect(setClientConfig).not.toHaveBeenCalled();
 });
 
 test("configureClient recovers when another process already rotated the stored session", async () => {
+  // The caller resolved a stale snapshot, but by the time we acquire
+  // the cross-process lock another CLI invocation has already rotated
+  // disk state to fresh credentials. The coordinator must re-read
+  // inside the lock and observe the fresh state instead of blindly
+  // POSTing the stale refresh_token.
   const expiredToken = createJwt(-3600);
+  const staleSnapshot = {
+    accessToken: expiredToken,
+    refreshToken: "stale-refresh-token",
+  };
+  const freshAccessToken = createJwt(3600);
 
-  loadGlobalConfig.mockImplementation(async () => ({
-    environment: "prod",
-    authToken: "fresh-access-token",
+  // Simulate the "other process" by swapping disk state during the test
+  // to the post-rotation snapshot BEFORE the lock opens.
+  storedSnapshot = {
+    accessToken: freshAccessToken,
     refreshToken: "fresh-refresh-token",
-  }));
-  setSession.mockImplementation(
-    async ({
-      refresh_token,
-    }: {
-      access_token: string;
-      refresh_token: string;
-    }) => {
-      if (refresh_token === "stale-refresh-token") {
-        return {
-          data: {
-            session: null,
-          },
-          error: {
-            message: "Invalid Refresh Token: Already Used",
-          },
-        };
-      }
+  };
 
-      return {
-        data: {
-          session: {
-            access_token: "recovered-access-token",
-            refresh_token: "recovered-refresh-token",
-          },
-        },
-        error: null,
-      };
-    },
-  );
+  setSession.mockImplementation(async () => {
+    throw new Error(
+      "setSession should not be called when disk state is already fresh",
+    );
+  });
 
   const config = resolveConfig(
     {
       environment: "prod",
-      authToken: expiredToken,
-      refreshToken: "stale-refresh-token",
     },
     {},
+    undefined,
+    staleSnapshot,
   );
 
   await configureClient(config);
 
-  expect(setSession).toHaveBeenNthCalledWith(1, {
-    access_token: expiredToken,
-    refresh_token: "stale-refresh-token",
-  });
-  expect(setSession).toHaveBeenNthCalledWith(2, {
-    access_token: "fresh-access-token",
-    refresh_token: "fresh-refresh-token",
-  });
-  expect(saveGlobalConfig).toHaveBeenCalledWith({
-    environment: "prod",
-    authToken: "recovered-access-token",
-    refreshToken: "recovered-refresh-token",
-  });
+  expect(setSession).not.toHaveBeenCalled();
+  expect(saveGlobalConfig).not.toHaveBeenCalled();
+  expect(setCredentials).not.toHaveBeenCalled();
   expect(setClientConfig).toHaveBeenCalledWith({
     baseUrl: config.apiBaseUrl,
     headers: {
-      Authorization: "Bearer recovered-access-token",
+      Authorization: `Bearer ${freshAccessToken}`,
     },
   });
 });
@@ -381,12 +477,13 @@ test("configureClient does not rewrite env-provided sessions", async () => {
   process.env.DREAMBOARD_TOKEN = envToken;
   process.env.DREAMBOARD_REFRESH_TOKEN = "env-refresh-token";
 
-  const config = resolveConfig({}, {});
+  const config = resolveConfig({}, {}, undefined, null);
 
   await expect(configureClient(config)).resolves.toBeUndefined();
 
   expect(setSession).not.toHaveBeenCalled();
   expect(saveGlobalConfig).not.toHaveBeenCalled();
+  expect(setCredentials).not.toHaveBeenCalled();
   expect(setClientConfig).toHaveBeenCalledWith({
     baseUrl: config.apiBaseUrl,
     headers: {

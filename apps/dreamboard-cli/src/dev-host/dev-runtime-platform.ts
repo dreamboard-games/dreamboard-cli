@@ -116,6 +116,18 @@ export function createDevRuntimePlatform(
         replacement: path.resolve(repoRoot, "packages/ui-sdk/src/reducer.ts"),
       },
       {
+        // Must resolve to the same source tree as the `@dreamboard/ui-sdk`
+        // alias. If this subpath falls through to `node_modules/.../dist` it
+        // creates a second RuntimeContext identity, and consumers calling
+        // `useRuntimeContext` on the workspace-source copy will never find
+        // the provider that's set up via the dist copy (and vice versa).
+        find: /^@dreamboard\/ui-sdk\/components$/,
+        replacement: path.resolve(
+          repoRoot,
+          "packages/ui-sdk/src/components/index.ts",
+        ),
+      },
+      {
         find: /^@dreamboard\/ui-sdk\/internal\/runtime-context$/,
         replacement: path.resolve(
           repoRoot,

@@ -49,34 +49,16 @@
 <ParamField path="className" type="string">
   `className` value
 </ParamField>
-<ParamField path="interactiveVertices" type="boolean">
-  Auto-generates clickable vertex points (deduplicated where tiles meet)
+<ParamField path="interactiveVertices" type="InteractiveTargetLayer">
+  Reducer-aware vertex target layer from `board.targetLayers.vertex(...)`.
 </ParamField>
-<ParamField path="interactiveEdges" type="boolean">
-  Auto-generates clickable edges (deduplicated where tiles meet)
+<ParamField path="interactiveEdges" type="InteractiveTargetLayer">
+  Reducer-aware edge target layer from `board.targetLayers.edge(...)`.
 </ParamField>
-<ParamField path="onInteractiveVertexClick" type="(vertex: InteractiveVertex) => void">
-  `onInteractiveVertexClick` value
-</ParamField>
-<ParamField path="onInteractiveVertexEnter" type="(vertex: InteractiveVertex) => void">
-  `onInteractiveVertexEnter` value
-</ParamField>
-<ParamField path="onInteractiveVertexLeave" type="(vertex: InteractiveVertex) => void">
-  `onInteractiveVertexLeave` value
-</ParamField>
-<ParamField path="onInteractiveEdgeClick" type="(edge: InteractiveEdge) => void">
-  `onInteractiveEdgeClick` value
-</ParamField>
-<ParamField path="onInteractiveEdgeEnter" type="(edge: InteractiveEdge) => void">
-  `onInteractiveEdgeEnter` value
-</ParamField>
-<ParamField path="onInteractiveEdgeLeave" type="(edge: InteractiveEdge) => void">
-  `onInteractiveEdgeLeave` value
-</ParamField>
-<ParamField path="renderInteractiveVertex" type="(vertex: InteractiveVertex, position: { x: number; y: number }, isHovered: boolean) => ReactNode">
+<ParamField path="renderInteractiveVertex" type="(vertex: InteractiveVertex, position: { x: number; y: number }, state: InteractiveTargetRenderState) => ReactNode">
   Receives vertex geometry in absolute SVG coordinates.
 </ParamField>
-<ParamField path="renderInteractiveEdge" type="(edge: InteractiveEdge, position: EdgePosition, isHovered: boolean) => ReactNode">
+<ParamField path="renderInteractiveEdge" type="(edge: InteractiveEdge, position: EdgePosition, state: InteractiveTargetRenderState) => ReactNode">
   Receives edge geometry in the same absolute SVG coordinates as `renderEdge`.
 </ParamField>
 <ParamField path="interactiveVertexSize" type="number">

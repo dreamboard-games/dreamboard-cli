@@ -1,4 +1,5 @@
 import { defineCommand, runMain } from "citty";
+import consola from "consola";
 import { IS_PUBLISHED_BUILD } from "./build-target.js";
 import { formatCliError } from "./utils/errors.js";
 import cmdNew from "./commands/new.js";
@@ -8,6 +9,7 @@ import cmdCompile from "./commands/compile.js";
 import cmdPull from "./commands/pull.js";
 import cmdStatus from "./commands/status.js";
 import cmdDev from "./commands/dev.js";
+import cmdJoin from "./commands/join.js";
 import cmdQuery from "./commands/query.js";
 import cmdAuth from "./commands/auth.js";
 import cmdLogin from "./commands/login.js";
@@ -28,6 +30,8 @@ function handleFatalError(error: unknown): void {
 process.on("uncaughtException", handleFatalError);
 process.on("unhandledRejection", handleFatalError);
 
+consola.options.formatOptions.date = false;
+
 const subCommands = {
   new: cmdNew,
   clone: cmdClone,
@@ -36,6 +40,7 @@ const subCommands = {
   pull: cmdPull,
   status: cmdStatus,
   dev: cmdDev,
+  join: cmdJoin,
   test: cmdTest,
   login: cmdLogin,
   logout: cmdLogout,

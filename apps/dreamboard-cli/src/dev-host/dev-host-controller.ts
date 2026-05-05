@@ -1,12 +1,14 @@
 import {
-  getSessionStatus,
   restoreHistory,
-  startGame,
-  submitInput,
-  validateInput,
+  type SessionBootstrap,
+  submitPlayerAction,
+  validatePlayerAction,
 } from "@dreamboard/api-client";
 import {
+  PERF_MARK_NAMES,
   PluginSessionGateway,
+  correlateVersion,
+  recordMark,
   type GameSessionStoreApi,
   type LoggerLike,
   type UnifiedSessionStore,
@@ -14,9 +16,19 @@ import {
 import { formatConsoleArgs } from "./dev-diagnostics.js";
 import type { ActiveSession, DevHostStorage } from "./dev-host-storage.js";
 
-const INITIAL_SYNC_TIMEOUT_MS = 8000;
 const AUTO_RECOVERY_SSE_FAILURE_THRESHOLD = 2;
 const MAX_AUTO_RECOVERY_ATTEMPTS = 1;
+
+// Mirrors `apps/web`'s runtime-api: client-minted correlation id threaded
+// as a header so the backend can stamp it on its Tier-0 input-latency span
+// attrs and summary log line. Set conditionally so existing dev-host tests
+// (which call `onInteraction` without a `meta`) keep asserting the absence
+// of any `headers` property on the generated request.
+const CLIENT_ACTION_ID_HEADER = "X-Dreamboard-Client-Action-Id";
+
+type DevSessionBootstrap = SessionBootstrap & {
+  session: SessionBootstrap["session"] & { seed?: number | null };
+};
 
 type SessionStoreApi = {
   getState: () => UnifiedSessionStore;
@@ -30,10 +42,10 @@ type SessionStoreApi = {
 
 function hasRenderableSnapshot(store: SessionStoreApi): boolean {
   const state = store.getState();
-  if (state.phase === "lobby" || state.phase === "ended") {
-    return true;
-  }
-  return state.gameplay.currentPhase !== null;
+  return (
+    state.bootstrap.status === "renderable" &&
+    state.getPluginSnapshot().view !== null
+  );
 }
 
 function createSubmissionError(
@@ -51,16 +63,30 @@ function createSubmissionError(
 
 export interface DevHostControllerConfig {
   autoStartGame: boolean;
-  authToken: string | null;
   compiledResultId: string;
   debug: boolean;
+  fallbackSession: ActiveSession;
   gameId: string;
-  seed: number | null;
-  sessionId: string;
-  shortCode: string;
+  playerCount: number;
   setupProfileId: string | null;
   slug: string;
   userId: string | null;
+}
+
+/**
+ * Structured surface for reducer/runtime failures that bubble up from the
+ * backend. These are shown in the dev host overlay so authors see the same
+ * file/line/stack information they'd get from a `dreamboard dev` backend log.
+ */
+export interface DevHostRuntimeError {
+  title: string;
+  summary: string;
+  violations: Array<{
+    message: string;
+    field?: string;
+    code?: string;
+  }>;
+  correlationId?: string;
 }
 
 export interface DevHostControllerSnapshot {
@@ -69,6 +95,7 @@ export interface DevHostControllerSnapshot {
   isCreatingSession: boolean;
   iframeSrc: string;
   pluginReady: boolean;
+  runtimeError: DevHostRuntimeError | null;
 }
 
 export class DevHostController {
@@ -84,12 +111,12 @@ export class DevHostController {
   private iframe: HTMLIFrameElement | null = null;
   private gateway: PluginSessionGateway | null = null;
   private gatewayStoreAttached = false;
-  private autoStartRequested: boolean;
   private pluginFrameReloadCounter = 0;
-  private sessionSnapshotTimeoutId: number | null = null;
   private autoRecoveryAttempts = 0;
   private sessionSnapshotSseFailureCount = 0;
   private recoveryInFlight = false;
+  private runtimeError: DevHostRuntimeError | null = null;
+  private playerSwitchRequestId = 0;
 
   constructor(
     private readonly store: SessionStoreApi,
@@ -97,38 +124,19 @@ export class DevHostController {
     private readonly config: DevHostControllerConfig,
     private readonly logger: LoggerLike,
   ) {
-    this.defaultSession = {
-      sessionId: config.sessionId,
-      shortCode: config.shortCode,
-      gameId: config.gameId,
-      seed: config.seed,
-      compiledResultId: config.compiledResultId,
-      setupProfileId: config.setupProfileId,
-    };
-    this.currentSession = this.loadInitialSession();
+    this.defaultSession = structuredClone(config.fallbackSession);
+    this.currentSession = structuredClone(this.defaultSession);
     this.seedValue = String(this.currentSession.seed ?? 1337);
-    this.autoStartRequested = config.autoStartGame;
-
-    this.unsubscribeStore = this.store.subscribe((state, previousState) => {
-      if (previousState.syncId === 0 && state.syncId > 0) {
+    this.unsubscribeStore = this.store.subscribe((state) => {
+      if (state.bootstrap.status !== "loading") {
         this.sessionSnapshotSseFailureCount = 0;
-        this.clearSessionSnapshotTimeout();
-        if (
-          this.pluginReady &&
-          !this.gatewayStoreAttached &&
-          hasRenderableSnapshot(this.store)
-        ) {
-          this.attachStore();
-        }
       }
-
       if (
-        this.autoStartRequested &&
-        state.phase === "lobby" &&
-        state.lobby.canStart &&
-        (previousState.phase !== "lobby" || !previousState.lobby.canStart)
+        this.pluginReady &&
+        !this.gatewayStoreAttached &&
+        hasRenderableSnapshot(this.store)
       ) {
-        void this.autoStartGame();
+        this.attachStore();
       }
     });
   }
@@ -147,92 +155,61 @@ export class DevHostController {
       isCreatingSession: this.isCreatingSession,
       iframeSrc: `/plugin.html?session=${encodeURIComponent(this.currentSession.sessionId)}&reload=${this.pluginFrameReloadCounter}`,
       pluginReady: this.pluginReady,
+      runtimeError: this.runtimeError,
     };
+  }
+
+  dismissRuntimeError(): void {
+    if (this.runtimeError === null) {
+      return;
+    }
+    this.runtimeError = null;
+    this.notify();
+  }
+
+  /**
+   * Public entry point for surfacing runtime errors originating outside
+   * the controller (e.g. the api-client interceptor that detects a
+   * `session_invalid` envelope from the dev proxy and wants to route
+   * the failure through the existing overlay).
+   */
+  reportRuntimeError(error: DevHostRuntimeError): void {
+    this.setRuntimeError(error);
   }
 
   async initialize(): Promise<void> {
     this.sessionSnapshotSseFailureCount = 0;
-    this.clearSessionSnapshotTimeout();
-    this.storage.persistActiveSession(this.currentSession);
-    this.seedValue = String(this.currentSession.seed ?? 1337);
     this.store.getState().setLoading();
     this.notify();
 
-    const { data, error } = await getSessionStatus({
-      path: { sessionId: this.currentSession.sessionId },
-      headers: this.authHeaders(),
-    });
-
-    if (error || !data) {
-      if (this.currentSession.sessionId !== this.defaultSession.sessionId) {
-        this.currentSession = structuredClone(this.defaultSession);
-        this.storage.persistActiveSession(this.currentSession);
-        this.seedValue = String(this.currentSession.seed ?? 1337);
-        this.notify();
-        await this.initialize();
-        return;
-      }
-
-      this.store.getState().setError("Failed to load the backend session.");
-      this.notify();
-      return;
-    }
-
-    const identity = {
-      sessionId: data.sessionId,
-      shortCode: data.shortCode,
-      gameId: data.gameId,
-    };
-    const controllablePlayerIds = deriveControllablePlayerIds(
-      data.seats,
-      this.config.userId,
-    );
-    const controllingPlayerId = controllablePlayerIds[0] ?? "";
-
-    switch (data.phase) {
-      case "lobby":
-        this.store.getState().setLobby(identity, {
-          seats: data.seats,
-          canStart: data.canStart,
-          hostUserId: data.hostUserId,
-        });
-        break;
-      case "gameplay":
-        this.store.getState().setGameplay(
-          identity,
-          {
-            version: 0,
-            activePlayers: [],
-            controllablePlayerIds,
-            controllingPlayerId,
-            currentPhase: null,
-            seatViewsByPlayerId: {},
-            availableActions: [],
-            prompts: [],
-            layout: null,
-            cardDisplayConfigs: null,
-          },
-          {
-            seats: data.seats,
-            canStart: false,
-            hostUserId: data.hostUserId,
-          },
+    try {
+      const preferredPlayerId = this.storage.loadSelectedPlayerId();
+      const bootstrap =
+        await this.loadBootstrapFromDevServer(preferredPlayerId);
+      this.hydrateFromBootstrap(bootstrap);
+    } catch (initialError) {
+      const preferredPlayerId = this.storage.loadSelectedPlayerId();
+      let error = initialError;
+      if (preferredPlayerId) {
+        this.logger.warn(
+          "[DevHost] Failed to bootstrap the persisted player selection; retrying with the default player:",
+          error instanceof Error ? error.message : String(error),
         );
-        break;
-      case "ended":
-        this.store.getState().setEnded(identity);
-        break;
-    }
-
-    this.store
-      .getState()
-      .connect(this.currentSession.sessionId, this.config.userId);
-    this.scheduleSessionSnapshotTimeout();
-    if (this.autoStartRequested && data.phase === "lobby" && data.canStart) {
-      void this.autoStartGame();
-    }
-    if (this.iframeLoaded) {
-      this.connectGateway();
+        this.storage.persistSelectedPlayerId(null);
+        try {
+          const bootstrap = await this.loadBootstrapFromDevServer();
+          this.hydrateFromBootstrap(bootstrap);
+          this.notify();
+          return;
+        } catch (retryError) {
+          error = retryError;
+        }
+      }
+      this.logger.error(
+        "[DevHost] Failed to bootstrap the backend session:",
+        error instanceof Error ? error.message : String(error),
+      );
+      this.store.getState().setError("Failed to load the backend session.");
     }
     this.notify();
   }
@@ -253,7 +230,20 @@ export class DevHostController {
     this.notify();
 
     try {
-      await this.attachToSession(await this.requestNewSession(nextSeed));
+      const bootstrap = await this.postBootstrapEndpoint(
+        "/__dreamboard_dev/session/new",
+        { seed: nextSeed },
+      );
+      this.clearRuntimeError();
+      if (this.gateway) {
+        this.gateway.disconnect();
+        this.gateway = null;
+      }
+      this.gatewayStoreAttached = false;
+      this.pluginReady = false;
+      this.reloadPluginFrame();
+      this.store.getState().reset();
+      this.hydrateFromBootstrap(bootstrap);
     } catch (error) {
       this.logger.error("[DevHost] Failed to create a new session:", error);
     } finally {
@@ -263,33 +253,34 @@ export class DevHostController {
   }
 
   async startGameFromSidebar(): Promise<void> {
-    const { data, error } = await startGame({
-      path: { sessionId: this.currentSession.sessionId },
-      headers: this.authHeaders(),
-    });
-    if (error || !data) {
-      this.logger.error("[DevHost] Failed to start the backend session.");
-      return;
+    try {
+      const bootstrap = await this.postBootstrapEndpoint(
+        "/__dreamboard_dev/session/start",
+      );
+      this.clearRuntimeError();
+      this.hydrateFromBootstrap(bootstrap);
+      this.notify();
+    } catch (error) {
+      this.setRuntimeError(
+        convertProblemDetailsToRuntimeError(
+          error,
+          "Failed to start the backend session.",
+        ),
+      );
+      this.logger.error(
+        "[DevHost] Failed to start the backend session:",
+        error instanceof Error ? error.message : String(error),
+      );
     }
-
-    this.currentSession = {
-      ...this.currentSession,
-      gameId: data.gameId,
-    };
-    this.storage.persistActiveSession(this.currentSession);
-    this.notify();
-    await this.reconnectSessionSnapshot();
   }
 
   switchPlayer(playerId: string): void {
-    this.store.getState().switchPlayer(playerId);
-    this.notify();
+    void this.switchPlayerFromBootstrap(playerId);
   }
 
   async restoreHistoryEntry(entryId: string): Promise<void> {
     const { error } = await restoreHistory({
       path: { sessionId: this.currentSession.sessionId },
-      headers: this.authHeaders(),
       body: { entryId },
     });
     if (error) {
@@ -311,7 +302,10 @@ export class DevHostController {
   }
 
   handleSseTransportError(args: unknown[]): void {
-    if (this.store.getState().syncId > 0 || this.recoveryInFlight) {
+    if (
+      this.store.getState().bootstrap.status !== "loading" ||
+      this.recoveryInFlight
+    ) {
       return;
     }
 
@@ -335,109 +329,30 @@ export class DevHostController {
   }
 
   dispose(): void {
-    this.clearSessionSnapshotTimeout();
     this.unsubscribeStore();
     if (this.gateway) {
       this.gateway.disconnect();
       this.gateway = null;
     }
     this.gatewayStoreAttached = false;
-    this.store.getState().disconnect();
+    this.store.getState().closeStreams();
   }
 
   private notify(): void {
     this.listeners.forEach((listener) => listener());
   }
 
-  private loadInitialSession(): ActiveSession {
-    const persisted = this.storage.loadActiveSession();
-    if (!persisted) {
-      return structuredClone(this.defaultSession);
-    }
-
-    if (
-      persisted.sessionId !== this.defaultSession.sessionId ||
-      persisted.gameId !== this.defaultSession.gameId ||
-      persisted.compiledResultId !== this.defaultSession.compiledResultId ||
-      persisted.setupProfileId !== this.defaultSession.setupProfileId
-    ) {
-      return structuredClone(this.defaultSession);
-    }
-
-    return persisted;
-  }
-
-  private async autoStartGame(): Promise<void> {
-    if (!this.autoStartRequested) {
-      return;
-    }
-
-    this.autoStartRequested = false;
-
-    const connected = await this.waitForSseConnection();
-    if (!connected) {
-      this.logger.error(
-        "[DevHost] Timed out waiting for SSE before starting the game.",
-      );
-      return;
-    }
-
-    const { data, error } = await startGame({
-      path: { sessionId: this.currentSession.sessionId },
-      headers: this.authHeaders(),
-    });
-    if (error || !data) {
-      this.logger.error("[DevHost] Failed to start the backend session.");
-      return;
-    }
-
-    this.currentSession = {
-      ...this.currentSession,
-      gameId: data.gameId,
-    };
-    this.storage.persistActiveSession(this.currentSession);
+  private setRuntimeError(error: DevHostRuntimeError): void {
+    this.runtimeError = error;
     this.notify();
-    await this.reconnectSessionSnapshot();
   }
 
-  private async attachToSession(nextSession: ActiveSession): Promise<void> {
-    this.currentSession = nextSession;
-    this.storage.persistActiveSession(this.currentSession);
-    this.autoStartRequested = true;
-    this.clearSessionSnapshotTimeout();
-    this.seedValue = String(nextSession.seed ?? 1337);
-    this.pluginReady = false;
-    this.iframeLoaded = false;
-    if (this.gateway) {
-      this.gateway.disconnect();
-      this.gateway = null;
+  private clearRuntimeError(): void {
+    if (this.runtimeError === null) {
+      return;
     }
-    this.store.getState().reset();
-    this.reloadPluginFrame();
+    this.runtimeError = null;
     this.notify();
-    await this.initialize();
-  }
-
-  private async waitForSseConnection(timeoutMs = 5000): Promise<boolean> {
-    if (this.store.getState().isConnected) {
-      return true;
-    }
-
-    return new Promise<boolean>((resolve) => {
-      const timeout = window.setTimeout(() => {
-        unsubscribe();
-        resolve(false);
-      }, timeoutMs);
-
-      const unsubscribe = this.store.subscribe((state) => {
-        if (!state.isConnected) {
-          return;
-        }
-        window.clearTimeout(timeout);
-        unsubscribe();
-        resolve(true);
-      });
-    });
   }
 
   private connectGateway(): void {
@@ -480,98 +395,108 @@ export class DevHostController {
         );
         this.notify();
       },
-      onAction: async (
+      onInteraction: async (
         playerId: string,
-        actionType: string,
-        params: Record<string, unknown>,
+        interactionId: string,
+        params: unknown,
+        meta,
       ) => {
         const expectedVersion = this.store.getState().gameplay.version;
-        const { data, error } = await submitInput({
-          path: { sessionId: this.currentSession.sessionId },
-          headers: this.authHeaders(),
-          body: {
-            input: {
-              kind: "action",
-              playerId,
-              actionType,
-              params: JSON.stringify(params),
-            },
-            expectedVersion,
+        const actionSetVersion =
+          this.store.getState().gameplay.actionSetVersion;
+        const clientActionId = meta?.clientActionId;
+        const headers = clientActionId
+          ? { [CLIENT_ACTION_ID_HEADER]: clientActionId }
+          : undefined;
+
+        // Tier-0 perf: bracket the HTTP submit so the HUD can compute
+        // `server = t3 - t2`. t0/t1 are written by the plugin iframe and
+        // gateway respectively against the same actionId; t4..t8 arrive
+        // via SSE, store apply, plugin state-ack, and state-rendered.
+        if (clientActionId) {
+          recordMark(clientActionId, PERF_MARK_NAMES.T2_HTTP_SENT, {
+            extra: { playerId, interactionId, expectedVersion },
+          });
+        }
+
+        const { data, error } = await submitPlayerAction({
+          path: {
+            sessionId: this.currentSession.sessionId,
+            playerId,
+            interactionId,
           },
+          body: {
+            expectedVersion,
+            actionSetVersion,
+            inputs:
+              params && typeof params === "object" && !Array.isArray(params)
+                ? (params as never)
+                : {},
+          },
+          ...(headers ? { headers } : {}),
         });
+
+        if (clientActionId) {
+          recordMark(clientActionId, PERF_MARK_NAMES.T3_HTTP_RESPONSE, {
+            extra: {
+              accepted: data?.accepted,
+              errorCode: data?.errorCode,
+              version: data?.version,
+              transport: error ? "error" : "ok",
+            },
+          });
+          if (data?.version !== undefined && data?.accepted !== false) {
+            correlateVersion(clientActionId, data.version);
+          }
+        }
 
         if (error) {
           throw createSubmissionError(
             "api-error",
             undefined,
-            "Failed to submit action",
+            "Failed to submit interaction",
           );
         }
-        if (data?.accepted === false) {
+        if (data?.accepted !== false && data?.gameplay) {
           this.store
             .getState()
-            .enqueueActionRejected(data.message ?? "Action rejected", playerId);
-          throw createSubmissionError(
-            data.errorCode ?? undefined,
-            data.message ?? undefined,
-            "Action rejected",
-          );
-        }
-      },
-      onPromptResponse: async (playerId, promptId, response) => {
-        const expectedVersion = this.store.getState().gameplay.version;
-        const { data, error } = await submitInput({
-          path: { sessionId: this.currentSession.sessionId },
-          headers: this.authHeaders(),
-          body: {
-            input: {
-              kind: "promptResponse",
-              playerId,
-              promptId,
-              response: JSON.stringify(response),
-            },
-            expectedVersion,
-          },
-        });
-
-        if (error) {
-          throw createSubmissionError(
-            "api-error",
-            undefined,
-            "Failed to submit prompt response",
-          );
+            .applyGameplaySnapshotLocal(data.gameplay, clientActionId);
         }
         if (data?.accepted === false) {
           this.store
             .getState()
             .enqueueActionRejected(
-              data.message ?? "Prompt response rejected",
+              data.message ?? "Interaction rejected",
               playerId,
             );
           throw createSubmissionError(
             data.errorCode ?? undefined,
             data.message ?? undefined,
-            "Prompt response rejected",
+            "Interaction rejected",
           );
         }
       },
-      onValidateAction: async (
+      onValidateInteraction: async (
         playerId: string,
-        actionType: string,
-        params: Record<string, unknown>,
+        interactionId: string,
+        params: unknown,
       ) => {
         const expectedVersion = this.store.getState().gameplay.version;
-        const { data, error } = await validateInput({
-          path: { sessionId: this.currentSession.sessionId },
-          headers: this.authHeaders(),
+        const actionSetVersion =
+          this.store.getState().gameplay.actionSetVersion;
+        const { data, error } = await validatePlayerAction({
+          path: {
+            sessionId: this.currentSession.sessionId,
+            playerId,
+            interactionId,
+          },
           body: {
-            input: {
-              kind: "action",
-              playerId,
-              actionType,
-              params: JSON.stringify(params),
-            },
             expectedVersion,
+            actionSetVersion,
+            inputs:
+              params && typeof params === "object" && !Array.isArray(params)
+                ? (params as never)
+                : {},
           },
         });
 
@@ -579,7 +504,7 @@ export class DevHostController {
           return {
             valid: false,
             errorCode: "api-error",
-            message: "Failed to validate action",
+            message: "Failed to validate interaction",
           };
         }
 
@@ -599,12 +524,6 @@ export class DevHostController {
     });
 
     this.gateway.connect();
-  }
-
-  private authHeaders(): Record<string, string> {
-    return this.config.authToken
-      ? { Authorization: `Bearer ${this.config.authToken}` }
-      : {};
   }
 
   private attachStore(): void {
@@ -633,44 +552,25 @@ export class DevHostController {
     this.gatewayStoreAttached = false;
   }
 
-  private scheduleSessionSnapshotTimeout(): void {
-    this.clearSessionSnapshotTimeout();
-    this.sessionSnapshotTimeoutId = window.setTimeout(() => {
-      if (this.store.getState().syncId > 0 || this.recoveryInFlight) {
-        return;
-      }
-      void this.recoverFromUnhealthySession(
-        `No initial state-sync arrived within ${INITIAL_SYNC_TIMEOUT_MS}ms.`,
-      );
-    }, INITIAL_SYNC_TIMEOUT_MS);
-  }
-
-  private clearSessionSnapshotTimeout(): void {
-    if (this.sessionSnapshotTimeoutId !== null) {
-      window.clearTimeout(this.sessionSnapshotTimeoutId);
-      this.sessionSnapshotTimeoutId = null;
-    }
-  }
-
   private async recoverFromUnhealthySession(reason: string): Promise<void> {
     if (
       this.recoveryInFlight ||
       this.autoRecoveryAttempts >= MAX_AUTO_RECOVERY_ATTEMPTS ||
-      this.store.getState().syncId > 0
+      this.store.getState().bootstrap.status !== "loading"
     ) {
       return;
     }
 
     this.recoveryInFlight = true;
     this.autoRecoveryAttempts += 1;
-    this.clearSessionSnapshotTimeout();
 
     try {
       this.logger.warn("[DevHost] " + reason);
-      const nextSession = await this.requestNewSession(
-        this.currentSession.seed ?? 1337,
+      const bootstrap = await this.postBootstrapEndpoint(
+        "/__dreamboard_dev/session/new",
+        { seed: this.currentSession.seed ?? 1337 },
       );
-      await this.attachToSession(nextSession);
+      this.hydrateFromBootstrap(bootstrap);
     } catch (error) {
       this.logger.error(
         "[DevHost] Automatic recovery failed:",
@@ -681,65 +581,179 @@ export class DevHostController {
     }
   }
 
-  private async reconnectSessionSnapshot(): Promise<void> {
-    this.autoStartRequested = false;
-    this.sessionSnapshotSseFailureCount = 0;
-    this.clearSessionSnapshotTimeout();
-    this.store.getState().disconnect();
-    this.store.getState().setLoading();
-    this.store
-      .getState()
-      .connect(this.currentSession.sessionId, this.config.userId);
-    this.scheduleSessionSnapshotTimeout();
-    this.notify();
+  private async loadBootstrapFromDevServer(
+    playerId?: string | null,
+  ): Promise<DevSessionBootstrap> {
+    return this.requestBootstrap(
+      playerId?.trim()
+        ? `/__dreamboard_dev/session/bootstrap?playerId=${encodeURIComponent(playerId.trim())}`
+        : "/__dreamboard_dev/session/bootstrap",
+      {
+        method: "GET",
+      },
+    );
   }
 
-  private async requestNewSession(seed: number): Promise<ActiveSession> {
-    const response = await fetch("/__dreamboard_dev/session/new", {
+  private async postBootstrapEndpoint(
+    path: string,
+    body?: Record<string, unknown>,
+  ): Promise<DevSessionBootstrap> {
+    return this.requestBootstrap(path, {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ seed }),
+      body: body ? JSON.stringify(body) : undefined,
+      headers: body ? { "content-type": "application/json" } : undefined,
     });
-    const payload = (await response.json()) as Partial<{
-      sessionId: string;
-      shortCode: string;
-      gameId: string;
-      seed: number;
-      setupProfileId: string | null;
-      error: string;
-    }>;
-    if (
-      !response.ok ||
-      !payload.sessionId ||
-      !payload.shortCode ||
-      !payload.gameId
-    ) {
-      throw new Error(payload.error ?? "Failed to create a new session.");
-    }
+  }
 
-    return {
-      sessionId: payload.sessionId,
-      shortCode: payload.shortCode,
-      gameId: payload.gameId,
-      seed: typeof payload.seed === "number" ? payload.seed : seed,
-      compiledResultId: this.config.compiledResultId,
-      setupProfileId:
-        typeof payload.setupProfileId === "string"
-          ? payload.setupProfileId
-          : null,
+  private async requestBootstrap(
+    path: string,
+    init: RequestInit,
+  ): Promise<DevSessionBootstrap> {
+    const response = await fetch(path, init);
+    const contentType = response.headers.get("content-type") ?? "";
+    const payload = contentType.includes("application/json")
+      ? await response.json()
+      : await response.text();
+    if (!response.ok) {
+      throw payload;
+    }
+    return payload as DevSessionBootstrap;
+  }
+
+  private hydrateFromBootstrap(
+    bootstrap: DevSessionBootstrap,
+    options: {
+      connectStreams?: boolean;
+      reconnectGateway?: boolean;
+      source?: string;
+    } = {},
+  ): void {
+    const connectStreams = options.connectStreams ?? true;
+    const reconnectGateway = options.reconnectGateway ?? true;
+    const source = options.source ?? "dev-bootstrap";
+    this.currentSession = {
+      sessionId: bootstrap.session.sessionId,
+      shortCode: bootstrap.session.shortCode,
+      gameId: bootstrap.session.gameId,
+      seed: bootstrap.session.seed ?? null,
     };
+    this.seedValue = String(this.currentSession.seed ?? 1337);
+    this.store.getState().hydrateBootstrap(bootstrap, this.config.userId);
+    if (bootstrap.selectedPlayerId) {
+      this.storage.persistSelectedPlayerId(bootstrap.selectedPlayerId);
+    }
+    if (connectStreams) {
+      this.store
+        .getState()
+        .connect(
+          this.currentSession.sessionId,
+          this.config.userId,
+          bootstrap.gameplay && bootstrap.selectedPlayerId
+            ? { source, playerId: bootstrap.selectedPlayerId }
+            : { source },
+        );
+    }
+    if (reconnectGateway && this.iframeLoaded) {
+      this.connectGateway();
+    }
+  }
+
+  private async switchPlayerFromBootstrap(playerId: string): Promise<void> {
+    const requestId = ++this.playerSwitchRequestId;
+    try {
+      const bootstrap = await this.loadBootstrapFromDevServer(playerId);
+      if (requestId !== this.playerSwitchRequestId) {
+        return;
+      }
+      this.assertSwitchBootstrapMatchesPlayer(bootstrap, playerId);
+      this.clearRuntimeError();
+      this.hydrateFromBootstrap(bootstrap, {
+        connectStreams: false,
+        reconnectGateway: false,
+      });
+      if (bootstrap.gameplay && bootstrap.selectedPlayerId) {
+        this.store.getState().switchPlayer(playerId);
+      }
+      this.notify();
+    } catch (error) {
+      if (requestId !== this.playerSwitchRequestId) {
+        return;
+      }
+      this.logger.error(
+        "[DevHost] Failed to switch player:",
+        error instanceof Error ? error.message : String(error),
+      );
+      this.setRuntimeError(
+        convertProblemDetailsToRuntimeError(
+          error,
+          `Failed to switch to ${playerId}.`,
+        ),
+      );
+    }
+  }
+
+  private assertSwitchBootstrapMatchesPlayer(
+    bootstrap: DevSessionBootstrap,
+    playerId: string,
+  ): void {
+    if (bootstrap.session.phase !== "gameplay") {
+      return;
+    }
+    if (bootstrap.selectedPlayerId !== playerId) {
+      throw new Error(
+        `Switch bootstrap selected ${bootstrap.selectedPlayerId ?? "<none>"} instead of ${playerId}.`,
+      );
+    }
+    if (bootstrap.gameplay?.playerId !== playerId) {
+      throw new Error(
+        `Switch bootstrap gameplay snapshot is for ${bootstrap.gameplay?.playerId ?? "<none>"} instead of ${playerId}.`,
+      );
+    }
   }
 }
 
-function deriveControllablePlayerIds(
-  seats: Array<{ playerId: string; controllerUserId?: string | null }>,
-  userId: string | null,
-): string[] {
-  if (!userId) {
-    return seats.map((seat) => seat.playerId);
-  }
+type ApiErrorPayload = {
+  title?: string;
+  detail?: string;
+  status?: number;
+  requestId?: string;
+  violations?: Array<{
+    message?: string;
+    field?: string;
+    code?: string;
+  }>;
+};
 
-  return seats
-    .filter((seat) => seat.controllerUserId === userId)
-    .map((seat) => seat.playerId);
+/**
+ * Convert a backend `ProblemDetails` (or an opaque error object) into the
+ * structured shape the dev host overlay renders. We surface every violation
+ * intentionally — when a reducer `initialize` throws, the JS stack lives in
+ * the second violation entry, so collapsing them into a single string would
+ * lose the file and line information we just went to the trouble of
+ * preserving in `JsExecutor.jsRejectionToException`.
+ */
+function convertProblemDetailsToRuntimeError(
+  error: unknown,
+  fallbackMessage: string,
+): DevHostRuntimeError {
+  const payload = (error ?? {}) as ApiErrorPayload;
+  const violations = (payload.violations ?? [])
+    .filter((violation) => typeof violation?.message === "string")
+    .map((violation) => ({
+      message: violation.message as string,
+      field: typeof violation.field === "string" ? violation.field : undefined,
+      code: typeof violation.code === "string" ? violation.code : undefined,
+    }));
+
+  const title = payload.title?.trim() || "Game failed to start";
+  const summary =
+    payload.detail?.trim() ||
+    (error instanceof Error ? error.message : fallbackMessage);
+
+  return {
+    title,
+    summary,
+    violations,
+    correlationId: payload.requestId,
+  };
 }

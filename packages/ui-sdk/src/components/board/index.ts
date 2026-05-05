@@ -46,6 +46,11 @@ export {
   type DefaultHexVertexProps,
 } from "./HexGrid.js";
 
+export type {
+  InteractiveTargetLayer,
+  InteractiveTargetRenderState,
+} from "./target-layer.js";
+
 // SquareGrid - Grid-based games (Chess, Go, Checkers)
 export {
   SquareGrid,

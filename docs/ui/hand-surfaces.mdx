@@ -1,0 +1,197 @@
+---
+title: "Hand surfaces"
+description: "Render card zones and playable hand actions."
+---
+
+Hand surfaces render manifest player card zones. They are designed for
+`defineCardAction`; each action attaches to a hand zone through `playFrom`.
+
+There are two modes:
+
+| Mode | Use when |
+| --- | --- |
+| Zone mode | You have a manifest zone and want to render a real hand of cards. |
+| Descriptor mode | You have hand-surface descriptors that are not tied to one rendered zone. |
+
+For card games and deck games, zone mode should be the default.
+
+## Authoring shape
+
+Declare a hand zone once in the phase:
+
+```ts
+zones: [zones.actionHand],
+cardActions: {
+  playBoost,
+  playDrawCards,
+  playBuildPath,
+},
+```
+
+Import `zones` from the generated manifest contract so reducer code uses typed
+handles such as `zones.actionHand`. The generated UI contract exposes the
+JS-friendly zone key `actionHand` while the runtime projection is keyed by the
+manifest zone id `action-hand`. Cards come from that manifest player zone, and
+playable actions are derived from `cardActions` whose `playFrom` is also
+`zones.actionHand`.
+
+## Zone mode in WorkspaceGameShell
+
+```tsx
+import { Card, Hand, type HandSurfaceCardContext } from "@dreamboard/ui-sdk/components";
+import { WorkspaceGameShell } from "@dreamboard/ui-contract";
+
+<WorkspaceGameShell
+  surfaces={{
+    hand: {
+      zones: {
+        actionHand: (cards, contexts) => (
+          <ActionCardHand cards={cards} contexts={contexts} />
+        ),
+      },
+    },
+  }}
+/>;
+
+function ActionCardHand({
+  cards,
+  contexts,
+}: {
+  cards: readonly ViewCard[];
+  contexts: readonly HandSurfaceCardContext[];
+}) {
+  const byCardId = new Map(contexts.map((ctx) => [ctx.card.id, ctx]));
+
+  return (
+    <Hand
+      cards={cards}
+      renderCard={({ card }) => {
+        const ctx = byCardId.get(card.id);
+        return (
+          <Card
+            card={card}
+            disabled={ctx?.disabled ?? true}
+            onClick={() => void ctx?.play?.()}
+          />
+        );
+      }}
+    />
+  );
+}
+```
+
+Each `HandSurfaceCardContext` contains:
+
+| Field | Meaning |
+| --- | --- |
+| `card` | The rendered card. |
+| `interactions` | Available hand descriptors that target this card. |
+| `play` | A convenience submit function when exactly one interaction can be played directly. |
+| `disabled` | True when no available interaction can be played from this card. |
+
+`play` is `null` when the card needs disambiguation or follow-up inputs. In
+that case, render the specific choices yourself using `interactions` and the
+typed handle pattern below.
+
+## Default zone rendering
+
+If the default card face is enough, you can use the lower-level component:
+
+```tsx
+import { HandSurface } from "@dreamboard/ui-sdk/components";
+
+<HandSurface
+  zoneId="dev-hand"
+  renderCardContent={({ card }) => <span>{card.label}</span>}
+/>;
+```
+
+`WorkspaceGameShell` normally handles zone id translation for you. Prefer
+`surfaces.hand.zones` in authored workspace UI unless you are composing a custom
+shell.
+
+## Descriptor mode
+
+Descriptor mode renders one item per hand-surface descriptor:
+
+```tsx
+<WorkspaceGameShell
+  surfaces={{
+    hand: {
+      interactions: {
+        "placeThing.placeThingCard": (descriptor, handle) => (
+          <HandRow descriptor={descriptor} handle={handle} />
+        ),
+      },
+    },
+  }}
+/>;
+```
+
+Use this when the interaction is card-adjacent but the screen is not a normal
+card hand. For example, a deduction game might let the player select a card from
+a custom horizontal strip and choose a board zone in a separate board panel.
+
+## Follow-up inputs
+
+Card actions often start with a card and then need another input: a board space,
+resource choice, target player, or amount.
+
+Use the card context to start the action, then collect the follow-up through
+the appropriate surface:
+
+```tsx
+function DevCardHand({ cards, contexts }: Props) {
+  const byCardId = new Map(contexts.map((ctx) => [ctx.card.id, ctx]));
+
+  return (
+    <Hand
+      cards={cards}
+      renderCard={({ card }) => {
+        const ctx = byCardId.get(card.id);
+        const descriptor = ctx?.interactions.find((item) => item.available);
+
+        return (
+          <Card
+            card={card}
+            disabled={!descriptor}
+            onClick={() => {
+              if (!ctx?.play) {
+                descriptor && openFollowUp(descriptor.interactionKey, card.id);
+                return;
+              }
+              void ctx.play();
+            }}
+          />
+        );
+      }}
+    />
+  );
+}
+```
+
+For a card that needs a board target, arm or remember the interaction and let
+the board surface collect the board input. For a card that needs form values,
+render a small inline form and submit with the descriptor handle.
+
+## Avoid duplicate rendering
+
+When `WorkspaceGameShell` receives a zone renderer, it passes the zone ids to the
+fallback descriptor-mode hand surface as excluded zones. This prevents a card
+zone from rendering once as a real hand and again as a row of default buttons.
+
+If you compose `HandSurface` yourself, pass `excludeZoneIds` when mixing zone
+mode and descriptor mode:
+
+```tsx
+<>
+  <HandSurface zoneId="dev-hand" renderHand={renderDevHand} />
+  <HandSurface excludeZoneIds={["dev-hand"]} render={handRenderers} />
+</>
+```
+
+## Use card actions for card-first commands
+
+Use [Card actions](/docs/authoring/card-actions) when the selected card is the
+object being played. It gives the UI enough metadata to connect zones, playable
+cards, and hand surfaces without local plumbing.

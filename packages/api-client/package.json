@@ -3,72 +3,83 @@
   "version": "0.1.0",
   "description": "Public Dreamboard API client and event types",
   "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "import": "./src/index.ts"
+      "bun": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     },
     "./client.gen": {
-      "types": "./src/client.gen.ts",
-      "import": "./src/client.gen.ts"
+      "bun": "./src/client.gen.ts",
+      "types": "./dist/client.gen.d.ts",
+      "import": "./dist/client.gen.js"
     },
     "./types.gen": {
-      "types": "./src/types.gen.ts",
-      "import": "./src/types.gen.ts"
+      "bun": "./src/types.gen.ts",
+      "types": "./dist/types.gen.d.ts",
+      "import": "./dist/types.gen.js"
     },
     "./react-query": {
-      "types": "./src/@tanstack/react-query.gen.ts",
-      "import": "./src/@tanstack/react-query.gen.ts"
+      "bun": "./src/@tanstack/react-query.gen.ts",
+      "types": "./dist/@tanstack/react-query.gen.d.ts",
+      "import": "./dist/@tanstack/react-query.gen.js"
     },
     "./problem-types": {
-      "types": "./src/problem-types.ts",
-      "import": "./src/problem-types.ts"
+      "bun": "./src/generated/problem-types.gen.ts",
+      "types": "./dist/generated/problem-types.gen.d.ts",
+      "import": "./dist/generated/problem-types.gen.js"
     },
     "./storage-paths": {
-      "types": "./src/storage-paths.ts",
-      "import": "./src/storage-paths.ts"
+      "bun": "./src/storage-paths.ts",
+      "types": "./dist/storage-paths.d.ts",
+      "import": "./dist/storage-paths.js"
     },
     "./source-revisions": {
-      "types": "./src/source-revisions.ts",
-      "import": "./src/source-revisions.ts"
+      "bun": "./src/source-revisions.ts",
+      "types": "./dist/source-revisions.d.ts",
+      "import": "./dist/source-revisions.js"
     },
     "./zod.gen": {
-      "types": "./src/zod.gen.ts",
-      "import": "./src/zod.gen.ts"
+      "bun": "./src/zod.gen.ts",
+      "types": "./dist/zod.gen.d.ts",
+      "import": "./dist/zod.gen.js"
     }
   },
   "typesVersions": {
     "*": {
       "client.gen": [
-        "./src/client.gen.ts"
+        "./dist/client.gen.d.ts"
       ],
       "types.gen": [
-        "./src/types.gen.ts"
+        "./dist/types.gen.d.ts"
       ],
       "problem-types": [
-        "./src/problem-types.ts"
+        "./dist/generated/problem-types.gen.d.ts"
       ],
       "react-query": [
-        "./src/@tanstack/react-query.gen.ts"
+        "./dist/@tanstack/react-query.gen.d.ts"
       ],
       "storage-paths": [
-        "./src/storage-paths.ts"
+        "./dist/storage-paths.d.ts"
       ],
       "source-revisions": [
-        "./src/source-revisions.ts"
+        "./dist/source-revisions.d.ts"
       ],
       "zod.gen": [
-        "./src/zod.gen.ts"
+        "./dist/zod.gen.d.ts"
       ]
     }
   },
   "scripts": {
     "sync:private-openapi": "bun run scripts/sync-private-openapi.ts",
-    "build": "bun run scripts/generate.ts",
+    "build": "bun run scripts/generate.ts && tsc -b",
     "generate": "bun run scripts/generate.ts"
   },
+  "files": [
+    "dist"
+  ],
   "dependencies": {
     "@tanstack/react-query": "^5.90.16",
     "zod": "^4.3.6"

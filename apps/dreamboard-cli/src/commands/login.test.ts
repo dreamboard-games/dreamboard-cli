@@ -5,6 +5,9 @@ const resolveConfig = mock(() => ({
 }));
 const loadGlobalConfig = mock(async () => ({}));
 const saveGlobalConfig = mock(async () => undefined);
+const setCredentials = mock(async () => undefined);
+const setAccessOnlySession = mock(async () => undefined);
+const getStoredSession = mock(async () => null);
 const closeServer = mock(() => undefined);
 const startCliAuthServer = mock(async () => ({
   port: 43123,
@@ -34,6 +37,12 @@ mock.module("../config/global-config.js", () => ({
   saveGlobalConfig,
 }));
 
+mock.module("../config/credential-store.js", () => ({
+  getStoredSession,
+  setAccessOnlySession,
+  setCredentials,
+}));
+
 mock.module("../auth/auth-server.js", () => ({
   startCliAuthServer,
   openBrowser,
@@ -46,32 +55,40 @@ mock.module("../flags.js", () => ({
 
 const loginCommand = (await import("./login.ts")).default;
 
-test("published login resolves config without injecting an env flag", async () => {
+test("published login persists env via saveGlobalConfig and credentials via setCredentials", async () => {
   resolveConfig.mockClear();
   loadGlobalConfig.mockClear();
   saveGlobalConfig.mockClear();
+  setCredentials.mockClear();
+  setAccessOnlySession.mockClear();
   startCliAuthServer.mockClear();
   closeServer.mockClear();
   openBrowser.mockClear();
   parseAuthCommandArgs.mockClear();
   parseLoginCommandArgs.mockClear();
 
-  await loginCommand.run({
-    args: {},
-  });
+  await loginCommand.run!({
+    args: {} as any,
+  } as any);
 
   expect(parseLoginCommandArgs).toHaveBeenCalledWith({});
-  expect(resolveConfig).toHaveBeenCalledWith({}, {});
-  const openedUrl = openBrowser.mock.calls[0]?.[0];
+  expect(resolveConfig).toHaveBeenCalledWith({}, {}, undefined, null);
+  expect(getStoredSession).toHaveBeenCalledTimes(1);
+  const openedUrl = (openBrowser as any).mock.calls[0]?.[0];
   expect(openedUrl).toEqual(
     expect.stringMatching(
       /^https:\/\/dreamboard\.games\/cli-login\?port=43123&state=.+$/,
     ),
   );
+  // Config (env only) goes through saveGlobalConfig; credentials go
+  // through the narrow CredentialStore API.
   expect(saveGlobalConfig).toHaveBeenCalledWith({
-    authToken: "access-token",
-    refreshToken: "refresh-token",
     environment: "prod",
   });
+  expect(setCredentials).toHaveBeenCalledWith({
+    accessToken: "access-token",
+    refreshToken: "refresh-token",
+  });
+  expect(setAccessOnlySession).not.toHaveBeenCalled();
   expect(closeServer).toHaveBeenCalledTimes(1);
 });

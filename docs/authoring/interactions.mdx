@@ -1,0 +1,222 @@
+---
+title: "Interactions"
+description: "Use defineInteraction to author player commands, prompts, inputs, validation, and reducer logic."
+---
+
+Interactions are the canonical player-facing reducer primitive. They define what a player can submit and what the reducer does with that submission.
+
+```ts
+const placeThingCard = defineInteraction<
+  GameContract,
+  typeof placeThingPhaseStateSchema
+>()({
+  surface: "hand",
+  label: "Place thing",
+  shortLabel: "Place",
+  emphasis: "primary",
+  inputs: {
+    cardId: cardInput<GameState, ThingsDeckCardId>({
+      target: placeableThingCardTarget,
+    }),
+    ringId: formInput(zoneIdSchema),
+  },
+  validate({ state, input }) {
+    if (input.playerId === state.publicState.knowerPlayerId) {
+      return {
+        errorCode: "KNOWER_CANNOT_PLACE",
+        message: "The Knower cannot place Things.",
+      };
+    }
+    return null;
+  },
+  reduce({ state, input, accept, fx, ops }) {
+    return accept(
+      pipe(
+        state,
+        ops.moveCardFromPlayerZoneToSharedZone({
+          playerId: input.playerId,
+          fromZoneId: "things-hand",
+          toZoneId: input.params.ringId,
+          cardId: input.params.cardId,
+          playedBy: input.playerId,
+        }),
+      ),
+      [fx.transition("judgeRings")],
+    );
+  },
+});
+```
+
+## Required shape
+
+| Field | Purpose |
+| --- | --- |
+| `surface` | Where UI should route the descriptor: `panel`, `hand`, `inbox`, board surfaces, etc. |
+| `inputs` | Collector map that defines params, target metadata, and client schemas. |
+| `reduce` | Pure reducer callback that accepts or rejects a state transition. |
+
+Most interactions should also set `label`, and often `shortLabel`,
+`description`, `icon`, `emphasis`, `salience`, `group`, or `presentation` for
+default renderers.
+
+If your phase state schema declares a literal `step` field, `step` and `steps`
+on `defineInteraction` are typed from that schema. A typo in a step gate fails
+at typecheck instead of silently hiding the interaction.
+
+## Authorization
+
+Actor authorization is handled by the trusted bundle before `reduce` runs.
+
+Use phase-level `actor` for ordinary turns:
+
+```ts
+actor: ({ state }) => state.flow.activePlayers
+```
+
+Use interaction-level `actor` when one interaction has a different actor. Use `to` for addressed prompt interactions.
+
+Do not duplicate the same turn check in every `validate` callback unless the interaction has a business rule that is different from actor authorization.
+
+## Availability and validation
+
+Use `available` to hide or disable an interaction before params exist. Use `validate` for business rules after params are parsed.
+
+```ts
+available({ state }) {
+  return state.phase.step === "main";
+},
+validate({ input, q }) {
+  if (!q.player.canAfford(input.playerId, COST)) {
+    return { errorCode: "INSUFFICIENT_RESOURCES" };
+  }
+  return null;
+}
+```
+
+Target collectors run their own validation before authored `validate`.
+
+## Presentation metadata
+
+Reducer definitions are the source of truth for interaction presentation hints.
+Default UI surfaces read these fields from projected descriptors:
+
+| Field | Use |
+| --- | --- |
+| `label` | Human-readable command name. |
+| `shortLabel` | Compact label for dense mobile chrome. |
+| `title` | Header for prompt or dialog-style renderers. |
+| `description` | Help text for dialogs, tooltips, or expanded rows. |
+| `icon` | Small glyph for default buttons. |
+| `emphasis` | Visual variant: `primary`, `secondary`, or `destructive`. |
+| `salience` | Panel importance: `hero`, `secondary`, or `tertiary`. |
+| `group` | Clusters related actions such as build or trade commands. |
+| `presentation` | Inline or dialog rendering hints for default shells. |
+| `dispatchPriority` | Board target tie-breaker when target domains overlap. |
+| `visibility` | Whether non-actors see disabled descriptors or no descriptor. |
+
+Use metadata to teach the shell how to render an action. Keep gameplay
+availability in `actor`, `to`, `step`, `available`, target rules, and
+`validate`.
+
+```ts
+const rollDice = defineInteraction<
+  GameContract,
+  typeof playerTurnPhaseStateSchema
+>()({
+  surface: "panel",
+  label: "Roll dice",
+  step: "roll",
+  emphasis: "primary",
+  icon: "dice",
+  visibility: "all",
+  presentation: {
+    mode: "dialog",
+    dialog: {
+      title: "Roll dice",
+      description: "Roll to start your turn.",
+      dismissBehavior: { type: "none" },
+    },
+  },
+  inputs: {
+    dice: rngInput.d6(2),
+  },
+  reduce({ state, input, accept, ops }) {
+    const [d1, d2] = input.params.dice.values;
+    return accept(
+      pipe(
+        state,
+        ops.patchPhaseState({ diceRolled: true, diceValues: [d1!, d2!] }),
+      ),
+    );
+  },
+});
+```
+
+`presentation.mode` controls how default renderers present the interaction:
+
+| Mode | Meaning |
+| --- | --- |
+| `inline` | Render in the surface without opening dialog chrome. |
+| `dialog` | Default renderer may open a dialog or sheet for the interaction. |
+
+Use `surface: "blocker"` when an interaction must block the player. Do not use
+`presentation.mode` as a second blocker concept.
+
+Dialog presentation supports:
+
+| Field | Use |
+| --- | --- |
+| `group` | Share one dialog context across related actions. |
+| `title` | Static text or a function of reducer state. |
+| `description` | Static text or a function of reducer state. |
+| `statusSections` | Dynamic summary rows, such as offered/requested resources. |
+| `dismissBehavior` | Whether the dialog can close before the interaction resolves. |
+
+`dismissBehavior` is one of:
+
+| Value | Meaning |
+| --- | --- |
+| `{ type: "none" }` | The dialog cannot be closed by the player. |
+| `{ type: "dismiss" }` | The dialog can close normally. |
+| `{ type: "minimize", trayLabel, trayIcon? }` | The dialog can collapse to a tray affordance. |
+
+For example, a pending trade can share one dialog presentation across
+`respondToTrade`, `confirmTrade`, and `cancelTrade`, while status sections show
+the current offer, request, accepted players, and rejected players from reducer
+state.
+
+## Prompts
+
+Prompt-kind interactions are ordinary `defineInteraction` entries with a `promptInput` collector. The runtime projects them to inbox-style descriptors and addresses them with `to`.
+
+```ts
+const respondToTrade = defineInteraction<GameContract, typeof phaseState>()({
+  surface: "inbox",
+  label: "Respond to trade",
+  title: "Incoming trade offer",
+  inputs: {
+    response: promptInput({
+      schema: z.enum(["accept", "reject"]),
+      target: choiceTarget
+        .options<GameState, "accept" | "reject">([
+          { id: "accept", label: "Accept" },
+          { id: "reject", label: "Reject" },
+        ])
+        .build(),
+    }),
+  },
+  to: ({ state }) => state.phase.pendingTrade?.targetPlayerIds ?? null,
+  reduce({ state, input, accept }) {
+    // input.params.response is "accept" | "reject"
+    return accept(state);
+  },
+});
+```
+
+Prompts are not effects. They are addressed player interactions.
+
+## Client params vs reducer params
+
+Generated UI/test params omit engine-sampled collectors such as `rngInput.d6(2)`. Reducer params include them because the trusted bundle samples them before calling `reduce`.
+
+See [Inputs and targets](/docs/authoring/inputs-and-targets) for collector details.

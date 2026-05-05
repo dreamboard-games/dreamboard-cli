@@ -13,11 +13,14 @@ export const LOCAL_REGISTRY_HOST = "127.0.0.1";
 export const LOCAL_REGISTRY_PORT = 4873;
 export const LOCAL_REGISTRY_URL = `http://${LOCAL_REGISTRY_HOST}:${LOCAL_REGISTRY_PORT}`;
 export const LOCAL_SCOPE_NPMRC_CONTENT = `@dreamboard:registry=${LOCAL_REGISTRY_URL}\n`;
+export const LOCAL_SNAPSHOT_FORMAT_VERSION = 2;
 export const SDK_PUBLISH_ORDER: readonly LocalMaintainerSdkPackageName[] = [
   "@dreamboard/api-client",
   "@dreamboard/sdk-types",
+  "@dreamboard/reducer-contract",
   "@dreamboard/app-sdk",
   "@dreamboard/ui-sdk",
+  "@dreamboard/testing",
 ];
 
 export type SnapshotManifest = {
@@ -33,6 +36,7 @@ export type PackageJsonShape = {
   types?: string;
   exports?: Record<string, unknown>;
   typesVersions?: Record<string, unknown>;
+  files?: string[];
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
@@ -88,6 +92,7 @@ export async function readWorkspaceLocalMaintainerRegistryFromPackageJson(
   const uiSdkVersion = packageJson.dependencies?.["@dreamboard/ui-sdk"];
   const sdkTypesVersion =
     packageJson.devDependencies?.["@dreamboard/sdk-types"];
+  const testingVersion = packageJson.devDependencies?.["@dreamboard/testing"];
   if (
     !appSdkVersion?.includes("-local.") ||
     !uiSdkVersion?.includes("-local.") ||
@@ -99,16 +104,18 @@ export async function readWorkspaceLocalMaintainerRegistryFromPackageJson(
   return {
     registryUrl: fallbackRegistryUrl,
     snapshotId: shortHash(
-      `${appSdkVersion}:${uiSdkVersion}:${sdkTypesVersion}:${fallbackRegistryUrl}`,
+      `${appSdkVersion}:${uiSdkVersion}:${sdkTypesVersion}:${testingVersion ?? ""}:${fallbackRegistryUrl}`,
     ),
     fingerprint: shortHash(
-      `${appSdkVersion}:${uiSdkVersion}:${sdkTypesVersion}:${fallbackRegistryUrl}`,
+      `${appSdkVersion}:${uiSdkVersion}:${sdkTypesVersion}:${testingVersion ?? ""}:${fallbackRegistryUrl}`,
     ),
     publishedAt: "",
     packages: {
       "@dreamboard/api-client": "",
       "@dreamboard/app-sdk": appSdkVersion,
+      "@dreamboard/reducer-contract": undefined,
       "@dreamboard/sdk-types": sdkTypesVersion,
+      "@dreamboard/testing": testingVersion,
       "@dreamboard/ui-sdk": uiSdkVersion,
     } satisfies LocalMaintainerRegistryPackages,
   };

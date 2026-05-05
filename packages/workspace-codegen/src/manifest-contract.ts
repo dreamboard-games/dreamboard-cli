@@ -229,6 +229,20 @@ function toPascalCase(input: string): string {
     .join("");
 }
 
+function toHandleKey(input: string): string {
+  if (!/[_-]/.test(input)) {
+    return input.charAt(0).toLowerCase() + input.slice(1);
+  }
+  const [first = "", ...rest] = input.split(/[_-]/g).filter(Boolean);
+  return [
+    first.toLowerCase(),
+    ...rest.map((part) => {
+      const lower = part.toLowerCase();
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    }),
+  ].join("");
+}
+
 function renderBlocks(blocks: Array<string | null | undefined>): string {
   return blocks.filter((block): block is string => Boolean(block)).join("\n\n");
 }
@@ -453,9 +467,17 @@ const GENERATED_ID_FAMILIES: readonly GeneratedIdFamily[] = [
   },
 ] as const;
 
+// `playerIds` are excluded from the generated `records`/`idGuards` surfaces:
+// `PlayerId` is now an opaque brand whose runtime roster comes from the active
+// session, not `manifest.players.maxPlayers`. Authors must use
+// `perPlayer(runtimeIds, init)` and `asPlayerId` from `@dreamboard/app-sdk/reducer`
+// instead of a `Record<PlayerId, T>` keyed on the max-players set.
+const GENERATED_ID_FAMILIES_WITHOUT_PLAYERS: readonly GeneratedIdFamily[] =
+  GENERATED_ID_FAMILIES.filter((family) => family.literalKey !== "playerIds");
+
 function renderGeneratedRecordsHelpers(): string {
   return `export const records = {
-${GENERATED_ID_FAMILIES.map(
+${GENERATED_ID_FAMILIES_WITHOUT_PLAYERS.map(
   ({ literalKey, typeName }) => `  ${literalKey}<Value>(
     initial: Value | ((${literalKey.slice(0, -1)}: ${typeName}) => Value),
   ): Record<${typeName}, Value> {
@@ -467,7 +489,7 @@ ${GENERATED_ID_FAMILIES.map(
 
 function renderGeneratedIdGuards(): string {
   return `export const idGuards = {
-${GENERATED_ID_FAMILIES.map(
+${GENERATED_ID_FAMILIES_WITHOUT_PLAYERS.map(
   ({
     literalKey,
     typeName,
@@ -481,6 +503,25 @@ ${GENERATED_ID_FAMILIES.map(
   },`,
 ).join("\n")}
 } as const;`;
+}
+
+function renderGeneratedIdHandles(analysis: ManifestAnalysis): string {
+  return `export const cardTypes = ${renderHandleObject(
+    "CardType",
+    analysis.cardTypes,
+  )};
+
+export const zones = ${renderHandleObject("ZoneId", analysis.zoneIds)};`;
+}
+
+function renderHandleObject(
+  typeName: string,
+  values: readonly string[],
+): string {
+  const lines = Array.from(values)
+    .sort((left, right) => left.localeCompare(right))
+    .map((value) => `  ${quote(toHandleKey(value))}: ${quote(value)},`);
+  return `{\n${lines.join("\n")}\n} as const satisfies Record<string, ${typeName}>`;
 }
 
 function sortedObject<Value>(
@@ -723,7 +764,13 @@ function geometryKeyFromSquareEdgeRef(
       `Square edge ref spaces '${ref.spaces.join(", ")}' do not resolve to exactly one shared edge.`,
     );
   }
-  return candidates[0]!;
+  const [only] = candidates;
+  if (only === undefined) {
+    throw new Error(
+      "unreachable: candidates.length === 1 but first is undefined",
+    );
+  }
+  return only;
 }
 
 function geometryKeyFromSquareVertexRef(
@@ -757,7 +804,13 @@ function geometryKeyFromSquareVertexRef(
       `Square vertex ref spaces '${ref.spaces.join(", ")}' do not resolve to exactly one shared vertex.`,
     );
   }
-  return candidates[0]!;
+  const [only] = candidates;
+  if (only === undefined) {
+    throw new Error(
+      "unreachable: candidates.length === 1 but first is undefined",
+    );
+  }
+  return only;
 }
 
 function geometryKeyFromEdgeRef(
@@ -2834,7 +2887,7 @@ export function materializeManifestTable(options: {
   const visibility = Object.fromEntries(
     Object.keys(cards).map((cardId) => [cardId, { faceUp: true }]),
   );
-  const resources = Object.fromEntries(
+  const resourcesByPlayer = Object.fromEntries(
     playerIds.map((playerId) => [
       playerId,
       Object.fromEntries(
@@ -2842,24 +2895,44 @@ export function materializeManifestTable(options: {
       ),
     ]),
   );
+  // PerPlayer<T> wire shape only: { __perPlayer: true, entries: [[playerId, value], ...] }.
+  const toPerPlayerWireFormat = <Value>(
+    entries: Record<string, Value>,
+  ): {
+    readonly __perPlayer: true;
+    readonly entries: ReadonlyArray<readonly [string, Value]>;
+  } => ({
+    __perPlayer: true,
+    entries: playerIds.map(
+      (playerId) => [playerId, entries[playerId] as Value] as const,
+    ),
+  });
+
+  const perPlayerZonesWire = Object.fromEntries(
+    Object.entries(perPlayerZones).map(([zoneId, entries]) => [
+      zoneId,
+      toPerPlayerWireFormat(entries),
+    ]),
+  );
+  const resourcesWire = toPerPlayerWireFormat(resourcesByPlayer);
 
   return {
     playerOrder: playerIds,
     zones: {
       shared: sharedZones,
-      perPlayer: perPlayerZones,
+      perPlayer: perPlayerZonesWire,
       visibility: zoneVisibility,
       cardSetIdsByZoneId: zoneCardSetIdsByZoneId,
     },
     decks: cloneJson(sharedZones),
-    hands: cloneJson(perPlayerZones),
+    hands: cloneJson(perPlayerZonesWire),
     handVisibility,
     cards,
     pieces,
     componentLocations,
     ownerOfCard,
     visibility,
-    resources,
+    resources: resourcesWire,
     boards: {
       byId: boardStatesById,
       hex: hexBoardStatesById,
@@ -3794,10 +3867,10 @@ function renderBoardLiteralHelpers(analysis: ManifestAnalysis): string {
                   ...(edge.fields ?? {}),
                 },
               };
-              if (edge.typeId != null) {
+              if (edge.typeId !== null && edge.typeId !== undefined) {
                 renderedSite.typeId = edge.typeId;
               }
-              if (edge.label != null) {
+              if (edge.label !== null && edge.label !== undefined) {
                 renderedSite.label = edge.label;
               }
               return renderedSite;
@@ -3829,10 +3902,10 @@ function renderBoardLiteralHelpers(analysis: ManifestAnalysis): string {
                   ...(vertex.fields ?? {}),
                 },
               };
-              if (vertex.typeId != null) {
+              if (vertex.typeId !== null && vertex.typeId !== undefined) {
                 renderedSite.typeId = vertex.typeId;
               }
-              if (vertex.label != null) {
+              if (vertex.label !== null && vertex.label !== undefined) {
                 renderedSite.label = vertex.label;
               }
               return renderedSite;
@@ -3875,21 +3948,11 @@ function renderBoardLiteralHelpers(analysis: ManifestAnalysis): string {
         ),
     ),
   );
-  const perPlayerBoardIdsByBaseIdAndPlayerId = renderJsonConst(
-    sortedObject(
-      analysis.analyzedBoards
-        .filter((board) => board.board.scope === "perPlayer")
-        .map((board) => [
-          board.board.id,
-          Object.fromEntries(
-            analysis.playerIds.map((playerId, index) => [
-              playerId,
-              board.runtimeBoardIds[index] ?? `${board.board.id}:${playerId}`,
-            ]),
-          ),
-        ]),
-    ),
-  );
+  // `perPlayerBoardIdsByBaseIdAndPlayerIdLookup` has been retired. The old
+  // static lookup keyed on the max-players roster at generate time, which is
+  // incompatible with the PerPlayer model where the runtime roster decides
+  // which seats exist. `boardRefForPlayer(baseId, playerId)` now produces a
+  // `PerPlayerBoardRef` at runtime using the active session's seats.
 
   return `const boardIdsByLayoutLookup = ${boardIdsByLayout};
 const boardBaseIdsByLayoutLookup = ${boardBaseIdsByLayout};
@@ -3912,7 +3975,6 @@ const authoredHexEdgesByBoardIdLookup = ${authoredHexEdgesByBoardId};
 const authoredHexVerticesByBoardIdLookup = ${authoredHexVerticesByBoardId};
 const authoredHexEdgeIdsByBoardIdAndRefLookup = ${authoredHexEdgeIdsByBoardIdAndRef};
 const authoredHexVertexIdsByBoardIdAndRefLookup = ${authoredHexVertexIdsByBoardIdAndRef};
-const perPlayerBoardIdsByBaseIdAndPlayerIdLookup = ${perPlayerBoardIdsByBaseIdAndPlayerId};
 
 function authoredHexRefKey(spaceIds: readonly string[]): string {
   return [...spaceIds]
@@ -4388,23 +4450,25 @@ export const boardHelpers = {
     }
     return vertexIds as (typeof vertexIdsByBoardIdAndTypeIdLookup)[BoardIdValue][TypeIdValue];
   },
-  boardIdForPlayer<
-    BoardBaseIdValue extends keyof typeof perPlayerBoardIdsByBaseIdAndPlayerIdLookup,
-    PlayerIdValue extends keyof (typeof perPlayerBoardIdsByBaseIdAndPlayerIdLookup)[BoardBaseIdValue],
-  >(
-    boardBaseId: BoardBaseIdValue,
-    playerId: PlayerIdValue,
-  ): (typeof perPlayerBoardIdsByBaseIdAndPlayerIdLookup)[BoardBaseIdValue][PlayerIdValue] {
-    const boardIdsByPlayerId = perPlayerBoardIdsByBaseIdAndPlayerIdLookup[
-      boardBaseId
-    ] as Record<string, string> | undefined;
-    const boardId = boardIdsByPlayerId?.[String(playerId)];
-    if (!boardId) {
-      throw new Error(
-        \`Unknown per-player board '\${String(boardBaseId)}' for player '\${String(playerId)}'.\`,
-      );
-    }
-    return boardId as (typeof perPlayerBoardIdsByBaseIdAndPlayerIdLookup)[BoardBaseIdValue][PlayerIdValue];
+  // Returns a \`BoardRef\` describing a per-player board scoped to the supplied
+  // seat. The old \`boardIdForPlayer\` returned a concrete runtime-board-id
+  // string, which encoded the "one board per maxPlayers seat" assumption in
+  // static data. Under the PerPlayer model the runtime roster is not known at
+  // generate time, so consumers deal with \`BoardRef\` and let the runtime
+  // resolve the actual owner seat.
+  boardRefForPlayer(
+    boardBaseId: BoardBaseId,
+    playerId: PlayerId,
+  ): PerPlayerBoardRef<BoardBaseId, PlayerId> {
+    return boardRef(boardBaseId, playerId) as PerPlayerBoardRef<
+      BoardBaseId,
+      PlayerId
+    >;
+  },
+  sharedBoardRef(
+    boardBaseId: BoardBaseId,
+  ): SharedBoardRef<BoardBaseId> {
+    return boardRef(boardBaseId) as SharedBoardRef<BoardBaseId>;
   },
 } as const;`;
 }
@@ -4416,6 +4480,20 @@ function renderManifestContractSource(manifest: GameTopologyManifest): string {
     playerIds: analysis.playerIds,
     shuffleItems: <Value>(values: readonly Value[]) => [...values],
   });
+  const initialTableBoards = (
+    initialTableTemplate as {
+      boards: {
+        byId: unknown;
+        hex: unknown;
+        square: unknown;
+      };
+    }
+  ).boards;
+  const staticBoardsTemplate = {
+    byId: initialTableBoards.byId,
+    hex: initialTableBoards.hex,
+    square: initialTableBoards.square,
+  };
   const sharedZoneIds = analysis.sharedZones.map((zone) => zone.id).sort();
   const playerZoneIds = analysis.playerZones.map((zone) => zone.id).sort();
   const zoneVisibilityById = Object.fromEntries(
@@ -4458,7 +4536,7 @@ function renderManifestContractSource(manifest: GameTopologyManifest): string {
   const playerZoneCardIdEntries = playerZoneIds
     .map((zoneId) => {
       const allowedCardSetIds = analysis.playerZoneCardSetIds.get(zoneId) ?? [];
-      return `  ${quote(zoneId)}: PlayerRecord<${renderZoneCardIdArrayType(allowedCardSetIds)}>;`;
+      return `  ${quote(zoneId)}: PerPlayer<${renderZoneCardIdArrayType(allowedCardSetIds)}>;`;
     })
     .join("\n");
 
@@ -4581,39 +4659,51 @@ import {
   isTypedId,
 } from "@dreamboard/sdk-types";
 import {
+  asPlayerId,
   assumeManifestSchema,
+  boardRef,
+  boardRefKey,
+  boardRefSchema,
   cloneManifestDefault,
   createManifestGameStateSchema,
   createManifestRuntimeSchema,
   createManifestStringLiteralSchema,
+  dealToPlayerBoardContainer as createDealToPlayerBoardContainerStep,
+  dealToPlayerZone as createDealToPlayerZoneStep,
+  perPlayer,
+  perPlayerEntries,
+  perPlayerGet,
+  perPlayerHas,
+  perPlayerKeys,
+  perPlayerSchema,
   resolveManifestPlayerIds,
+  seedSharedBoardContainer as createSeedSharedBoardContainerStep,
+  seedSharedBoardSpace as createSeedSharedBoardSpaceStep,
+  shuffle as createShuffleStep,
+  type CardIdOfManifest,
+  type DieIdOfManifest,
+  type PieceIdOfManifest,
+  type BoardRef,
+  type PerPlayer,
+  type PerPlayerBoardRef,
+  type PlayerId,
+  type ReducerManifestContract,
+  type RuntimeCardData,
+  type RuntimeCardVisibility,
+  type RuntimeComponentLocation,
+  type RuntimeDieData,
+  type RuntimeHandVisibilityMode,
+  type RuntimePieceData,
+  type RuntimeRecord,
+  type RuntimeTableRecord,
   type SetupBootstrapContainerRef,
   type SetupBootstrapDestinationRef,
   type SetupBootstrapPerPlayerContainerTemplateRef,
   type SetupBootstrapStep,
   type SetupProfileDefinition,
-} from "@dreamboard/app-sdk/reducer/model";
-import type {
-  CardIdOfManifest,
-  DieIdOfManifest,
-  PieceIdOfManifest,
-  ReducerManifestContract,
-  RuntimeCardData,
-  RuntimeCardVisibility,
-  RuntimeComponentLocation,
-  RuntimeDieData,
-  RuntimeHandVisibilityMode,
-  RuntimePieceData,
-  RuntimeRecord,
-  RuntimeTableRecord,
-} from "@dreamboard/app-sdk/reducer/model";
-import {
-  dealToPlayerBoardContainer as createDealToPlayerBoardContainerStep,
-  dealToPlayerZone as createDealToPlayerZoneStep,
-  seedSharedBoardContainer as createSeedSharedBoardContainerStep,
-  seedSharedBoardSpace as createSeedSharedBoardSpaceStep,
-  shuffle as createShuffleStep,
-} from "@dreamboard/app-sdk/reducer/setup-bootstrap-helpers";
+  type SharedBoardRef,
+  type StaticBoards,
+} from "@dreamboard/app-sdk/reducer";
 
 const unknownRecordSchema = assumeManifestSchema<RuntimeRecord>(
   z.record(z.string(), z.unknown()),
@@ -4622,11 +4712,17 @@ const unknownRecordSchema = assumeManifestSchema<RuntimeRecord>(
 function resolveDefaultPlayerIds(
   playerIds: readonly string[] | undefined,
 ): readonly PlayerId[] {
-  return resolveManifestPlayerIds(literals.playerIds, playerIds);
+  return resolveManifestPlayerIds(
+    literals.playerIds as unknown as readonly PlayerId[],
+    playerIds,
+  );
 }
 
 export const literals = {
-  playerIds: ${renderConstArray(analysis.playerIds)},
+  // literals satisfy \`ManifestLiterals<PlayerId, ...>\`. The cast is safe
+  // because the runtime values are the exact player-id strings the manifest
+  // authored; branding is purely a type-level discipline.
+  playerIds: ${renderConstArray(analysis.playerIds)} as unknown as readonly PlayerId[],
   phaseNames: [] as readonly string[],
   boardLayouts: ["generic", "hex", "square"] as const,
   setupOptionIds: ${renderConstArray(analysis.setupOptionIds)},
@@ -4675,7 +4771,17 @@ export const literals = {
   )},
 } as const;
 
-const playerIdSchema = createManifestStringLiteralSchema(literals.playerIds);
+// PlayerId is an opaque brand imported from @dreamboard/app-sdk/reducer.
+// We intentionally do NOT enumerate the manifest's max-players roster here:
+// the runtime session may have fewer active seats than the manifest declares,
+// and requiring ingress to pick a literal from the max-players set reintroduces
+// the "total-record" assumption the refactor is meant to eliminate. Runtime
+// roster validation is done through perPlayerSchema(runtimePlayerIds, ...)
+// instead, which can be bound to the actual active roster.
+const playerIdSchema = z
+  .string()
+  .min(1)
+  .transform((value) => asPlayerId(value));
 const phaseNameSchema = z.string();
 const boardLayoutSchema = createManifestStringLiteralSchema(literals.boardLayouts);
 const setupOptionIdSchema = createManifestStringLiteralSchema(literals.setupOptionIds);
@@ -4741,7 +4847,7 @@ export const ids = {
   spaceTypeId: spaceTypeIdSchema,
 } as const;
 
-export type PlayerId = z.infer<typeof playerIdSchema>;
+export type { PlayerId };
 export type PhaseName = z.infer<typeof phaseNameSchema>;
 export type BoardLayout = z.infer<typeof boardLayoutSchema>;
 export type SetupOptionId = z.infer<typeof setupOptionIdSchema>;
@@ -4771,19 +4877,25 @@ export type VertexTypeId = z.infer<typeof vertexTypeIdSchema>;
 export type SpaceId = z.infer<typeof spaceIdSchema>;
 export type SpaceTypeId = z.infer<typeof spaceTypeIdSchema>;
 
+${renderGeneratedIdHandles(analysis)}
+
 ${renderGeneratedRecordsHelpers()}
 
 ${renderGeneratedIdGuards()}
 
-export type PlayerRecord<T> = Record<PlayerId, T>;
+// Historically this emitted PlayerRecord<T> = Record<PlayerId, T>, but that
+// type reified the "total roster" assumption (one entry per max-player). It has
+// been replaced throughout the generated contract with PerPlayer<T> from
+// @dreamboard/app-sdk/reducer, whose entries array matches the
+// actual runtime seat list.
 export type SharedZoneRecord<T> = Record<SharedZoneId, T>;
-export type PlayerZoneRecord<T> = Record<PlayerZoneId, PlayerRecord<T>>;
+export type PlayerZoneRecord<T> = Record<PlayerZoneId, PerPlayer<T>>;
 export type ComponentId = CardId | PieceId | DieId;
 export type ComponentIdsBySharedZoneId = {
 ${sharedZoneIds.map((zoneId) => `  ${quote(zoneId)}: ComponentId[];`).join("\n")}
 };
 export type ComponentIdsByPlayerZoneId = {
-${playerZoneIds.map((zoneId) => `  ${quote(zoneId)}: PlayerRecord<ComponentId[]>;`).join("\n")}
+${playerZoneIds.map((zoneId) => `  ${quote(zoneId)}: PerPlayer<ComponentId[]>;`).join("\n")}
 };
 export type SetupOptionChoice = {
   id: string;
@@ -5290,7 +5402,7 @@ export interface TableState extends RuntimeTableRecord {
   componentLocations: Record<ComponentId, RuntimeComponentLocation>;
   ownerOfCard: Record<CardId, PlayerId | null>;
   visibility: Record<CardId, RuntimeCardVisibility>;
-  resources: PlayerRecord<Record<ResourceId, number>>;
+  resources: PerPlayer<Record<ResourceId, number>>;
   boards: {
     byId: BoardStateById;
     hex: HexBoardStateById;
@@ -5302,9 +5414,10 @@ export interface TableState extends RuntimeTableRecord {
 }
 
 const sharedZoneSchema = z.record(sharedZoneIdSchema, z.array(z.string()));
+// PerPlayer<Array<string>> wire shape only: { __perPlayer: true, entries: [[playerId, value], ...] }.
 const playerZoneSchema = z.record(
   playerZoneIdSchema,
-  z.record(z.string(), z.array(z.string())),
+  perPlayerSchema(z.array(z.string())),
 );
 const cardStateSchema = z.object({
   componentType: z.string().optional(),
@@ -5492,7 +5605,7 @@ const rawTableSchema = z.object({
       visibleTo: z.array(ids.playerId).nullable().optional(),
     }),
   ),
-  resources: z.record(z.string(), z.record(ids.resourceId, z.number().int())),
+  resources: perPlayerSchema(z.record(ids.resourceId, z.number().int())),
   boards: z.object({
     byId: boardStateByIdSchema,
     hex: hexBoardStateByIdSchema,
@@ -5509,37 +5622,28 @@ export const runtimeSchema = createManifestRuntimeSchema({
   setupProfileIdSchema: ids.setupProfileId,
 });
 
-function buildPlayerRecord<Value>(
-  playerIds: readonly PlayerId[],
-  createValue: () => Value,
-): PlayerRecord<Value> {
-  return Object.fromEntries(
-    playerIds.map((playerId) => [playerId, createValue()]),
-  ) as PlayerRecord<Value>;
-}
-
+// Produces an empty PerPlayer<CardId[]> for every player zone. The entries
+// array is seeded from the resolved runtime roster so the generated default
+// never creates a record for a player the session does not have.
 function buildPerPlayerCardIds(
   playerIds: readonly PlayerId[],
 ): CardIdsByPlayerZoneId {
   return Object.fromEntries(
     literals.playerZoneIds.map((zoneId) => [
       zoneId,
-      buildPlayerRecord(playerIds, () => [] as CardId[]),
+      perPlayer(playerIds, () => [] as CardId[]),
     ]),
   ) as CardIdsByPlayerZoneId;
 }
 
 function buildPlayerResources(
   playerIds: readonly PlayerId[],
-): PlayerRecord<Record<ResourceId, number>> {
-  return Object.fromEntries(
-    playerIds.map((playerId) => [
-      playerId,
-      Object.fromEntries(
-        literals.resourceIds.map((resourceId) => [resourceId, 0]),
-      ),
-    ]),
-  ) as PlayerRecord<Record<ResourceId, number>>;
+): PerPlayer<Record<ResourceId, number>> {
+  return perPlayer(playerIds, () =>
+    Object.fromEntries(
+      literals.resourceIds.map((resourceId) => [resourceId, 0]),
+    ) as Record<ResourceId, number>,
+  );
 }
 
 export const defaults = {
@@ -5569,8 +5673,10 @@ export const defaults = {
   ownerOfCard: () => cloneManifestDefault(${JSON.stringify(defaultOwnerTemplate)}) as TableState["ownerOfCard"],
   visibility: () => cloneManifestDefault(${JSON.stringify(defaultVisibilityTemplate)}) as TableState["visibility"],
   resources: (playerIds?: readonly string[]) =>
-    buildPlayerResources(resolveDefaultPlayerIds(playerIds)) as TableState["resources"],
+    buildPlayerResources(resolveDefaultPlayerIds(playerIds)),
 } as const;
+
+export const staticBoards = ${renderJsonConst(staticBoardsTemplate)};
 
 const baseInitialTable = ${renderJsonConst(initialTableTemplate)} as unknown as TableState;
 const baseDeckCardsByZoneId: Record<SharedZoneId, readonly CardId[]> = ${renderJsonConst(
@@ -5665,6 +5771,7 @@ export const manifestContract = {
   literals,
   ids,
   defaults,
+  staticBoards: staticBoards as unknown as StaticBoards<TableState>,
   setupOptionsById,
   setupChoiceIdsByOptionId,
   setupProfilesById,

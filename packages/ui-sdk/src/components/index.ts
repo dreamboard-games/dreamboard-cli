@@ -119,6 +119,11 @@ export {
   type DefaultChessPieceProps,
 } from "./board/SquareGrid.js";
 
+export type {
+  InteractiveTargetLayer,
+  InteractiveTargetRenderState,
+} from "./board/target-layer.js";
+
 export {
   HexGrid,
   hexUtils,

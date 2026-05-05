@@ -20,6 +20,7 @@ const sourcePackage = JSON.parse(
   keywords?: string[];
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
   description?: string;
   repository?: string | { type?: string; url?: string };
   homepage?: string;
@@ -52,6 +53,17 @@ const sdkDependencyRanges = Object.fromEntries(
         ),
       ],
       [
+        "@dreamboard/testing",
+        path.join(
+          packageRoot,
+          "..",
+          "..",
+          "packages",
+          "testing",
+          "package.json",
+        ),
+      ],
+      [
         "@dreamboard/ui-sdk",
         path.join(
           packageRoot,
@@ -78,6 +90,17 @@ const packagedDependencies = Object.fromEntries(
 if (sourcePackage.devDependencies?.playwright) {
   packagedDependencies.playwright = sourcePackage.devDependencies.playwright;
 }
+// Forward optionalDependencies verbatim so platform-specific native
+// packages (e.g. @napi-rs/keyring for the OS keychain backend) still
+// install opportunistically in the published CLI. npm only surfaces
+// install warnings for optionalDependencies that fail to build, which
+// is exactly the fallback behaviour we want: if keyring is missing the
+// CLI drops back to the file credential backend.
+const packagedOptionalDependencies = Object.fromEntries(
+  Object.entries(sourcePackage.optionalDependencies ?? {}).filter(
+    ([packageName]) => !packageName.startsWith("@dreamboard/"),
+  ),
+);
 
 const repositoryUrl =
   typeof sourcePackage.repository === "string"
@@ -118,6 +141,9 @@ const packageJson: Record<string, unknown> = {
     access: "public",
   },
   dependencies: packagedDependencies,
+  ...(Object.keys(packagedOptionalDependencies).length > 0
+    ? { optionalDependencies: packagedOptionalDependencies }
+    : {}),
   dreamboardSdkDependencyRanges: sdkDependencyRanges,
   license:
     sourcePackage.license ??

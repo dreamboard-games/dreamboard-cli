@@ -1,4 +1,4 @@
-import { afterAll, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, expect, mock, test } from "bun:test";
 
 const queryWorkshopRulebook = mock(async () => ({
   data: {
@@ -12,8 +12,17 @@ const loadGlobalConfig = mock(async () => ({
   authToken: "test-token",
   environment: "local",
 }));
+const getStoredSession = mock(async () => ({
+  accessToken: "stored-access-token",
+  refreshToken: "stored-refresh-token",
+  expiresAt: null,
+}));
 const configureClient = mock(async () => undefined);
 const requireAuth = mock(() => undefined);
+const resolveConfig = mock(() => ({
+  apiBaseUrl: "http://127.0.0.1:8080",
+  authToken: "test-token",
+}));
 const consoleLog = mock(() => undefined);
 const actualFlags = await import("../flags.js");
 
@@ -28,11 +37,12 @@ mock.module("../config/global-config.js", () => ({
   loadGlobalConfig,
 }));
 
+mock.module("../config/credential-store.js", () => ({
+  getStoredSession,
+}));
+
 mock.module("../config/resolve.js", () => ({
-  resolveConfig: () => ({
-    apiBaseUrl: "http://127.0.0.1:8080",
-    authToken: "test-token",
-  }),
+  resolveConfig,
   resolveProjectContext: async () => {
     throw new Error("Unexpected resolveProjectContext call in query test");
   },
@@ -54,6 +64,15 @@ afterAll(() => {
 
 const queryCommand = (await import("./query.ts")).default;
 
+beforeEach(() => {
+  queryWorkshopRulebook.mockClear();
+  loadGlobalConfig.mockClear();
+  getStoredSession.mockClear();
+  configureClient.mockClear();
+  requireAuth.mockClear();
+  resolveConfig.mockClear();
+});
+
 test("query command fetches rulebook text from the backend", async () => {
   await queryCommand.run({
     args: {
@@ -73,4 +92,27 @@ test("query command fetches rulebook text from the backend", async () => {
   expect(consoleLog).toHaveBeenCalledWith(
     "Dreamboard sample rules text excerpt. Top-three fallback succeeded.",
   );
+});
+
+test("query command threads the freshly loaded stored session into resolveConfig", async () => {
+  // Regression: query previously called resolveConfig without a stored
+  // session, so a freshly persisted credential (e.g. just after `dreamboard
+  // login` or `dreamboard config set`) was ignored on the very next
+  // invocation.
+  await queryCommand.run({
+    args: {
+      title: "Chess",
+      env: "local",
+    },
+  });
+
+  expect(getStoredSession).toHaveBeenCalledTimes(1);
+  expect(resolveConfig).toHaveBeenCalledTimes(1);
+  const callArgs = resolveConfig.mock.calls[0]!;
+  expect(callArgs.length).toBeGreaterThanOrEqual(4);
+  expect(callArgs[3]).toEqual({
+    accessToken: "stored-access-token",
+    refreshToken: "stored-refresh-token",
+    expiresAt: null,
+  });
 });

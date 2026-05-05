@@ -20,6 +20,7 @@ import {
   HostPlayerSwitcher,
   HostSessionMetadata,
   HostSessionToolbar,
+  PerfOverlay,
   type HostControllablePlayer,
 } from "@dreamboard/ui-host-runtime/components";
 import {
@@ -35,7 +36,10 @@ import {
   stringifyForRelay,
   type DevLogEnvelope,
 } from "./dev-diagnostics.js";
-import { DevHostController } from "./dev-host-controller.js";
+import {
+  DevHostController,
+  type DevHostRuntimeError,
+} from "./dev-host-controller.js";
 import {
   SessionStorageDevHostStorage,
   type ActiveSession,
@@ -80,13 +84,11 @@ const controller = new DevHostController(
   storage,
   {
     autoStartGame: devConfig.autoStartGame,
-    authToken: devConfig.authToken,
     compiledResultId: devConfig.compiledResultId,
     debug: devConfig.debug,
+    fallbackSession: devConfig.initialSession,
     gameId: devConfig.gameId,
-    seed: devConfig.seed,
-    sessionId: devConfig.sessionId,
-    shortCode: devConfig.shortCode,
+    playerCount: devConfig.playerCount,
     setupProfileId: devConfig.setupProfileId,
     slug: devConfig.slug,
     userId: devConfig.userId,
@@ -94,18 +96,50 @@ const controller = new DevHostController(
   devLogger,
 );
 
-client.setConfig({
-  baseUrl: devConfig.apiBaseUrl,
-  headers: devConfig.authToken
-    ? { Authorization: `Bearer ${devConfig.authToken}` }
-    : {},
-});
+// The browser never sees the bearer token. All backend traffic is
+// same-origin and the CLI's reverse-proxy middleware (`/api/*`) injects
+// `Authorization: Bearer <fresh>` on the wire.
+client.setConfig({ baseUrl: "" });
+installProxyAuthErrorInterceptor();
 
 const app = document.getElementById("app");
 if (!(app instanceof HTMLElement)) {
   throw new Error("Missing root app container.");
 }
 const root = createRoot(app);
+
+function installProxyAuthErrorInterceptor(): void {
+  client.interceptors.response.use(async (response) => {
+    if (response.status !== 401) {
+      return response;
+    }
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!contentType.includes("application/json")) {
+      return response;
+    }
+    // Clone first so downstream handlers can still read the body.
+    const clone = response.clone();
+    let payload: { error?: unknown; message?: unknown } | null = null;
+    try {
+      payload = (await clone.json()) as typeof payload;
+    } catch {
+      return response;
+    }
+    if (payload?.error !== "session_invalid") {
+      return response;
+    }
+    const detail =
+      typeof payload.message === "string" && payload.message.length > 0
+        ? payload.message
+        : "Stored Dreamboard session is no longer valid.";
+    controller.reportRuntimeError({
+      title: "Session expired",
+      summary: `${detail} Run \`dreamboard login\` in your terminal, then reload this page.`,
+      violations: [],
+    });
+    return response;
+  });
+}
 
 const restoreConsoleRelay = installConsoleRelay("host");
 const removeWindowErrorRelay = installWindowErrorRelay("host");
@@ -155,12 +189,16 @@ function render(): void {
     <DevHostApp
       session={controllerState.session}
       phase={state.phase}
+      bootstrapStatus={state.bootstrap.status}
       isConnected={state.isConnected}
       connectionError={state.connectionError}
+      runtimeError={controllerState.runtimeError}
       syncId={state.syncId}
       pluginReady={controllerState.pluginReady}
       controllablePlayers={controllablePlayers}
-      controllingPlayerId={session.controllingPlayerId}
+      controllingPlayerId={
+        state.selectedPlayerId ?? session.controllingPlayerId
+      }
       canStart={state.phase === "lobby" && state.lobby.canStart}
       isHost={isHost}
       history={state.history}
@@ -180,6 +218,7 @@ function render(): void {
       onReadNotification={(notificationId) =>
         store.getState().markNotificationRead(notificationId)
       }
+      onDismissRuntimeError={() => controller.dismissRuntimeError()}
       onIframeReady={(element) => {
         controller.setIframe(element);
       }}
@@ -193,8 +232,10 @@ function render(): void {
 type DevHostAppProps = {
   session: ActiveSession;
   phase: string;
+  bootstrapStatus: "loading" | "lobby" | "renderable" | "error";
   isConnected: boolean;
   connectionError: string | null;
+  runtimeError: DevHostRuntimeError | null;
   syncId: number;
   pluginReady: boolean;
   controllablePlayers: HostControllablePlayer[];
@@ -214,6 +255,7 @@ type DevHostAppProps = {
   onRestoreHistory: (entryId: string) => Promise<void>;
   onDismissHostFeedback: (feedbackId: string) => void;
   onReadNotification: (notificationId: string) => void;
+  onDismissRuntimeError: () => void;
   onIframeReady: (element: HTMLIFrameElement | null) => void;
   onIframeLoad: () => void;
 };
@@ -221,8 +263,10 @@ type DevHostAppProps = {
 function DevHostApp({
   session,
   phase,
+  bootstrapStatus,
   isConnected,
   connectionError,
+  runtimeError,
   syncId,
   pluginReady,
   controllablePlayers,
@@ -242,13 +286,14 @@ function DevHostApp({
   onRestoreHistory,
   onDismissHostFeedback,
   onReadNotification,
+  onDismissRuntimeError,
   onIframeReady,
   onIframeLoad,
 }: DevHostAppProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(() =>
     storage.loadSidebarOpen(),
   );
-  const needsBootstrap = phase !== "error" && syncId === 0;
+  const needsBootstrap = phase !== "error" && bootstrapStatus === "loading";
 
   const handleToggleSidebar = (open: boolean) => {
     setIsSidebarOpen(open);
@@ -297,6 +342,12 @@ function DevHostApp({
               ) : null}
             </div>
           </div>
+        ) : null}
+        {runtimeError ? (
+          <RuntimeErrorOverlay
+            error={runtimeError}
+            onDismiss={onDismissRuntimeError}
+          />
         ) : null}
       </main>
 
@@ -436,6 +487,7 @@ function DevHostApp({
           </div>
         </DrawerContent>
       </Drawer>
+      <PerfOverlay />
     </div>
   );
 }
@@ -444,6 +496,81 @@ function StatusPill({ label }: { label: string }) {
   return (
     <div className="dev-drawer-note inline-flex items-center border border-border/25 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] wobbly-border">
       {label}
+    </div>
+  );
+}
+
+/**
+ * Full-viewport overlay that surfaces runtime failures (e.g. reducer
+ * `initialize` rejections, session-start 500s) to the game author instead of
+ * burying them in the backend log. Each violation is rendered as its own
+ * block so the JS stack trace — which the backend already parses into a
+ * separate violation entry — stays readable with file/line detail intact.
+ */
+function RuntimeErrorOverlay({
+  error,
+  onDismiss,
+}: {
+  error: DevHostRuntimeError;
+  onDismiss: () => void;
+}) {
+  const headlineViolation =
+    error.violations.length > 0 ? error.violations[0] : null;
+  const stackViolations = error.violations.slice(1);
+
+  return (
+    <div className="absolute inset-0 z-40 flex items-center justify-center bg-[#2d2d2d]/70 px-6 py-8 backdrop-blur-[2px]">
+      <div className="relative max-h-[85vh] w-full max-w-2xl overflow-hidden border-[3px] border-border bg-[#fff7e5] shadow-[8px_8px_0px_0px_#2d2d2d] wobbly-border-lg">
+        <div className="flex items-start justify-between gap-4 border-b-[3px] border-border bg-[#ffd3d3] px-5 py-4">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-foreground/70">
+              Runtime error
+            </p>
+            <h2 className="mt-1 text-2xl font-display text-foreground">
+              {error.title}
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="shrink-0 border-[2px] border-border bg-white p-1.5 shadow-[2px_2px_0px_0px_#2d2d2d] transition-all hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_#2d2d2d] wobbly-border"
+            title="Dismiss"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="max-h-[calc(85vh-88px)] overflow-y-auto px-5 py-4">
+          <p className="text-sm font-medium text-foreground">{error.summary}</p>
+          {headlineViolation ? (
+            <div className="mt-4 border-[2px] border-border bg-white px-3 py-2 wobbly-border">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                {headlineViolation.code ?? "message"}
+                {headlineViolation.field ? ` · ${headlineViolation.field}` : ""}
+              </p>
+              <p className="mt-1 whitespace-pre-wrap break-words text-sm font-bold text-foreground">
+                {headlineViolation.message}
+              </p>
+            </div>
+          ) : null}
+          {stackViolations.length > 0 ? (
+            <details className="mt-4" open>
+              <summary className="cursor-pointer text-[11px] font-bold uppercase tracking-[0.2em] text-foreground/70">
+                Stack trace
+              </summary>
+              <pre className="mt-2 max-h-64 overflow-auto border-[2px] border-border bg-[#1f1f1f] p-3 text-[11px] leading-relaxed text-[#f8f8f2] wobbly-border">
+                {stackViolations
+                  .map((violation) => violation.message)
+                  .join("\n")}
+              </pre>
+            </details>
+          ) : null}
+          {error.correlationId ? (
+            <p className="mt-4 text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+              Request ID · {error.correlationId}
+            </p>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }

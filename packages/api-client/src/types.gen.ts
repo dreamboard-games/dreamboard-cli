@@ -2018,7 +2018,7 @@ export type SeatAssignment = {
 };
 
 /**
- * Complete session status including all fields needed by the frontend. Durable lobby and gameplay details are provided via the SESSION_BOOTSTRAP SSE message.
+ * Complete session status including all fields needed by the frontend. Durable lobby and gameplay details are provided via the gameplay.bootstrap SSE message.
  */
 export type SessionStatus = {
     /**
@@ -2061,473 +2061,312 @@ export type SessionStatus = {
 
 export type SessionSnapshotPhase = 'lobby' | 'gameplay' | 'ended';
 
-export type SessionSnapshotLobby = {
+/**
+ * Stable session identity and phase for deterministic host bootstrapping.
+ */
+export type SessionBootstrapSession = {
     /**
-     * Current seat assignments for the session
+     * Unique identifier for the session
      */
-    seats: Array<SeatAssignment>;
+    sessionId: string;
     /**
-     * Whether the lobby can currently be started
+     * Memorable short code for sharing (e.g., 'swift-falcon-73')
      */
-    canStart: boolean;
+    shortCode: string;
+    /**
+     * Unique identifier for the game definition
+     */
+    gameId: string;
     /**
      * User ID of the session host
      */
     hostUserId: string;
+    /**
+     * Overall session status
+     */
+    status: 'active' | 'ended';
+    phase: SessionSnapshotPhase;
     /**
      * Selected authored setup profile for this session
      */
     setupProfileId?: string;
 };
 
-/**
- * Type of parameter accepted by a runtime action
- */
-export type ParameterType = 'cardId' | 'cardType' | 'playerId' | 'string' | 'number' | 'boolean' | 'zoneId' | 'pieceId' | 'dieId' | 'boardId' | 'edgeId' | 'vertexId' | 'spaceId' | 'resourceId';
-
-/**
- * Defines a parameter for an action
- */
-export type ActionParameterDefinition = {
-    name: string;
-    type: ParameterType;
-    required?: boolean;
-    array?: boolean;
-    minLength?: number;
-    maxLength?: number;
+export type SessionLobbySnapshot = {
     /**
-     * Optional card set ID to specify which card set a CARD_ID parameter refers to
+     * Current public seat assignments for the session.
      */
-    cardSetId?: string;
-    description?: string;
+    seats: Array<SeatAssignment>;
+    /**
+     * Whether the lobby can currently be started.
+     */
+    canStart: boolean;
+    /**
+     * User ID of the session host.
+     */
+    hostUserId: string;
+    /**
+     * Selected authored setup profile for this session.
+     */
+    setupProfileId?: string;
+};
+
+export type HostControlSnapshot = {
+    /**
+     * Player IDs the authenticated user may select for scoped gameplay.
+     */
+    switchablePlayerIds: Array<string>;
 };
 
 /**
- * Defines an available player action with metadata and parameter definitions
- */
-export type ActionDefinition = {
-    /**
-     * Unique action identifier
-     */
-    actionType: string;
-    /**
-     * UI display name for this action
-     */
-    displayName: string;
-    /**
-     * Optional help text describing the action
-     */
-    description?: string;
-    /**
-     * List of parameters this action accepts
-     */
-    parameters: Array<ActionParameterDefinition>;
-    /**
-     * List of possible validation error codes
-     */
-    errorCodes?: Array<string>;
-};
-
-export type PlayerAvailableActions = {
-    playerId: string;
-    actions: Array<ActionDefinition>;
-};
-
-export type GameplayPromptOption = {
-    id: string;
-    label: string;
-};
-
-export type GameplayPromptInstance = {
-    id: string;
-    promptId: string;
-    to: string;
-    title?: string;
-    /**
-     * JSON-serialized prompt payload
-     */
-    payload?: string;
-    options: Array<GameplayPromptOption>;
-};
-
-export type GameplaySnapshot = {
-    /**
-     * Monotonic gameplay version for stale-client detection
-     */
-    version: number;
-    /**
-     * Player IDs currently active in the game state
-     */
-    activePlayers: Array<string>;
-    /**
-     * Player IDs this user can control in the session
-     */
-    controllablePlayerIds: Array<string>;
-    /**
-     * Current reducer-native gameplay phase
-     */
-    currentPhase: string;
-    /**
-     * JSON-serialized reducer-projected UI views keyed by player ID
-     */
-    seatViewsByPlayerId: {
-        [key: string]: string;
-    };
-    /**
-     * Available action metadata grouped by controllable player
-     */
-    availableActions: Array<PlayerAvailableActions>;
-    prompts: Array<GameplayPromptInstance>;
-};
-
-/**
- * Summary of a game state history entry
+ * Summary of a game state history entry.
  */
 export type HistoryEntrySummary = {
-    /**
-     * Unique identifier for this history entry
-     */
     id: string;
-    /**
-     * Event store version number
-     */
     version: number;
-    /**
-     * When this snapshot was created
-     */
     timestamp: string;
-    /**
-     * Human-readable description of the action
-     */
     description: string;
-    /**
-     * Player who performed the action
-     */
     playerId?: string;
-    /**
-     * Type of action that triggered this snapshot
-     */
     actionType?: string;
-    /**
-     * Whether this is the current game state
-     */
     isCurrent: boolean;
 };
 
 export type SessionSnapshotHistory = {
-    /**
-     * Durable game history entries available to the current user
-     */
     entries: Array<HistoryEntrySummary>;
-    /**
-     * Index of the selected history entry
-     */
     currentIndex: number;
-    /**
-     * Whether an earlier history entry exists
-     */
     canGoBack: boolean;
-    /**
-     * Whether a later history entry exists
-     */
     canGoForward: boolean;
 };
 
+export type ResourceMapDomainEntry = {
+    resourceId: string;
+    label?: string;
+    min: number;
+    max: number;
+};
+
+export type ChoiceDomainOption = {
+    value: string;
+    label: string;
+};
+
+export type InputDomain = {
+    type: 'target' | 'resourceMap' | 'boundedNumber' | 'choice' | 'opaque';
+    targetKind?: string;
+    boardId?: string;
+    zoneId?: string;
+    eligibleTargets?: Array<string>;
+    resources?: Array<ResourceMapDomainEntry>;
+    min?: number;
+    max?: number;
+    step?: number;
+    choices?: Array<ChoiceDomainOption>;
+};
+
 /**
- * Durable session snapshot sent first on every session event stream connection
+ * Canonical descriptor for one interaction input collector.
  */
-export type SessionSnapshotMessage = {
-    type: 'SESSION_BOOTSTRAP';
+export type InteractionInputDescriptor = {
+    key: string;
+    kind: string;
+    domain: InputDomain;
+};
+
+export type InteractionContextOption = {
+    id: string;
+    label: string;
+};
+
+export type InteractionContext = {
+    to: string;
+    title?: string;
+    payload?: {
+        [key: string]: JsonValue;
+    };
+    options?: Array<InteractionContextOption>;
+};
+
+/**
+ * Authoritative interaction descriptor resolved by the trusted bundle.
+ */
+export type InteractionDescriptor = {
+    phaseName: string;
+    interactionKey: string;
+    interactionId: string;
+    surface: string;
+    kind: 'action' | 'prompt';
+    label: string;
+    shortLabel?: string;
+    icon?: string;
+    description?: string;
+    emphasis?: 'primary' | 'secondary' | 'destructive';
+    group?: string;
+    zoneId?: string;
     /**
-     * User ID this message is addressed to
+     * Ordered input descriptors. Each entry is the canonical source for its collector key, collector kind, and valid-value domain.
      */
-    toUser: string;
+    inputs: Array<InteractionInputDescriptor>;
+    cost?: {
+        [key: string]: JsonValue;
+    };
+    currentResources?: {
+        [key: string]: JsonValue;
+    };
+    available: boolean;
+    unavailableReason?: string;
+    context?: InteractionContext;
+};
+
+export type ZoneHandles = {
+    cardIds: Array<string>;
+    cardsById: {
+        [key: string]: string;
+    };
+    playableByCardId: {
+        [key: string]: Array<InteractionDescriptor>;
+    };
+};
+
+export type PlayerGameplaySnapshot = {
+    /**
+     * Monotonic gameplay version for stale-client detection.
+     */
+    version: number;
+    /**
+     * Opaque revision token for the selected player's current descriptors and input domains.
+     */
+    actionSetVersion: string;
+    /**
+     * Player ID this gameplay snapshot is scoped to.
+     */
+    playerId: string;
+    /**
+     * Player IDs currently active in the game state.
+     */
+    activePlayers: Array<string>;
+    /**
+     * Current reducer-native gameplay phase.
+     */
+    currentPhase: string;
+    /**
+     * Current stage within the phase. Null when the phase has no active stage.
+     */
+    currentStage: string;
+    /**
+     * Player IDs this stage currently admits.
+     */
+    stageSeats: Array<string>;
+    /**
+     * JSON-serialized reducer-projected UI view for the scoped player.
+     */
+    view: string;
+    /**
+     * Interaction descriptors for the scoped player, resolved authoritatively by the trusted bundle.
+     */
+    availableInteractions: Array<InteractionDescriptor>;
+    /**
+     * Zone handles for the scoped player, keyed by zone id.
+     */
+    zones: {
+        [key: string]: ZoneHandles;
+    };
+    /**
+     * JSON-serialized session-scoped static view. Populated on gameplay bootstrap payloads only.
+     */
+    boardStatic?: string;
+    /**
+     * Content hash of the session-scoped static view held on the host.
+     */
+    boardStaticHash?: string;
+};
+
+/**
+ * Deterministic session bootstrap payload used for first render before live SSE updates.
+ */
+export type SessionBootstrap = {
+    session: SessionBootstrapSession;
+    lobby: SessionLobbySnapshot;
+    control: HostControlSnapshot;
+    history?: SessionSnapshotHistory;
+    /**
+     * Player selected for the initial scoped gameplay stream, if gameplay is available.
+     */
+    selectedPlayerId: string;
+    gameplay?: PlayerGameplaySnapshot;
+};
+
+export type LobbyBootstrapEvent = {
+    type: 'lobby.bootstrap';
     phase: SessionSnapshotPhase;
-    lobby: SessionSnapshotLobby;
-    gameplay?: GameplaySnapshot;
+    lobby: SessionLobbySnapshot;
+    control: HostControlSnapshot;
     history?: SessionSnapshotHistory;
 };
 
-export type GameplayUpdateMessage = {
-    type: 'GAMEPLAY_UPDATE';
-    toUser: string;
-    gameplay: GameplaySnapshot;
+export type LobbyUpdatedEvent = {
+    type: 'lobby.updated';
+    lobby: SessionLobbySnapshot;
+    control: HostControlSnapshot;
 };
 
-export type GameStartedMessage = {
-    type: 'GAME_STARTED';
-    /**
-     * User ID this message is addressed to
-     */
-    toUser: string;
-    /**
-     * Player IDs of currently active players
-     */
-    activePlayers: Array<string>;
-    /**
-     * Player IDs that this user can control in this session
-     */
-    controllablePlayerIds: Array<string>;
+export type HistoryUpdatedEvent = {
+    type: 'history.updated';
+    history: SessionSnapshotHistory;
 };
 
-export type YourTurnMessage = {
-    type: 'YOUR_TURN';
-    /**
-     * User ID this message is addressed to
-     */
-    toUser: string;
-    /**
-     * List of action definitions available to the player
-     */
-    availableActions: Array<ActionDefinition>;
-    /**
-     * Player IDs whose turn it is
-     */
-    activePlayers: Array<string>;
-};
-
-/**
- * Represents a player action with type and parameters
- */
-export type GameAction = {
-    /**
-     * Action type identifier from manifest availableActions
-     */
-    actionType: string;
-    /**
-     * JSON-serialized parameters specific to this action
-     */
-    parameters: string;
-};
-
-export type ActionExecutedMessage = {
-    type: 'ACTION_EXECUTED';
-    /**
-     * User ID this message is addressed to
-     */
-    toUser: string;
-    /**
-     * Player ID who executed the action
-     */
-    playerId: string;
-    action: GameAction;
-};
-
-export type ActionRejectedMessage = {
-    type: 'ACTION_REJECTED';
-    /**
-     * User ID this message is addressed to
-     */
-    toUser: string;
-    /**
-     * Reason why the action was rejected
-     */
-    reason: string;
-    /**
-     * Machine-readable error code from game logic validation
-     */
-    errorCode?: string;
-    /**
-     * Player ID whose action was rejected
-     */
-    targetPlayer?: string;
-};
-
-export type TurnChangedMessage = {
-    type: 'TURN_CHANGED';
-    /**
-     * User ID this message is addressed to
-     */
-    toUser: string;
-    /**
-     * Player IDs of the previous active players
-     */
-    previousPlayers: Array<string>;
-    /**
-     * Player IDs of the current active players
-     */
-    currentPlayers: Array<string>;
-};
-
-export type GameEndedMessage = {
-    type: 'GAME_ENDED';
-    /**
-     * User ID this message is addressed to
-     */
-    toUser: string;
-    /**
-     * Player ID of the winner (if any)
-     */
-    winner?: string;
-    /**
-     * Map of player IDs to their final scores
-     */
-    finalScores: {
-        [key: string]: number;
-    };
-    /**
-     * Reason for game ending
-     */
-    reason: string;
-};
-
-export type StateUpdateMessage = {
-    type: 'STATE_UPDATE';
-    /**
-     * User ID this message is addressed to
-     */
-    toUser: string;
-    /**
-     * Current game phase
-     */
-    phase: string;
-};
-
-export type StateChangedMessage = {
-    type: 'STATE_CHANGED';
-    /**
-     * User ID this message is addressed to
-     */
-    toUser: string;
-    /**
-     * Name of the new state
-     */
-    newState: string;
-};
-
-export type AvailableActionsMessage = {
-    type: 'AVAILABLE_ACTIONS';
-    /**
-     * User ID this message is addressed to
-     */
-    toUser: string;
-    /**
-     * Player ID for whom actions are available
-     */
-    playerId: string;
-    /**
-     * List of available game actions
-     */
-    actions: Array<GameAction>;
-};
-
-export type ErrorMessage = {
-    type: 'ERROR';
-    /**
-     * User ID this message is addressed to
-     */
-    toUser: string;
-    /**
-     * Error message
-     */
-    message: string;
-    /**
-     * Error code
-     */
-    code?: string;
-};
-
-export type LobbyUpdateMessage = {
-    type: 'LOBBY_UPDATE';
-    /**
-     * User ID this message is addressed to
-     */
-    toUser: string;
-    /**
-     * Current seat assignments in the lobby
-     */
-    seats: Array<SeatAssignment>;
-    /**
-     * Whether the game can be started
-     */
-    canStart: boolean;
-    /**
-     * User ID of the session host
-     */
-    hostUserId: string;
-    /**
-     * Selected authored setup profile for this session
-     */
-    setupProfileId?: string;
-};
-
-/**
- * Sent to host when history entries change
- */
-export type HistoryUpdatedMessage = {
-    type: 'HISTORY_UPDATED';
-    /**
-     * User ID this message is addressed to (host only)
-     */
-    toUser: string;
-    /**
-     * List of history entries
-     */
-    entries: Array<HistoryEntrySummary>;
-    /**
-     * Index of the current state in the history
-     */
-    currentIndex: number;
-    /**
-     * Whether there are earlier states to restore to
-     */
-    canGoBack: boolean;
-    /**
-     * Whether there are later states to restore to
-     */
-    canGoForward: boolean;
-};
-
-/**
- * Sent to all users when game state is restored from history
- */
-export type HistoryRestoredMessage = {
-    type: 'HISTORY_RESTORED';
-    /**
-     * User ID this message is addressed to
-     */
-    toUser: string;
-    /**
-     * The version number that was restored to
-     */
+export type HistoryRestoredEvent = {
+    type: 'history.restored';
     restoredToVersion: number;
-    /**
-     * Description of the restored point
-     */
     description?: string;
 };
 
-export type GameMessage = ({
-    type: 'SESSION_BOOTSTRAP';
-} & SessionSnapshotMessage) | ({
-    type: 'GAMEPLAY_UPDATE';
-} & GameplayUpdateMessage) | ({
-    type: 'GAME_STARTED';
-} & GameStartedMessage) | ({
-    type: 'YOUR_TURN';
-} & YourTurnMessage) | ({
-    type: 'ACTION_EXECUTED';
-} & ActionExecutedMessage) | ({
-    type: 'ACTION_REJECTED';
-} & ActionRejectedMessage) | ({
-    type: 'TURN_CHANGED';
-} & TurnChangedMessage) | ({
-    type: 'GAME_ENDED';
-} & GameEndedMessage) | ({
-    type: 'STATE_UPDATE';
-} & StateUpdateMessage) | ({
-    type: 'STATE_CHANGED';
-} & StateChangedMessage) | ({
-    type: 'AVAILABLE_ACTIONS';
-} & AvailableActionsMessage) | ({
-    type: 'ERROR';
-} & ErrorMessage) | ({
-    type: 'LOBBY_UPDATE';
-} & LobbyUpdateMessage) | ({
-    type: 'HISTORY_UPDATED';
-} & HistoryUpdatedMessage) | ({
-    type: 'HISTORY_RESTORED';
-} & HistoryRestoredMessage);
+export type SessionEndedEvent = {
+    type: 'session.ended';
+    reason: string;
+};
+
+export type LobbyEvent = ({
+    type: 'lobby.bootstrap';
+} & LobbyBootstrapEvent) | ({
+    type: 'lobby.updated';
+} & LobbyUpdatedEvent) | ({
+    type: 'history.updated';
+} & HistoryUpdatedEvent) | ({
+    type: 'history.restored';
+} & HistoryRestoredEvent) | ({
+    type: 'session.ended';
+} & SessionEndedEvent);
+
+export type GameplayBootstrapEvent = {
+    type: 'gameplay.bootstrap';
+    gameplay: PlayerGameplaySnapshot;
+};
+
+export type GameplayUpdatedEvent = {
+    type: 'gameplay.updated';
+    gameplay: PlayerGameplaySnapshot;
+};
+
+export type GameplayResyncedEvent = {
+    type: 'gameplay.resynced';
+    gameplay: PlayerGameplaySnapshot;
+};
+
+export type GameplayErrorEvent = {
+    type: 'gameplay.error';
+    code?: string;
+    message: string;
+};
+
+export type GameplayEvent = ({
+    type: 'gameplay.bootstrap';
+} & GameplayBootstrapEvent) | ({
+    type: 'gameplay.updated';
+} & GameplayUpdatedEvent) | ({
+    type: 'gameplay.resynced';
+} & GameplayResyncedEvent) | ({
+    type: 'gameplay.error';
+} & GameplayErrorEvent);
 
 /**
  * Log entry from the game engine console output
@@ -2551,96 +2390,56 @@ export type LogMessageDto = {
     timestamp: string;
 };
 
-/**
- * Response containing gameplay session data after starting the game. Durable gameplay details are sent via the SESSION_BOOTSTRAP SSE message.
- */
-export type StartGameResponse = {
-    /**
-     * Unique identifier for the game session
-     */
-    sessionId: string;
-    /**
-     * Unique identifier for the game
-     */
-    gameId: string;
-    /**
-     * Memorable short code for the session (e.g., 'swift-falcon-73'). Can be used to construct the play URL.
-     */
-    shortCode: string;
-};
-
-export type ActionGameInput = {
-    kind: 'action';
-    playerId: string;
-    actionType: string;
-    /**
-     * JSON-serialized action parameters
-     */
-    params: string;
-};
-
-export type PromptResponseGameInput = {
-    kind: 'promptResponse';
-    playerId: string;
-    promptId: string;
-    /**
-     * JSON-serialized prompt response payload
-     */
-    response: string;
-};
-
-export type SystemGameInput = {
-    kind: 'system';
-    event: string;
-    /**
-     * Optional JSON-serialized internal system payload
-     */
-    payload?: string;
-};
-
-export type GameInput = ({
-    kind: 'action';
-} & ActionGameInput) | ({
-    kind: 'promptResponse';
-} & PromptResponseGameInput) | ({
-    kind: 'system';
-} & SystemGameInput);
-
-export type SubmitInputRequest = {
-    input: GameInput;
-    /**
-     * Client-observed gameplay version. Requests fail if the server has advanced beyond this version.
-     */
-    expectedVersion: number;
-};
-
-export type SubmitInputResponse = {
-    success: boolean;
-    /**
-     * Gameplay version after the accepted input. Rejections return the current server version.
-     */
+export type PlayerActionsResponse = {
     version: number;
+    actionSetVersion: string;
+    actions: Array<InteractionDescriptor>;
+};
+
+export type PlayerActionResponse = {
+    version: number;
+    actionSetVersion: string;
+    action: InteractionDescriptor;
+};
+
+export type PlayerActionTargetsResponse = {
+    version: number;
+    actionSetVersion: string;
+    interactionId: string;
+    inputKey: string;
+    domain: InputDomain;
+    zoneCardsById?: {
+        [key: string]: string;
+    };
+};
+
+export type PlayerActionRequest = {
+    expectedVersion: number;
+    actionSetVersion: string;
+    inputs: {
+        [key: string]: JsonValue;
+    };
+};
+
+export type PlayerActionValidateResponse = {
+    valid: boolean;
+    version: number;
+    actionSetVersion: string;
+    errorCode?: string;
+    message?: string;
+    fieldErrors?: {
+        [key: string]: string;
+    };
+};
+
+export type PlayerActionSubmitResponse = {
+    success: boolean;
+    version: number;
+    actionSetVersion: string;
     accepted?: boolean;
     errorCode?: string;
     message?: string;
-};
-
-export type ValidateInputRequest = {
-    input: GameInput;
-    /**
-     * Client-observed gameplay version. Validation fails if the server has advanced beyond this version.
-     */
-    expectedVersion: number;
-};
-
-export type ValidateInputResponse = {
-    valid: boolean;
-    /**
-     * Current server gameplay version used for validation.
-     */
-    version: number;
-    errorCode?: string;
-    message?: string;
+    gameplay?: PlayerGameplaySnapshot;
 };
 
 /**
@@ -2658,30 +2457,15 @@ export type UpdateSeatRequest = {
 };
 
 /**
- * Request to restore game state to a previous history point
+ * Request to restore game state to a previous history point.
  */
 export type RestoreHistoryRequest = {
-    /**
-     * ID of the history entry to restore to
-     */
     entryId: string;
 };
 
-/**
- * Response after restoring game state from history
- */
 export type RestoreHistoryResponse = {
-    /**
-     * Whether the restore operation succeeded
-     */
     success: boolean;
-    /**
-     * The version number that was restored to
-     */
     restoredToVersion: number;
-    /**
-     * Optional message about the restore operation
-     */
     message?: string;
 };
 
@@ -3250,10 +3034,55 @@ export type SandboxWebhookCompletePayload = {
     error?: string;
 };
 
+export type GameMessage = LobbyBootstrapEvent | LobbyUpdatedEvent | HistoryUpdatedEvent | HistoryRestoredEvent | SessionEndedEvent | GameplayBootstrapEvent | GameplayUpdatedEvent | GameplayResyncedEvent | GameplayErrorEvent;
+
 /**
- * Type of game message sent via Server-Sent Events
+ * Type of parameter accepted by a runtime action
  */
-export type GameMessageType = 'SESSION_BOOTSTRAP' | 'GAMEPLAY_UPDATE' | 'GAME_STARTED' | 'YOUR_TURN' | 'ACTION_EXECUTED' | 'ACTION_REJECTED' | 'TURN_CHANGED' | 'GAME_ENDED' | 'STATE_UPDATE' | 'STATE_CHANGED' | 'AVAILABLE_ACTIONS' | 'ERROR' | 'LOBBY_UPDATE' | 'HISTORY_UPDATED' | 'HISTORY_RESTORED';
+export type ParameterType = 'cardId' | 'cardType' | 'playerId' | 'string' | 'number' | 'boolean' | 'zoneId' | 'pieceId' | 'dieId' | 'boardId' | 'edgeId' | 'vertexId' | 'spaceId' | 'resourceId';
+
+/**
+ * Defines a parameter for an action
+ */
+export type ActionParameterDefinition = {
+    name: string;
+    type: ParameterType;
+    required?: boolean;
+    array?: boolean;
+    minLength?: number;
+    maxLength?: number;
+    /**
+     * Optional card set ID to specify which card set a CARD_ID parameter refers to
+     */
+    cardSetId?: string;
+    description?: string;
+};
+
+/**
+ * Defines an available player action with metadata and parameter definitions
+ */
+export type ActionDefinition = {
+    /**
+     * Unique action identifier
+     */
+    actionType: string;
+    /**
+     * UI display name for this action
+     */
+    displayName: string;
+    /**
+     * Optional help text describing the action
+     */
+    description?: string;
+    /**
+     * List of parameters this action accepts
+     */
+    parameters: Array<ActionParameterDefinition>;
+    /**
+     * List of possible validation error codes
+     */
+    errorCodes?: Array<string>;
+};
 
 /**
  * Type of source for the card set
@@ -4639,7 +4468,7 @@ export type GetSessionByShortCodeResponses = {
 
 export type GetSessionByShortCodeResponse = GetSessionByShortCodeResponses[keyof GetSessionByShortCodeResponses];
 
-export type GetSessionStatusData = {
+export type GetSessionBootstrapData = {
     body?: never;
     path: {
         /**
@@ -4647,11 +4476,16 @@ export type GetSessionStatusData = {
          */
         sessionId: string;
     };
-    query?: never;
-    url: '/api/sessions/{sessionId}/status';
+    query?: {
+        /**
+         * Optional controlled player to include in the scoped gameplay snapshot.
+         */
+        playerId?: string;
+    };
+    url: '/api/sessions/{sessionId}/bootstrap';
 };
 
-export type GetSessionStatusErrors = {
+export type GetSessionBootstrapErrors = {
     /**
      * Bad request - invalid input parameters
      */
@@ -4674,18 +4508,18 @@ export type GetSessionStatusErrors = {
     500: ProblemDetails;
 };
 
-export type GetSessionStatusError = GetSessionStatusErrors[keyof GetSessionStatusErrors];
+export type GetSessionBootstrapError = GetSessionBootstrapErrors[keyof GetSessionBootstrapErrors];
 
-export type GetSessionStatusResponses = {
+export type GetSessionBootstrapResponses = {
     /**
-     * Session status retrieved successfully
+     * Session bootstrap retrieved successfully
      */
-    200: SessionStatus;
+    200: SessionBootstrap;
 };
 
-export type GetSessionStatusResponse = GetSessionStatusResponses[keyof GetSessionStatusResponses];
+export type GetSessionBootstrapResponse = GetSessionBootstrapResponses[keyof GetSessionBootstrapResponses];
 
-export type SubscribeToSessionEventsData = {
+export type SubscribeToSessionLobbyEventsData = {
     body?: never;
     path: {
         /**
@@ -4707,10 +4541,10 @@ export type SubscribeToSessionEventsData = {
          */
         clientSource?: string;
     };
-    url: '/api/sessions/{sessionId}/events';
+    url: '/api/sessions/{sessionId}/lobby/events';
 };
 
-export type SubscribeToSessionEventsErrors = {
+export type SubscribeToSessionLobbyEventsErrors = {
     /**
      * Bad request - invalid input parameters
      */
@@ -4737,21 +4571,20 @@ export type SubscribeToSessionEventsErrors = {
     500: ProblemDetails;
 };
 
-export type SubscribeToSessionEventsError = SubscribeToSessionEventsErrors[keyof SubscribeToSessionEventsErrors];
+export type SubscribeToSessionLobbyEventsError = SubscribeToSessionLobbyEventsErrors[keyof SubscribeToSessionLobbyEventsErrors];
 
-export type SubscribeToSessionEventsResponses = {
+export type SubscribeToSessionLobbyEventsResponses = {
     /**
-     * Server-Sent Events stream. Each event contains a JSON-serialized GameMessage.
-     * Every connection begins with a `SESSION_BOOTSTRAP` event that fully describes the current durable session state.
-     * After bootstrap, the stream includes only live updates and does not replay historical messages.
+     * Server-Sent Events stream. Each event contains a JSON-serialized LobbyEvent.
+     * Lobby events contain public session/control metadata only and never carry private gameplay.
      *
      */
-    200: GameMessage;
+    200: LobbyEvent;
 };
 
-export type SubscribeToSessionEventsResponse = SubscribeToSessionEventsResponses[keyof SubscribeToSessionEventsResponses];
+export type SubscribeToSessionLobbyEventsResponse = SubscribeToSessionLobbyEventsResponses[keyof SubscribeToSessionLobbyEventsResponses];
 
-export type DisconnectSessionEventsData = {
+export type DisconnectSessionLobbyEventsData = {
     body?: never;
     path: {
         /**
@@ -4769,10 +4602,10 @@ export type DisconnectSessionEventsData = {
          */
         connectionAttemptId: string;
     };
-    url: '/api/sessions/{sessionId}/events/disconnect';
+    url: '/api/sessions/{sessionId}/lobby/events/disconnect';
 };
 
-export type DisconnectSessionEventsErrors = {
+export type DisconnectSessionLobbyEventsErrors = {
     /**
      * Bad request - invalid input parameters
      */
@@ -4791,9 +4624,115 @@ export type DisconnectSessionEventsErrors = {
     404: ProblemDetails;
 };
 
-export type DisconnectSessionEventsError = DisconnectSessionEventsErrors[keyof DisconnectSessionEventsErrors];
+export type DisconnectSessionLobbyEventsError = DisconnectSessionLobbyEventsErrors[keyof DisconnectSessionLobbyEventsErrors];
 
-export type DisconnectSessionEventsResponses = {
+export type DisconnectSessionLobbyEventsResponses = {
+    /**
+     * Disconnect request accepted
+     */
+    202: unknown;
+};
+
+export type SubscribeToPlayerGameplayEventsData = {
+    body?: never;
+    path: {
+        /**
+         * Unique identifier for the game session
+         */
+        sessionId: string;
+        /**
+         * Unique identifier for the player (e.g., 'player-1')
+         */
+        playerId: string;
+    };
+    query: {
+        clientId: string;
+        connectionAttemptId: string;
+        clientSource?: string;
+    };
+    url: '/api/sessions/{sessionId}/players/{playerId}/gameplay/events';
+};
+
+export type SubscribeToPlayerGameplayEventsErrors = {
+    /**
+     * Bad request - invalid input parameters
+     */
+    400: ProblemDetails;
+    /**
+     * Unauthorized - authentication required
+     */
+    401: ProblemDetails;
+    /**
+     * Forbidden - insufficient permissions
+     */
+    403: ProblemDetails;
+    /**
+     * Resource not found
+     */
+    404: ProblemDetails;
+    /**
+     * Too many requests or live connections
+     */
+    429: ProblemDetails;
+    /**
+     * Internal server error
+     */
+    500: ProblemDetails;
+};
+
+export type SubscribeToPlayerGameplayEventsError = SubscribeToPlayerGameplayEventsErrors[keyof SubscribeToPlayerGameplayEventsErrors];
+
+export type SubscribeToPlayerGameplayEventsResponses = {
+    /**
+     * Server-Sent Events stream. Each event contains a JSON-serialized GameplayEvent scoped to the path playerId.
+     *
+     */
+    200: GameplayEvent;
+};
+
+export type SubscribeToPlayerGameplayEventsResponse = SubscribeToPlayerGameplayEventsResponses[keyof SubscribeToPlayerGameplayEventsResponses];
+
+export type DisconnectPlayerGameplayEventsData = {
+    body?: never;
+    path: {
+        /**
+         * Unique identifier for the game session
+         */
+        sessionId: string;
+        /**
+         * Unique identifier for the player (e.g., 'player-1')
+         */
+        playerId: string;
+    };
+    query: {
+        clientId: string;
+        connectionAttemptId: string;
+    };
+    url: '/api/sessions/{sessionId}/players/{playerId}/gameplay/events/disconnect';
+};
+
+export type DisconnectPlayerGameplayEventsErrors = {
+    /**
+     * Bad request - invalid input parameters
+     */
+    400: ProblemDetails;
+    /**
+     * Unauthorized - authentication required
+     */
+    401: ProblemDetails;
+    /**
+     * Forbidden - insufficient permissions
+     */
+    403: ProblemDetails;
+    /**
+     * Resource not found
+     */
+    404: ProblemDetails;
+};
+
+export type DisconnectPlayerGameplayEventsError = DisconnectPlayerGameplayEventsErrors[keyof DisconnectPlayerGameplayEventsErrors];
+
+export type DisconnectPlayerGameplayEventsResponses = {
     /**
      * Disconnect request accepted
      */
@@ -4892,24 +4831,182 @@ export type StartGameResponses = {
     /**
      * Game started successfully
      */
-    200: StartGameResponse;
+    200: SessionBootstrap;
 };
 
-export type StartGameResponse2 = StartGameResponses[keyof StartGameResponses];
+export type StartGameResponse = StartGameResponses[keyof StartGameResponses];
 
-export type SubmitInputData = {
-    body: SubmitInputRequest;
+export type ListPlayerActionsData = {
+    body?: never;
     path: {
         /**
          * Unique identifier for the game session
          */
         sessionId: string;
+        /**
+         * Unique identifier for the player (e.g., 'player-1')
+         */
+        playerId: string;
     };
     query?: never;
-    url: '/api/sessions/{sessionId}/inputs';
+    url: '/api/sessions/{sessionId}/players/{playerId}/actions';
 };
 
-export type SubmitInputErrors = {
+export type ListPlayerActionsErrors = {
+    /**
+     * Bad request - invalid input parameters
+     */
+    400: ProblemDetails;
+    /**
+     * Unauthorized - authentication required
+     */
+    401: ProblemDetails;
+    /**
+     * Forbidden - insufficient permissions
+     */
+    403: ProblemDetails;
+    /**
+     * Resource not found
+     */
+    404: ProblemDetails;
+    /**
+     * Internal server error
+     */
+    500: ProblemDetails;
+};
+
+export type ListPlayerActionsError = ListPlayerActionsErrors[keyof ListPlayerActionsErrors];
+
+export type ListPlayerActionsResponses = {
+    /**
+     * Current actions returned successfully
+     */
+    200: PlayerActionsResponse;
+};
+
+export type ListPlayerActionsResponse = ListPlayerActionsResponses[keyof ListPlayerActionsResponses];
+
+export type DescribePlayerActionData = {
+    body?: never;
+    path: {
+        /**
+         * Unique identifier for the game session
+         */
+        sessionId: string;
+        /**
+         * Unique identifier for the player (e.g., 'player-1')
+         */
+        playerId: string;
+        interactionId: string;
+    };
+    query?: never;
+    url: '/api/sessions/{sessionId}/players/{playerId}/actions/{interactionId}';
+};
+
+export type DescribePlayerActionErrors = {
+    /**
+     * Bad request - invalid input parameters
+     */
+    400: ProblemDetails;
+    /**
+     * Unauthorized - authentication required
+     */
+    401: ProblemDetails;
+    /**
+     * Forbidden - insufficient permissions
+     */
+    403: ProblemDetails;
+    /**
+     * Resource not found
+     */
+    404: ProblemDetails;
+    /**
+     * Internal server error
+     */
+    500: ProblemDetails;
+};
+
+export type DescribePlayerActionError = DescribePlayerActionErrors[keyof DescribePlayerActionErrors];
+
+export type DescribePlayerActionResponses = {
+    /**
+     * Action descriptor returned successfully
+     */
+    200: PlayerActionResponse;
+};
+
+export type DescribePlayerActionResponse = DescribePlayerActionResponses[keyof DescribePlayerActionResponses];
+
+export type GetPlayerActionTargetsData = {
+    body?: never;
+    path: {
+        /**
+         * Unique identifier for the game session
+         */
+        sessionId: string;
+        /**
+         * Unique identifier for the player (e.g., 'player-1')
+         */
+        playerId: string;
+        interactionId: string;
+        inputKey: string;
+    };
+    query?: never;
+    url: '/api/sessions/{sessionId}/players/{playerId}/actions/{interactionId}/targets/{inputKey}';
+};
+
+export type GetPlayerActionTargetsErrors = {
+    /**
+     * Bad request - invalid input parameters
+     */
+    400: ProblemDetails;
+    /**
+     * Unauthorized - authentication required
+     */
+    401: ProblemDetails;
+    /**
+     * Forbidden - insufficient permissions
+     */
+    403: ProblemDetails;
+    /**
+     * Resource not found
+     */
+    404: ProblemDetails;
+    /**
+     * Internal server error
+     */
+    500: ProblemDetails;
+};
+
+export type GetPlayerActionTargetsError = GetPlayerActionTargetsErrors[keyof GetPlayerActionTargetsErrors];
+
+export type GetPlayerActionTargetsResponses = {
+    /**
+     * Input domain returned successfully
+     */
+    200: PlayerActionTargetsResponse;
+};
+
+export type GetPlayerActionTargetsResponse = GetPlayerActionTargetsResponses[keyof GetPlayerActionTargetsResponses];
+
+export type ValidatePlayerActionData = {
+    body: PlayerActionRequest;
+    path: {
+        /**
+         * Unique identifier for the game session
+         */
+        sessionId: string;
+        /**
+         * Unique identifier for the player (e.g., 'player-1')
+         */
+        playerId: string;
+        interactionId: string;
+    };
+    query?: never;
+    url: '/api/sessions/{sessionId}/players/{playerId}/actions/{interactionId}/validate';
+};
+
+export type ValidatePlayerActionErrors = {
     /**
      * Bad request - invalid input parameters
      */
@@ -4936,66 +5033,71 @@ export type SubmitInputErrors = {
     500: ProblemDetails;
 };
 
-export type SubmitInputError = SubmitInputErrors[keyof SubmitInputErrors];
+export type ValidatePlayerActionError = ValidatePlayerActionErrors[keyof ValidatePlayerActionErrors];
 
-export type SubmitInputResponses = {
-    /**
-     * Input submission processed successfully
-     */
-    200: SubmitInputResponse;
-};
-
-export type SubmitInputResponse2 = SubmitInputResponses[keyof SubmitInputResponses];
-
-export type ValidateInputData = {
-    body: ValidateInputRequest;
-    path: {
-        /**
-         * Unique identifier for the game session
-         */
-        sessionId: string;
-    };
-    query?: never;
-    url: '/api/sessions/{sessionId}/validate-input';
-};
-
-export type ValidateInputErrors = {
-    /**
-     * Bad request - invalid input parameters
-     */
-    400: ProblemDetails;
-    /**
-     * Unauthorized - authentication required
-     */
-    401: ProblemDetails;
-    /**
-     * Forbidden - insufficient permissions
-     */
-    403: ProblemDetails;
-    /**
-     * Resource not found
-     */
-    404: ProblemDetails;
-    /**
-     * Conflict - version mismatch or resource state conflict
-     */
-    409: ProblemDetails;
-    /**
-     * Internal server error
-     */
-    500: ProblemDetails;
-};
-
-export type ValidateInputError = ValidateInputErrors[keyof ValidateInputErrors];
-
-export type ValidateInputResponses = {
+export type ValidatePlayerActionResponses = {
     /**
      * Validation result returned successfully
      */
-    200: ValidateInputResponse;
+    200: PlayerActionValidateResponse;
 };
 
-export type ValidateInputResponse2 = ValidateInputResponses[keyof ValidateInputResponses];
+export type ValidatePlayerActionResponse = ValidatePlayerActionResponses[keyof ValidatePlayerActionResponses];
+
+export type SubmitPlayerActionData = {
+    body: PlayerActionRequest;
+    path: {
+        /**
+         * Unique identifier for the game session
+         */
+        sessionId: string;
+        /**
+         * Unique identifier for the player (e.g., 'player-1')
+         */
+        playerId: string;
+        interactionId: string;
+    };
+    query?: never;
+    url: '/api/sessions/{sessionId}/players/{playerId}/actions/{interactionId}/submit';
+};
+
+export type SubmitPlayerActionErrors = {
+    /**
+     * Bad request - invalid input parameters
+     */
+    400: ProblemDetails;
+    /**
+     * Unauthorized - authentication required
+     */
+    401: ProblemDetails;
+    /**
+     * Forbidden - insufficient permissions
+     */
+    403: ProblemDetails;
+    /**
+     * Resource not found
+     */
+    404: ProblemDetails;
+    /**
+     * Conflict - version mismatch or resource state conflict
+     */
+    409: ProblemDetails;
+    /**
+     * Internal server error
+     */
+    500: ProblemDetails;
+};
+
+export type SubmitPlayerActionError = SubmitPlayerActionErrors[keyof SubmitPlayerActionErrors];
+
+export type SubmitPlayerActionResponses = {
+    /**
+     * Submission result returned successfully
+     */
+    200: PlayerActionSubmitResponse;
+};
+
+export type SubmitPlayerActionResponse = SubmitPlayerActionResponses[keyof SubmitPlayerActionResponses];
 
 export type AddSeatData = {
     body?: never;

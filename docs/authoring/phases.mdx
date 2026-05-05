@@ -1,0 +1,104 @@
+---
+title: "Phases"
+description: "Use definePhase to model game-flow states, actors, interactions, effects, stages, zones, and card actions."
+---
+
+A phase is a named state in the game flow. Phases are where reducers expose player interactions, automatic resolution, prompts, effects, zones, and card actions.
+
+```ts
+export const playerTurn = definePhase<GameContract>()({
+  kind: "player",
+  state: playerTurnPhaseStateSchema,
+  initialState: () => ({ step: "roll", diceRolled: false }),
+  enter({ state, accept, ops, q }) {
+    const activePlayer = state.flow.activePlayers[0] ?? q.player.order()[0]!;
+    return accept(pipe(state, ops.setActivePlayers([activePlayer])));
+  },
+  actor: ({ state }) => state.flow.activePlayers,
+  interactions: {
+    rollDice,
+    endTurn,
+  },
+});
+```
+
+## Organize large phases
+
+A single `app/phases/player-turn.ts` file is fine while the phase is small.
+Once it has several action families, shared input/presentation helpers, card
+actions, or grows past roughly 250-300 lines, move it into a phase folder and
+split by game concept:
+
+```txt
+app/phases/player-turn/
+  index.ts        # definePhase assembly only
+  state.ts        # phase-local constants and types
+  inputs.ts       # shared form inputs, targets, and presentation helpers
+  build.ts        # build interactions
+  trade.ts        # trade interactions and prompt lifecycle
+  dev-cards.ts    # card actions
+  end-turn.ts     # end-turn interaction
+```
+
+Keep `index.ts` as the table of contents. It should import interactions and
+card actions, register them in `definePhase`, and export only the phase plus
+any stable test-facing schemas. Put reducer bodies in neighboring concept
+files.
+
+Do not split by reducer callback shape. Files named `validate.ts`,
+`reduce.ts`, or `schemas.ts` usually force readers to jump across files to
+understand one move. Prefer domain concepts such as build, trade, scoring,
+discard, or dev cards.
+
+## Phase fields
+
+| Field          | Purpose                                                                     |
+| -------------- | --------------------------------------------------------------------------- |
+| `kind`         | `"player"` waits for player input; `"auto"` resolves through reducer logic. |
+| `state`        | Zod schema for phase-local state.                                           |
+| `initialState` | Optional initializer for phase-local state.                                 |
+| `enter`        | Optional hook that runs when the phase is entered.                          |
+| `actor`        | Default actor selector for interactions in this phase.                      |
+| `effects`      | Registered engine-side effects dispatched through `fx.effect`.              |
+| `interactions` | Player commands and prompts authored with `defineInteraction`.              |
+| `stages`       | First-match sub-phase selectors and allow lists.                            |
+| `zones`        | Declarative cardholder projections for hand surfaces.                       |
+| `cardActions`  | Card-instance actions authored with `defineCardAction`.                     |
+
+## Player phases
+
+Use `kind: "player"` when the runtime should wait for a player or prompt recipient to submit an interaction.
+
+Actor selection is explicit. A phase-level `actor` is usually enough for ordinary turn-taking:
+
+```ts
+actor: ({ state }) => state.flow.activePlayers;
+```
+
+Specific interactions can override `actor`. Prompt-style interactions can use `to` to address one or more players.
+
+## Auto phases
+
+Use `kind: "auto"` for deterministic resolution steps: shuffle startup, deal cards, score cleanup, or final winner calculation.
+
+Auto phases often do their work in a stage `onEnter` hook and immediately transition:
+
+```ts
+stages: {
+  shuffle: definePhaseStage<GameContract, typeof phaseState>()({
+    allow: [],
+    onEnter({ state, accept, fx }) {
+      return accept(state, [
+        fx.effect(shuffleDeck, { zoneId: "draw" }),
+        fx.transition("deal"),
+      ]);
+    },
+  }),
+}
+```
+
+## Keep phase state narrow
+
+Put temporary, phase-specific facts in `state.phase`: current step, pending discard list, selected trade partner, or "has rolled this turn".
+
+Put persistent cross-phase facts in `publicState`, `privateState`, `hiddenState`, or the table. If a value is recomputable from table state, prefer a [Derived value](/docs/authoring/derived-values) instead of storing a mirror.

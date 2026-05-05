@@ -1,0 +1,90 @@
+---
+title: "Game contract"
+description: "Use defineGameContract to bind generated manifest types to reducer state and phase names."
+---
+
+`defineGameContract` is the reducer's type root. It connects the generated manifest contract to state schemas and the legal phase-name tuple.
+
+```ts
+import { z } from "zod";
+import { ids, manifestContract } from "../shared/manifest-contract";
+import {
+  defineGameContract,
+  sparseCounts,
+  type GameStateOf,
+} from "@dreamboard/app-sdk/reducer";
+
+export const gameContract = defineGameContract({
+  manifest: manifestContract,
+  phaseNames: ["setup", "playerTurn", "endGame"] as const,
+  state: {
+    public: z.object({
+      scores: sparseCounts(ids.playerId),
+      winnerPlayerId: ids.playerId.nullable(),
+    }),
+    private: z.object({}),
+    hidden: z.object({}),
+  },
+});
+
+export type GameContract = typeof gameContract;
+export type GameState = GameStateOf<GameContract>;
+```
+
+## Contract inputs
+
+| Field | Purpose |
+| --- | --- |
+| `manifest` | The generated `manifestContract` from `shared/manifest-contract`. |
+| `phaseNames` | A readonly tuple of every phase name the game can enter. |
+| `state.public` | State visible to all players and generally safe to project. |
+| `state.private` | Per-player secret state. |
+| `state.hidden` | Game-owned secret state. |
+
+`phaseNames` must match the keys registered in `defineGame({ phases })`. `defineGame` checks this at runtime, and TypeScript narrows phase names for `fx.transition(...)`, generated UI contracts, and generated tests.
+
+## Use manifest-backed schemas
+
+Prefer manifest-backed id schemas over plain strings:
+
+```ts
+const playerId = gameContract.schemas.playerId;
+const cardId = gameContract.schemas.cardId;
+```
+
+or import the generated `ids` namespace:
+
+```ts
+import { ids } from "../shared/manifest-contract";
+```
+
+This keeps state and interaction params anchored to the manifest. A raw `z.string()` for `playerId`, `cardId`, `zoneId`, or board ids removes the type signal the SDK is trying to preserve.
+
+## Sparse records
+
+For records keyed by manifest ids, prefer sparse helpers:
+
+```ts
+scores: sparseCounts(ids.playerId)
+roadsByEdgeId: sparseMap(ids.edgeId, roadSchema)
+```
+
+Sparse records model "some ids have entries" without forcing every possible generated id to exist in state. They also preserve the manifest id type.
+
+## What belongs in state
+
+State should contain mutable facts the reducer owns:
+
+- scores
+- pending decisions
+- current turn flags
+- player-specific secrets
+- derived-source data that changes over time
+
+State should not mirror table facts that are already represented by component location, zone contents, resource balances, or board occupancy. Read those through `q` and mutate them through `ops`.
+
+## Related pages
+
+- [Game definition](/docs/authoring/game-definition) for assembling the contract into a runnable game.
+- [Table queries and ops](/docs/authoring/table-queries-and-ops) for reading and writing table state.
+- [Derived values](/docs/authoring/derived-values) for computed aggregates.

@@ -1,0 +1,103 @@
+# Table queries and ops
+
+Read runtime table state with q, write with ops, and compose deterministic state transitions with pipe.
+
+Reducer callbacks receive two canonical table helpers:
+
+- `q` for reads
+- `ops` for writes
+
+Use them instead of reading or mutating `state.table` directly.
+
+## Read with q
+
+`q` is a typed query namespace over the runtime table:
+
+```ts
+const playerIds = q.player.order();
+const hand = q.zone.playerCards(playerId, "things-hand");
+const card = q.card.get(cardId);
+const board = q.board.hex("island");
+const vertices = q.board.incidentVertices("island", edgeId);
+const resources = q.player.resources(playerId);
+```
+
+Common groups:
+
+| Namespace | Reads |
+| --- | --- |
+| `q.board.*` | Boards, spaces, containers, edges, vertices, adjacency, occupants. |
+| `q.zone.*` | Shared zones, per-player zones, card collections. |
+| `q.card.*` | Runtime card data, owner, visibility. |
+| `q.component.*` | Component locations. |
+| `q.slot.*` | Slot occupants and slot occupants by host. |
+| `q.player.*` | Player order, next player, resources, affordability. |
+
+Prefer `q.card.get(cardId)` over parsing card ids. Runtime card data already includes `cardType`, name, text, and properties.
+
+## Write with ops
+
+`ops` is a typed namespace of curried state writers. Compose ops with `pipe`:
+
+```ts
+return accept(
+  pipe(
+    state,
+    ops.spendResources({ playerId, amounts: { coin: 2 } }),
+    ops.dealCardsToPlayerZone({
+      fromZoneId: "market",
+      playerId,
+      toZoneId: "hand",
+      count: 1,
+    }),
+    ops.patchPhaseState({ step: "main" }),
+  ),
+);
+```
+
+Common groups:
+
+| Operation family | Examples |
+| --- | --- |
+| Flow | `setActivePlayers`, `advanceActivePlayer`. |
+| Authored state | `patchPublicState`, `patchHiddenState`, `patchPlayerPrivateState`, `patchPhaseState`. |
+| Zones/cards | `addCardToSharedZone`, `moveCardBetweenSharedZones`, `moveCardFromPlayerZoneToSharedZone`, `dealCardsToPlayerZone`. |
+| Board/components | `moveComponentToSpace`, `moveComponentToContainer`, `moveComponentToEdge`, `moveComponentToVertex`. |
+| Resources | `addResources`, `spendResources`, `transferResources`, `setResource`. |
+
+Ops preserve the narrowed phase-state type through `pipe`.
+
+## Author helper pattern
+
+Game-specific helpers should accept `ops` or `q` as arguments:
+
+```ts
+export function incrementScore(ops: Ops, playerId: PlayerId): Op<GameState> {
+  return ops.patchPublicState((prev) => ({
+    ...prev,
+    scores: {
+      ...prev.scores,
+      [playerId]: (prev.scores[playerId] ?? 0) + 1,
+    },
+  }));
+}
+```
+
+This keeps helper code testable and tied to the same injected runtime surface as reducer callbacks.
+
+## Validation before writes
+
+Some ops throw if the write is invalid. For example, `ops.spendResources` requires the player to afford the full cost.
+
+Check business rules in `validate`:
+
+```ts
+validate({ input, q }) {
+  if (!q.player.canAfford(input.playerId, COST)) {
+    return { errorCode: "INSUFFICIENT_RESOURCES" };
+  }
+  return null;
+}
+```
+
+Then apply the write in `reduce`.

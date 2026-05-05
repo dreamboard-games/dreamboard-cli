@@ -2,7 +2,7 @@ import path from "node:path";
 import { defineCommand } from "citty";
 import {
   createSession,
-  getSessionStatus,
+  getSessionBootstrap,
   type CompiledResult,
 } from "@dreamboard/api-client";
 import consola from "consola";
@@ -11,22 +11,30 @@ import { PROJECT_DIR_NAME } from "../constants.js";
 import { configureClient, resolveProjectContext } from "../config/resolve.js";
 import { parseDevCommandArgs, parsePlayerCountFlags } from "../flags.js";
 import type { ProjectConfig } from "../types.js";
-import { ensureDir, exists, readJsonFile, writeJsonFile } from "../utils/fs.js";
+import { ensureDir, writeJsonFile } from "../utils/fs.js";
 import {
   createPersistedDevSession,
   parseDevSeed,
-  type PersistedDevSession,
 } from "../utils/dev-session.js";
 import { resolvePlayerCount } from "../utils/player-count.js";
 import { toDreamboardApiError } from "../utils/errors.js";
 import { openBrowser } from "../auth/auth-server.js";
 import { startDreamboardDevServer } from "../dev-host/start-dev-server.js";
+import { createSessionFromScenario } from "../services/testing/reducer-native-test-harness.js";
 import { runDevPreflight } from "../services/workflows/dev-preflight.js";
 import { resolveSetupProfileSelectionForSession } from "../services/workflows/resolve-setup-profile.js";
 
 type DevResumeResult = {
-  session: PersistedDevSession | null;
+  session: DevRunSession | null;
   reason: string | null;
+};
+
+type DevRunSession = {
+  sessionId: string;
+  shortCode: string;
+  gameId: string;
+  seed?: number;
+  setupProfileId?: string;
 };
 
 export default defineCommand({
@@ -62,6 +70,11 @@ export default defineCommand({
     resume: {
       type: "string",
       description: "Resume a specific existing backend session by session id",
+    },
+    "from-scenario": {
+      type: "string",
+      description:
+        "Create a backend session by replaying a typed test scenario to its post-when state",
     },
     "new-session": {
       type: "boolean",
@@ -101,34 +114,45 @@ export default defineCommand({
     const sessionFilePath = path.join(devDir, "session.json");
 
     const requestedResumeSessionId = parsedArgs.resume?.trim() || null;
+    const requestedScenarioId = parsedArgs["from-scenario"]?.trim() || null;
     if (requestedResumeSessionId && parsedArgs["new-session"]) {
       throw new Error("Cannot combine --resume with --new-session.");
     }
-    const requestedSeed = parseDevSeed(parsedArgs.seed);
-    const selectedSetupProfile = await resolveSetupProfileSelectionForSession({
-      projectRoot,
-      requestedSetupProfileId: parsedArgs["setup-profile"],
-    });
-    const selectedSetupProfileId = selectedSetupProfile.id;
-    const resolvedPlayerCount = await resolvePlayerCount(
-      projectRoot,
-      parsePlayerCountFlags(parsedArgs),
-    );
-    const persistedSession = requestedResumeSessionId
-      ? await loadPersistedSession(sessionFilePath)
-      : null;
+    if (requestedResumeSessionId && requestedScenarioId) {
+      throw new Error("Cannot combine --resume with --from-scenario.");
+    }
+    if (
+      requestedScenarioId &&
+      (parsedArgs.seed ||
+        parsedArgs["setup-profile"] ||
+        parsedArgs.players ||
+        parsedArgs["player-count"])
+    ) {
+      throw new Error(
+        "--from-scenario materializes the scenario's authored seed, setup profile, and player count. Remove --seed, --setup-profile, and player-count overrides.",
+      );
+    }
 
+    const requestedSeed = requestedScenarioId
+      ? null
+      : parseDevSeed(parsedArgs.seed);
+    const selectedSetupProfile = requestedScenarioId
+      ? null
+      : await resolveSetupProfileSelectionForSession({
+          projectRoot,
+          requestedSetupProfileId: parsedArgs["setup-profile"],
+        });
+    let selectedSetupProfileId = selectedSetupProfile?.id ?? null;
+    let resolvedPlayerCount = requestedScenarioId
+      ? 0
+      : await resolvePlayerCount(
+          projectRoot,
+          parsePlayerCountFlags(parsedArgs),
+        );
     const resumeResult = requestedResumeSessionId
       ? await tryResumeSession(
-          {
-            sessionId: requestedResumeSessionId,
-            cachedSession:
-              persistedSession?.sessionId === requestedResumeSessionId
-                ? persistedSession
-                : null,
-          },
+          { sessionId: requestedResumeSessionId },
           projectConfig.gameId,
-          preflight.compiledResult.id,
           selectedSetupProfileId,
         )
       : { session: null, reason: null };
@@ -140,24 +164,46 @@ export default defineCommand({
     }
 
     let runSession = resumeResult.session;
+    let scenarioSeededSession = false;
     const resumedExistingSession = Boolean(
       requestedResumeSessionId &&
         runSession &&
         runSession.sessionId === requestedResumeSessionId,
     );
 
-    if (!runSession) {
+    if (requestedScenarioId) {
+      const seededScenario = await createSessionFromScenario({
+        projectRoot,
+        scenarioId: requestedScenarioId,
+        compiledResultId: preflight.compiledResult.id,
+        gameId: projectConfig.gameId,
+        debug: parsedArgs.debug,
+      });
+      scenarioSeededSession = true;
+      selectedSetupProfileId = seededScenario.setupProfileId;
+      resolvedPlayerCount = seededScenario.playerCount;
+      runSession = {
+        sessionId: seededScenario.sessionId,
+        shortCode: seededScenario.shortCode,
+        gameId: seededScenario.gameId,
+        seed: seededScenario.seed,
+        setupProfileId: seededScenario.setupProfileId ?? undefined,
+      };
+    } else if (!runSession) {
       runSession = await createDevSession({
         projectRoot,
         projectConfig,
         playerCount: resolvedPlayerCount,
-        seed: requestedSeed,
+        seed: requestedSeed ?? 1337,
         compiledResult: preflight.compiledResult,
         setupProfileId: selectedSetupProfileId,
       });
     }
 
-    await writeJsonFile(sessionFilePath, runSession);
+    await writeJsonFile(
+      sessionFilePath,
+      createPersistedDevSession({ sessionId: runSession.sessionId }),
+    );
 
     const preferredPort =
       typeof parsedArgs.port === "string" && parsedArgs.port.trim().length > 0
@@ -174,39 +220,44 @@ export default defineCommand({
       projectRoot,
       sessionFilePath,
       port: preferredPort,
+      config,
       runtimeConfig: {
         apiBaseUrl: config.apiBaseUrl,
-        authToken: config.authToken ?? null,
         userId: extractUserIdFromJwt(config.authToken ?? null),
-        sessionId: runSession.sessionId,
-        shortCode: runSession.shortCode,
         gameId: runSession.gameId,
-        seed: runSession.seed ?? null,
         compiledResultId: preflight.compiledResult.id,
         setupProfileId: runSession.setupProfileId ?? null,
         playerCount: resolvedPlayerCount,
         debug: parsedArgs.debug,
         slug: projectConfig.slug,
-        autoStartGame: !resumedExistingSession,
+        autoStartGame: !resumedExistingSession && !scenarioSeededSession,
+        initialSession: {
+          sessionId: runSession.sessionId,
+          shortCode: runSession.shortCode,
+          gameId: runSession.gameId,
+          seed: runSession.seed ?? null,
+        },
       },
     });
 
     consola.success(`Dreamboard dev host ready at ${devServer.url}`);
     consola.info(
-      resumedExistingSession
-        ? `Reusing session ${runSession.shortCode} (${runSession.sessionId}).`
-        : `Created session ${runSession.shortCode} (${runSession.sessionId}).`,
+      scenarioSeededSession
+        ? `Seeded session ${runSession.shortCode} (${runSession.sessionId}) from scenario ${requestedScenarioId}.`
+        : resumedExistingSession
+          ? `Reusing session ${runSession.shortCode} (${runSession.sessionId}).`
+          : `Created session ${runSession.shortCode} (${runSession.sessionId}).`,
     );
     consola.info(`Backend session id: ${runSession.sessionId}`);
     consola.info(
       `RNG seed: ${runSession.seed ?? "unknown"}${parsedArgs.seed ? " (from --seed)." : " (default 1337; change it in the dev host or pass --seed)."}`,
     );
-    if (selectedSetupProfile.source === "implicit-single") {
+    if (selectedSetupProfile?.source === "implicit-single") {
       consola.info(
         `Using setup profile ${selectedSetupProfileId} (${selectedSetupProfile.name ?? selectedSetupProfileId}) because it is the only declared manifest profile.`,
       );
     }
-    if (selectedSetupProfile.source === "implicit-first") {
+    if (selectedSetupProfile?.source === "implicit-first") {
       consola.info(
         `Using setup profile ${selectedSetupProfileId} (${selectedSetupProfile.name ?? selectedSetupProfileId}) because it is the first declared manifest profile.`,
       );
@@ -231,88 +282,36 @@ export default defineCommand({
   },
 });
 
-async function loadPersistedSession(
-  sessionFilePath: string,
-): Promise<PersistedDevSession | null> {
-  if (!(await exists(sessionFilePath))) {
-    return null;
-  }
-  const value = await readJsonFile<PersistedDevSession>(sessionFilePath);
-  if (!value.sessionId || !value.shortCode || !value.gameId) {
-    return null;
-  }
-  return {
-    ...value,
-    seed:
-      typeof value.seed === "number" && Number.isSafeInteger(value.seed)
-        ? value.seed
-        : undefined,
-    controllablePlayerIds: Array.isArray(value.controllablePlayerIds)
-      ? value.controllablePlayerIds
-      : [],
-    yourTurnCount:
-      typeof value.yourTurnCount === "number" &&
-      Number.isFinite(value.yourTurnCount)
-        ? Math.max(0, Math.floor(value.yourTurnCount))
-        : 0,
-    setupProfileId:
-      typeof value.setupProfileId === "string" &&
-      value.setupProfileId.length > 0
-        ? value.setupProfileId
-        : undefined,
-  };
-}
-
 async function tryResumeSession(
   requested: {
     sessionId: string;
-    cachedSession: PersistedDevSession | null;
   },
   currentGameId: string,
-  compiledResultId: string,
   setupProfileId: string | null,
 ): Promise<DevResumeResult> {
-  const cached = requested.cachedSession;
-  if (cached) {
-    if (
-      cached.compiledResultId &&
-      cached.compiledResultId !== compiledResultId
-    ) {
-      return {
-        session: null,
-        reason: `compiled result changed from ${cached.compiledResultId} to ${compiledResultId}`,
-      };
-    }
-    if ((cached.setupProfileId ?? null) !== setupProfileId) {
-      return {
-        session: null,
-        reason: `setup profile changed from ${cached.setupProfileId ?? "none"} to ${setupProfileId ?? "none"}`,
-      };
-    }
-  }
-
-  const { data: status, error } = await getSessionStatus({
+  const { data: bootstrap, error } = await getSessionBootstrap({
     path: { sessionId: requested.sessionId },
   });
-  if (error || !status) {
+  if (error || !bootstrap) {
     return {
       session: null,
       reason: "backend could not confirm that the session is still active",
     };
   }
-  if (status.gameId !== currentGameId) {
+  const session = bootstrap.session;
+  if (session.gameId !== currentGameId) {
     return {
       session: null,
       reason: "session belongs to a different game",
     };
   }
-  if ((status.setupProfileId ?? null) !== setupProfileId) {
+  if ((session.setupProfileId ?? null) !== setupProfileId) {
     return {
       session: null,
-      reason: `setup profile changed from ${status.setupProfileId ?? "none"} to ${setupProfileId ?? "none"}`,
+      reason: `setup profile changed from ${session.setupProfileId ?? "none"} to ${setupProfileId ?? "none"}`,
     };
   }
-  if (status.status === "ended" || status.phase === "ended") {
+  if (session.status === "ended" || session.phase === "ended") {
     return {
       session: null,
       reason: "session has already ended",
@@ -320,21 +319,12 @@ async function tryResumeSession(
   }
 
   return {
-    session: cached
-      ? {
-          ...cached,
-          shortCode: status.shortCode,
-          gameId: status.gameId,
-          setupProfileId: status.setupProfileId ?? undefined,
-          controllablePlayerIds: cached.controllablePlayerIds ?? [],
-          yourTurnCount: cached.yourTurnCount ?? 0,
-        }
-      : createPersistedDevSession({
-          sessionId: status.sessionId,
-          shortCode: status.shortCode,
-          gameId: status.gameId,
-          setupProfileId: status.setupProfileId ?? undefined,
-        }),
+    session: {
+      sessionId: session.sessionId,
+      shortCode: session.shortCode,
+      gameId: session.gameId,
+      setupProfileId: session.setupProfileId ?? undefined,
+    },
     reason: null,
   };
 }
@@ -346,7 +336,7 @@ async function createDevSession(options: {
   seed: number;
   compiledResult: CompiledResult;
   setupProfileId: string | null;
-}): Promise<PersistedDevSession> {
+}): Promise<DevRunSession> {
   const {
     data: session,
     error: sessionError,
@@ -369,19 +359,28 @@ async function createDevSession(options: {
     );
   }
 
-  return createPersistedDevSession({
+  return {
     sessionId: session.sessionId,
     shortCode: session.shortCode,
     gameId: session.gameId,
     seed: options.seed,
-    compiledResultId: options.compiledResult.id,
     setupProfileId: options.setupProfileId ?? undefined,
-  });
+  };
 }
 
-async function waitForTermination(close: () => Promise<void>): Promise<void> {
+type TerminationOptions = {
+  exitAfterShutdown?: boolean;
+  exitProcess?: (code: number) => void;
+};
+
+export async function waitForTermination(
+  close: () => Promise<void>,
+  options: TerminationOptions = {},
+): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     let shuttingDown = false;
+    const exitAfterShutdown = options.exitAfterShutdown ?? true;
+    const exitProcess = options.exitProcess ?? ((code) => process.exit(code));
 
     const cleanupListeners = () => {
       process.off("SIGINT", handleSigint);
@@ -398,6 +397,9 @@ async function waitForTermination(close: () => Promise<void>): Promise<void> {
         .then(() => {
           consola.info(`Stopped local dev host (${signal}).`);
           resolve();
+          if (exitAfterShutdown) {
+            exitProcess(0);
+          }
         })
         .catch(reject);
     };

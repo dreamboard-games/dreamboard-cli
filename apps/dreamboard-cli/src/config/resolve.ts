@@ -1,5 +1,4 @@
 import { client } from "@dreamboard/api-client/client.gen";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import type { GlobalConfig, ProjectConfig, ResolvedConfig } from "../types.js";
 import type { ConfigFlags } from "../flags.js";
 import { IS_PUBLISHED_BUILD, PUBLISHED_ENVIRONMENT } from "../build-target.js";
@@ -8,16 +7,50 @@ import {
   DEFAULT_WEB_BASE_URL,
   ENVIRONMENT_CONFIGS,
 } from "../constants.js";
-import { loadGlobalConfig, saveGlobalConfig } from "./global-config.js";
+import { loadGlobalConfig } from "./global-config.js";
 import { findProjectRoot, loadProjectConfig } from "./project-config.js";
+import {
+  type Credentials,
+  type StoredSessionSnapshot,
+  getStoredSession,
+} from "./credential-store.js";
+import {
+  PermanentRefreshError,
+  classifyRefreshError,
+} from "../auth/refresh-error.js";
+import {
+  DEFAULT_REFRESH_WINDOW_MS,
+  ensureFreshAccessToken,
+  getAccessTokenExpiry,
+} from "../auth/refresh-coordinator.js";
 
 const LOGIN_HINT = "Run `dreamboard login` to authenticate again.";
-const TOKEN_REFRESH_WINDOW_MS = 5 * 60 * 1000;
 
+export type CredentialSnapshot = {
+  accessToken?: string;
+  refreshToken?: string;
+  authTokenSource: ResolvedConfig["authTokenSource"];
+  refreshTokenSource: ResolvedConfig["refreshTokenSource"];
+};
+
+/**
+ * Resolve the effective CLI config for this invocation.
+ *
+ * `resolveConfig` is pure and synchronous: it takes pre-loaded inputs
+ * (global config, flags, optional project config, optional credential
+ * snapshot) and assembles a read-only `ResolvedConfig`. It intentionally
+ * does not touch disk or the network - refreshing/persisting credentials
+ * is the job of `configureClient` + `RefreshCoordinator`.
+ *
+ * Passing `credentials = undefined` is equivalent to "no stored session
+ * for this call", used by contexts that should never inherit the local
+ * session (e.g. `dreamboard login` before the browser flow).
+ */
 export function resolveConfig(
   globalConfig: GlobalConfig,
   flags: ConfigFlags,
   project?: ProjectConfig,
+  credentials?: StoredSessionSnapshot | null,
 ): ResolvedConfig {
   if (IS_PUBLISHED_BUILD) {
     assertPublicRuntimeFlags(flags);
@@ -49,48 +82,61 @@ export function resolveConfig(
 
   const supabaseUrl = envConfig?.supabaseUrl;
   const supabaseAnonKey = envConfig?.supabaseAnonKey;
-  const flagToken = valueOrUndefined(flags.token);
-  const envToken = valueOrUndefined(process.env.DREAMBOARD_TOKEN);
-  const envRefreshToken = valueOrUndefined(
-    process.env.DREAMBOARD_REFRESH_TOKEN,
-  );
 
-  const authToken = IS_PUBLISHED_BUILD
-    ? globalConfig.authToken
-    : flagToken || envToken || globalConfig.authToken;
-
-  const refreshToken = IS_PUBLISHED_BUILD
-    ? globalConfig.refreshToken
-    : envRefreshToken || globalConfig.refreshToken;
-
-  const authTokenSource = IS_PUBLISHED_BUILD
-    ? globalConfig.authToken
-      ? "global"
-      : "none"
-    : flagToken
-      ? "flag"
-      : envToken
-        ? "env"
-        : globalConfig.authToken
-          ? "global"
-          : "none";
-
-  const refreshTokenSource = IS_PUBLISHED_BUILD
-    ? globalConfig.refreshToken
-      ? "global"
-      : "none"
-    : envRefreshToken
-      ? "env"
-      : globalConfig.refreshToken
-        ? "global"
-        : "none";
+  const snapshot = buildCredentialSnapshot(flags, credentials);
 
   return {
     apiBaseUrl,
     webBaseUrl,
     supabaseUrl,
     supabaseAnonKey,
-    authToken,
+    authToken: snapshot.accessToken,
+    refreshToken: snapshot.refreshToken,
+    authTokenSource: snapshot.authTokenSource,
+    refreshTokenSource: snapshot.refreshTokenSource,
+  };
+}
+
+function buildCredentialSnapshot(
+  flags: ConfigFlags,
+  storedCredentials?: StoredSessionSnapshot | null,
+): CredentialSnapshot {
+  const flagToken = valueOrUndefined(flags.token);
+  const envToken = valueOrUndefined(process.env.DREAMBOARD_TOKEN);
+  const envRefreshToken = valueOrUndefined(
+    process.env.DREAMBOARD_REFRESH_TOKEN,
+  );
+
+  if (IS_PUBLISHED_BUILD) {
+    const stored = storedCredentials ?? null;
+    return {
+      accessToken: stored?.accessToken,
+      refreshToken: stored?.refreshToken,
+      authTokenSource: stored?.accessToken ? "global" : "none",
+      refreshTokenSource: stored?.refreshToken ? "global" : "none",
+    };
+  }
+
+  const accessToken = flagToken || envToken || storedCredentials?.accessToken;
+  const refreshToken = envRefreshToken || storedCredentials?.refreshToken;
+
+  const authTokenSource: ResolvedConfig["authTokenSource"] = flagToken
+    ? "flag"
+    : envToken
+      ? "env"
+      : storedCredentials?.accessToken
+        ? "global"
+        : "none";
+
+  const refreshTokenSource: ResolvedConfig["refreshTokenSource"] =
+    envRefreshToken
+      ? "env"
+      : storedCredentials?.refreshToken
+        ? "global"
+        : "none";
+
+  return {
+    accessToken,
     refreshToken,
     authTokenSource,
     refreshTokenSource,
@@ -120,191 +166,104 @@ function assertPublicRuntimeFlags(flags: ConfigFlags): void {
 }
 
 /**
- * Configure the API client with the resolved auth token.
+ * Configure the API client for the resolved environment, refreshing the
+ * stored Supabase session first if it is close to expiry.
  *
- * When a refresh token is available (e.g. DREAMBOARD_REFRESH_TOKEN env var set
- * inside a sandbox), this will first use the Supabase SDK to refresh the session
- * so the CLI always has a valid access token, even if the original JWT has expired.
+ * The refresh path never mutates `config`. It goes through
+ * `RefreshCoordinator`, which owns the cross-process lock and the
+ * CredentialStore writes. After a successful rotation the HTTP client
+ * is configured with the rotated access token; on transient failures we
+ * fall back to the `config.authToken` snapshot (which is why commands
+ * still see a bearer header and can surface the original error).
  */
 export async function configureClient(config: ResolvedConfig): Promise<void> {
-  await refreshResolvedAuthSession(config);
+  const effectiveAccessToken = await ensureEffectiveAccessToken(config);
 
   client.setConfig({
     baseUrl: config.apiBaseUrl,
-    headers: config.authToken
-      ? { Authorization: `Bearer ${config.authToken}` }
+    headers: effectiveAccessToken
+      ? { Authorization: `Bearer ${effectiveAccessToken}` }
       : {},
   });
 }
 
-/**
- * If both an auth token and a refresh token are available (e.g. inside a sandbox),
- * use the Supabase SDK to refresh the session. This ensures the CLI always has
- * a valid access token even if the original JWT has expired.
- *
- * Mutates `config.authToken` in-place with the fresh token.
- */
-async function refreshAuthTokenIfNeeded(
+async function ensureEffectiveAccessToken(
   config: ResolvedConfig,
-): Promise<{ authToken: string; refreshToken?: string } | null> {
-  if (!config.authToken || !config.refreshToken) return null;
-  if (!config.supabaseUrl || !config.supabaseAnonKey) return null;
+): Promise<string | undefined> {
+  if (!usesStoredSession(config)) {
+    // Env/flag-provided tokens are not owned by CredentialStore and must
+    // not be written back. Use them as-is.
+    return config.authToken;
+  }
 
-  const authTokenExpiry = getAuthTokenExpiry(config.authToken);
-  const expiresAtMs = authTokenExpiry?.getTime();
-  const isExpired = expiresAtMs !== undefined && expiresAtMs <= Date.now();
-  const shouldRefresh =
-    expiresAtMs !== undefined &&
-    expiresAtMs <= Date.now() + TOKEN_REFRESH_WINDOW_MS;
-
-  if (!shouldRefresh) {
-    return null;
+  if (!config.supabaseUrl || !config.supabaseAnonKey) {
+    return config.authToken;
   }
 
   try {
-    const initialSession = {
-      authToken: config.authToken,
-      refreshToken: config.refreshToken,
-    };
-    const { session, error } = await refreshSessionWithSupabase(
-      config,
-      initialSession,
-    );
-
-    if (error) {
-      if (
-        usesStoredSession(config) &&
-        isInvalidRefreshTokenMessage(error.message)
-      ) {
-        const recoveredSession = await tryRecoverStoredSession(config, {
-          attemptedSession: initialSession,
-        });
-        if (recoveredSession) {
-          config.authToken = recoveredSession.authToken;
-          config.refreshToken =
-            recoveredSession.refreshToken ?? config.refreshToken;
-          return recoveredSession;
-        }
-
-        config.refreshToken = undefined;
-        await persistStoredSession({
-          authToken: config.authToken,
-          refreshToken: undefined,
-        });
-
+    const result = await ensureFreshAccessToken({
+      supabaseUrl: config.supabaseUrl,
+      supabaseAnonKey: config.supabaseAnonKey,
+      refreshWindowMs: DEFAULT_REFRESH_WINDOW_MS,
+    });
+    switch (result.kind) {
+      case "missing":
+        return config.authToken;
+      case "unchanged":
+      case "rotated":
+        return result.credentials.accessToken;
+      case "transient_failure": {
+        const expiry = getAccessTokenExpiry(config.authToken);
+        const isExpired = expiry !== null && expiry.getTime() <= Date.now();
         if (isExpired) {
-          throw new Error(formatStoredSessionInvalidMessage(error.message));
+          throw new Error(
+            `Access token refresh failed: ${result.message}. ${LOGIN_HINT}`,
+          );
         }
-
         console.warn(
-          `Stored refresh token is invalid: ${error.message}. Continuing with the existing access token until it expires.`,
+          `Token refresh failed: ${result.message}. Continuing with the existing access token until it expires.`,
         );
-        return null;
+        return config.authToken;
       }
-
-      if (isExpired) {
-        throw new Error(
-          `Access token refresh failed: ${error.message}. ${LOGIN_HINT}`,
-        );
-      }
-
-      // If refresh fails, continue with the original token — it may still be valid
-      console.warn(`Token refresh failed: ${error.message}`);
-      return null;
-    }
-
-    if (session?.authToken) {
-      config.authToken = session.authToken;
-      config.refreshToken = session.refreshToken ?? config.refreshToken;
-      return {
-        authToken: config.authToken,
-        refreshToken: config.refreshToken,
-      };
     }
   } catch (error) {
-    if (error instanceof Error && error.message.includes(LOGIN_HINT)) {
-      throw error;
+    if (error instanceof PermanentRefreshError) {
+      throw new Error(formatStoredSessionInvalidMessage(error.message));
     }
-
-    // Swallow errors — the original token may still work
+    throw error;
   }
-
-  return null;
 }
 
+/**
+ * Explicit "force a refresh attempt right now" entrypoint used by
+ * `dreamboard auth status`. Returns the resulting credentials or throws
+ * a classified error.
+ */
 export async function refreshResolvedAuthSession(
   config: ResolvedConfig,
-): Promise<{ authToken: string; refreshToken?: string } | null> {
-  const refreshedSession = await refreshAuthTokenIfNeeded(config);
-
-  if (refreshedSession && usesStoredSession(config)) {
-    await persistStoredSession(refreshedSession);
+): Promise<Credentials | null> {
+  if (!usesStoredSession(config)) return null;
+  if (!config.supabaseUrl || !config.supabaseAnonKey) return null;
+  try {
+    const result = await ensureFreshAccessToken({
+      supabaseUrl: config.supabaseUrl,
+      supabaseAnonKey: config.supabaseAnonKey,
+    });
+    switch (result.kind) {
+      case "missing":
+        return null;
+      case "unchanged":
+      case "rotated":
+        return result.credentials;
+      case "transient_failure":
+        return result.credentials;
+    }
+  } catch (error) {
+    if (error instanceof PermanentRefreshError) {
+      throw new Error(formatStoredSessionInvalidMessage(error.message));
+    }
+    throw error;
   }
-
-  return refreshedSession;
-}
-
-async function refreshSessionWithSupabase(
-  config: Pick<ResolvedConfig, "supabaseUrl" | "supabaseAnonKey">,
-  session: { authToken: string; refreshToken: string },
-): Promise<{
-  session: { authToken: string; refreshToken?: string } | null;
-  error: { message: string } | null;
-}> {
-  const supabase = createSupabaseClient(
-    config.supabaseUrl!,
-    config.supabaseAnonKey!,
-  );
-
-  const { data, error } = await supabase.auth.setSession({
-    access_token: session.authToken,
-    refresh_token: session.refreshToken,
-  });
-
-  if (error) {
-    return { session: null, error };
-  }
-
-  if (!data.session?.access_token) {
-    return { session: null, error: null };
-  }
-
-  return {
-    session: {
-      authToken: data.session.access_token,
-      refreshToken: data.session.refresh_token ?? session.refreshToken,
-    },
-    error: null,
-  };
-}
-
-async function tryRecoverStoredSession(
-  config: Pick<ResolvedConfig, "supabaseUrl" | "supabaseAnonKey">,
-  options: {
-    attemptedSession: { authToken: string; refreshToken: string };
-  },
-): Promise<{ authToken: string; refreshToken?: string } | null> {
-  const globalConfig = await loadGlobalConfig();
-  const reloadedAuthToken = globalConfig.authToken;
-  const reloadedRefreshToken = globalConfig.refreshToken;
-
-  if (!reloadedAuthToken || !reloadedRefreshToken) {
-    return null;
-  }
-
-  if (
-    reloadedAuthToken === options.attemptedSession.authToken &&
-    reloadedRefreshToken === options.attemptedSession.refreshToken
-  ) {
-    return null;
-  }
-
-  const { session } = await refreshSessionWithSupabase(config, {
-    authToken: reloadedAuthToken,
-    refreshToken: reloadedRefreshToken,
-  });
-
-  return session;
 }
 
 export function requireAuth(config: ResolvedConfig): void {
@@ -323,47 +282,18 @@ export function valueOrUndefined(
     : undefined;
 }
 
-export function getAuthTokenExpiry(authToken: string | undefined): Date | null {
-  if (!authToken) {
-    return null;
-  }
+export { getAccessTokenExpiry as getAuthTokenExpiry } from "../auth/refresh-coordinator.js";
 
-  const parts = authToken.split(".");
-  if (parts.length !== 3) {
-    return null;
-  }
-
-  try {
-    const payload = JSON.parse(
-      Buffer.from(parts[1]!, "base64url").toString("utf8"),
-    ) as { exp?: unknown };
-    if (typeof payload.exp !== "number" || !Number.isFinite(payload.exp)) {
-      return null;
-    }
-    return new Date(payload.exp * 1000);
-  } catch {
-    return null;
-  }
-}
-
+/**
+ * Compatibility helper retained for `dreamboard auth status` / tests.
+ * Returns true iff the error looks like a permanent refresh-token
+ * invalidation. Prefer `classifyRefreshError` for new call sites.
+ */
 export function isInvalidRefreshTokenMessage(
   message: string | undefined,
 ): boolean {
   if (!message) return false;
-
-  const normalized = message.toLowerCase();
-  if (!normalized.includes("refresh token")) {
-    return false;
-  }
-
-  return [
-    "not found",
-    "invalid",
-    "expired",
-    "revoked",
-    "reuse",
-    "already used",
-  ].some((fragment) => normalized.includes(fragment));
+  return classifyRefreshError({ message }).kind === "permanent_invalid";
 }
 
 export function formatStoredSessionInvalidMessage(reason?: string): string {
@@ -378,25 +308,10 @@ function usesStoredSession(config: ResolvedConfig): boolean {
   );
 }
 
-async function persistStoredSession(session: {
-  authToken: string;
-  refreshToken?: string;
-}): Promise<void> {
-  const globalConfig = await loadGlobalConfig();
-  await saveGlobalConfig({
-    ...globalConfig,
-    authToken: session.authToken,
-    refreshToken: session.refreshToken,
-  });
-}
-
 /**
  * Common init pattern used by pull, push, status, update, run commands:
- * find project root, load config, resolve config, require auth, configure client.
- *
- * When a refresh token is available (e.g. DREAMBOARD_REFRESH_TOKEN env var set
- * inside a sandbox), automatically refreshes the auth token via Supabase before
- * configuring the API client.
+ * find project root, load config, resolve config, require auth,
+ * configure client.
  */
 export async function resolveProjectContext(
   flags: ConfigFlags,
@@ -414,7 +329,11 @@ export async function resolveProjectContext(
   }
 
   const projectConfig = await loadProjectConfig(projectRoot);
-  const config = resolveConfig(await loadGlobalConfig(), flags, projectConfig);
+  const [globalConfig, credentials] = await Promise.all([
+    loadGlobalConfig(),
+    getStoredSession(),
+  ]);
+  const config = resolveConfig(globalConfig, flags, projectConfig, credentials);
 
   if (opts?.requireAuth !== false) {
     requireAuth(config);

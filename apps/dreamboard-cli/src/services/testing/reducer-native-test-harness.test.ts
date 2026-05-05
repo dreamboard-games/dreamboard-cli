@@ -108,32 +108,36 @@ export default defineScenario({
   id: "smoke-initial-turn",
   from: "initial-turn",
   when: async () => undefined,
-  then: ({ expect, players, prompts, state }) => {
+  then: ({ expect, players, interactions, state }) => {
     expect(state()).toBe("setup");
     for (const playerId of players()) {
-      expect(prompts(playerId)).toEqual([]);
+      expect(interactions(playerId)).toEqual([]);
     }
   },
 });
 `;
 
-test("accept dispatch results require kind discriminators throughout trace payloads", () => {
+test("accept dispatch results use kind discriminators on the envelope and trace entries, type on effects", () => {
   expect(() =>
     assertDispatchResultWireContract({
-      type: "accept",
       kind: "accept",
+      state: {},
       trace: [
         {
-          type: "acceptedClientInput",
           kind: "acceptedClientInput",
-          input: { kind: "action" },
+          input: {
+            kind: "interaction",
+            playerId: "player-1",
+            interactionId: "claim",
+            params: {},
+          },
         },
         {
-          type: "appliedEffect",
           kind: "appliedEffect",
           effect: {
+            effectId: "ef0",
             type: "transition",
-            kind: "transition",
+            to: "nextPhase",
           },
         },
       ],
@@ -144,30 +148,26 @@ test("accept dispatch results require kind discriminators throughout trace paylo
 test("missing top-level dispatch result kind fails with a backend-like contract error", () => {
   expect(() =>
     assertDispatchResultWireContract({
-      type: "accept",
       trace: [],
     }),
-  ).toThrow("DispatchResult must include kind='accept'");
+  ).toThrow("DispatchResult.kind");
 });
 
-test("missing nested effect kind fails with a precise payload path", () => {
+test("missing nested effect type fails with a precise payload path", () => {
   expect(() =>
     assertDispatchResultWireContract({
-      type: "accept",
       kind: "accept",
+      state: {},
       trace: [
         {
-          type: "appliedEffect",
           kind: "appliedEffect",
           effect: {
-            type: "transition",
+            effectId: "ef0",
           },
         },
       ],
     }),
-  ).toThrow(
-    "DispatchResult.accept.trace[0].effect must include kind='transition'",
-  );
+  ).toThrow("DispatchResult.trace[0].effect");
 });
 
 test("generateReducerNativeArtifacts materializes preset card sets", async () => {

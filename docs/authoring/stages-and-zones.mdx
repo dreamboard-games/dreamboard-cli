@@ -1,0 +1,58 @@
+---
+title: "Stages and zones"
+description: "Use stages for phase sub-states and zones for declarative hand rendering."
+---
+
+Stages and zones are optional phase-level primitives. Use them when they simplify a phase without creating extra phase names.
+
+## Stages
+
+Stages are first-match sub-state selectors inside a phase. Declaration order is priority: the first `when` predicate that returns `true` becomes the current stage.
+
+```ts
+stages: {
+  discard: definePhaseStage<GameContract, typeof phaseState>()({
+    when: ({ state }) => state.phase.step === "discard",
+    allow: ["discardCards"],
+  }),
+  main: definePhaseStage<GameContract, typeof phaseState>()({
+    when: ({ state }) => state.phase.step === "main",
+    allow: ["buildPath", "tradeWithBank", "endTurn"],
+  }),
+}
+```
+
+`allow` gates which interaction ids are available in that stage.
+
+Stages can also use `onEnter` and `onExit` hooks:
+
+```ts
+onEnter({ state, accept, ops }) {
+  return accept(pipe(state, ops.patchPhaseState({ enteredMain: true })));
+}
+```
+
+Use stages when one phase has clear internal steps but the surrounding flow is still one conceptual phase.
+
+## Zones
+
+Zones declare which manifest player card zones render as generated hand surfaces.
+
+```ts
+zones: [zones.actionHand],
+cardActions: {
+  playBoost,
+  playDrawCards,
+  playBuildPath,
+},
+```
+
+Each entry is a manifest player zone id that stores cards. Import `zones` from the generated manifest contract and use handles such as `zones.actionHand` instead of raw string ids. The runtime reads cards from listed zones and derives playable actions from phase `cardActions` whose `playFrom` matches the zone id.
+
+The runtime dry-runs each derived card action's validation to determine per-card playability for UI surfaces.
+
+## Zone keys
+
+Manifest zone ids often use kebab case, such as `action-hand`. Generated UI contracts expose JS-friendly zone keys such as `actionHand` for surface configuration while preserving the manifest zone id at runtime.
+
+Keep the manifest zone id as the source of truth. Do not maintain a parallel UI-only zone id list.

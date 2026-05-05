@@ -643,8 +643,6 @@ export default {
    * Demonstrates the shared edge and vertex interaction pattern used by tiled boards.
    */
   "Tiled Topology Overlays": () => {
-    const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
-    const [hoveredVertexId, setHoveredVertexId] = useState<string | null>(null);
     const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
     const [selectedVertexId, setSelectedVertexId] = useState<string | null>(
       null,
@@ -652,13 +650,10 @@ export default {
 
     const highlightedCellIds = new Set<string>();
     topologyEdges
-      .find((edge) => edge.id === hoveredEdgeId || edge.id === selectedEdgeId)
+      .find((edge) => edge.id === selectedEdgeId)
       ?.spaceIds.forEach((spaceId) => highlightedCellIds.add(spaceId));
     topologyVertices
-      .find(
-        (vertex) =>
-          vertex.id === hoveredVertexId || vertex.id === selectedVertexId,
-      )
+      .find((vertex) => vertex.id === selectedVertexId)
       ?.spaceIds.forEach((spaceId) => highlightedCellIds.add(spaceId));
 
     return (
@@ -680,22 +675,40 @@ export default {
           vertices={topologyVertices}
           cellSize={92}
           showCoordinates={false}
-          interactiveEdges={true}
-          interactiveVertices={true}
-          onInteractiveEdgeEnter={(edge) => setHoveredEdgeId(edge.id)}
-          onInteractiveEdgeLeave={() => setHoveredEdgeId(null)}
-          onInteractiveEdgeClick={(edge) =>
-            setSelectedEdgeId((current) =>
-              current === edge.id ? null : edge.id,
-            )
-          }
-          onInteractiveVertexEnter={(vertex) => setHoveredVertexId(vertex.id)}
-          onInteractiveVertexLeave={() => setHoveredVertexId(null)}
-          onInteractiveVertexClick={(vertex) =>
-            setSelectedVertexId((current) =>
-              current === vertex.id ? null : vertex.id,
-            )
-          }
+          interactiveEdges={{
+            selectTargetId: (edgeId) =>
+              setSelectedEdgeId((current) =>
+                current === edgeId ? null : edgeId,
+              ),
+          }}
+          interactiveVertices={{
+            selectTargetId: (vertexId) =>
+              setSelectedVertexId((current) =>
+                current === vertexId ? null : vertexId,
+              ),
+          }}
+          renderInteractiveEdge={(_edge, position, state) => (
+            <line
+              x1={position.x1}
+              y1={position.y1}
+              x2={position.x2}
+              y2={position.y2}
+              stroke={state.isHovered ? "#38bdf8" : "rgba(14,165,233,0.2)"}
+              strokeWidth={state.isHovered ? 14 : 10}
+              strokeLinecap="round"
+              pointerEvents="stroke"
+            />
+          )}
+          renderInteractiveVertex={(_vertex, position, state) => (
+            <circle
+              cx={position.x}
+              cy={position.y}
+              r={state.isHovered ? 16 : 12}
+              fill={state.isHovered ? "rgba(251,146,60,0.5)" : "transparent"}
+              stroke="rgba(251,146,60,0.8)"
+              strokeWidth={2}
+            />
+          )}
           renderCell={(row, col) => {
             const cellId = `cell-${row}-${col}`;
             return (
@@ -711,8 +724,7 @@ export default {
           }}
           renderPiece={() => null}
           renderEdge={(edge, position) => {
-            const isActive =
-              edge.id === hoveredEdgeId || edge.id === selectedEdgeId;
+            const isActive = edge.id === selectedEdgeId;
             return (
               <line
                 x1={position.x1}
@@ -727,8 +739,7 @@ export default {
             );
           }}
           renderVertex={(vertex, position) => {
-            const isActive =
-              vertex.id === hoveredVertexId || vertex.id === selectedVertexId;
+            const isActive = vertex.id === selectedVertexId;
             return (
               <circle
                 cx={position.x}

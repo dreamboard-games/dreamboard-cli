@@ -942,24 +942,31 @@ paths:
           $ref: "#/components/responses/NotFoundError"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /api/sessions/{sessionId}/status:
+  /api/sessions/{sessionId}/bootstrap:
     parameters:
       - $ref: "#/components/parameters/SessionId"
     get:
-      summary: Get session status
-      description: Get current status and phase of a game session
-      operationId: getSessionStatus
+      summary: Bootstrap a session
+      description: Return a deterministic session snapshot for first render before live SSE updates.
+      operationId: getSessionBootstrap
       security:
         - BearerAuth: []
       tags:
         - Sessions
+      parameters:
+        - name: playerId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional controlled player to include in the scoped gameplay snapshot.
       responses:
         "200":
-          description: Session status retrieved successfully
+          description: Session bootstrap retrieved successfully
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SessionStatus"
+                $ref: "#/components/schemas/SessionBootstrap"
         "400":
           $ref: "#/components/responses/BadRequestError"
         "401":
@@ -970,13 +977,13 @@ paths:
           $ref: "#/components/responses/NotFoundError"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /api/sessions/{sessionId}/events:
+  /api/sessions/{sessionId}/lobby/events:
     parameters:
       - $ref: "#/components/parameters/SessionId"
     get:
-      summary: Subscribe to session events (SSE)
-      description: Server-Sent Events stream for real-time session updates. Every connection starts with a `SESSION_BOOTSTRAP` snapshot that fully describes the durable session state, then emits only future live events generated after the connection is established.
-      operationId: subscribeToSessionEvents
+      summary: Subscribe to public lobby events (SSE)
+      description: Server-Sent Events stream for public lobby/control updates. Every connection starts with a `lobby.bootstrap` event.
+      operationId: subscribeToSessionLobbyEvents
       security:
         - BearerAuth: []
       tags:
@@ -1006,11 +1013,10 @@ paths:
           content:
             text/event-stream:
               schema:
-                $ref: "#/components/schemas/GameMessage"
+                $ref: "#/components/schemas/LobbyEvent"
                 description: |
-                  Server-Sent Events stream. Each event contains a JSON-serialized GameMessage.
-                  Every connection begins with a `SESSION_BOOTSTRAP` event that fully describes the current durable session state.
-                  After bootstrap, the stream includes only live updates and does not replay historical messages.
+                  Server-Sent Events stream. Each event contains a JSON-serialized LobbyEvent.
+                  Lobby events contain public session/control metadata only and never carry private gameplay.
         "400":
           $ref: "#/components/responses/BadRequestError"
         "401":
@@ -1023,13 +1029,13 @@ paths:
           $ref: "#/components/responses/TooManyRequestsError"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /api/sessions/{sessionId}/events/disconnect:
+  /api/sessions/{sessionId}/lobby/events/disconnect:
     parameters:
       - $ref: "#/components/parameters/SessionId"
     post:
-      summary: Release a session events stream slot
+      summary: Release a lobby events stream slot
       description: Best-effort disconnect signal used by browser tabs during unload and reconnect transitions so stale event stream slots are released promptly.
-      operationId: disconnectSessionEvents
+      operationId: disconnectSessionLobbyEvents
       security:
         - BearerAuth: []
       tags:
@@ -1047,6 +1053,89 @@ paths:
           schema:
             type: string
           description: Unique identifier for the specific connection attempt being released.
+      responses:
+        "202":
+          description: Disconnect request accepted
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+  /api/sessions/{sessionId}/players/{playerId}/gameplay/events:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+      - $ref: "#/components/parameters/PlayerId"
+    get:
+      summary: Subscribe to selected-player gameplay events (SSE)
+      description: Server-Sent Events stream for one selected player's private gameplay. Every connection starts with a `gameplay.bootstrap` event.
+      operationId: subscribeToPlayerGameplayEvents
+      security:
+        - BearerAuth: []
+      tags:
+        - Sessions
+      parameters:
+        - name: clientId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: connectionAttemptId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: clientSource
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSE connection established
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/GameplayEvent"
+                description: |
+                  Server-Sent Events stream. Each event contains a JSON-serialized GameplayEvent scoped to the path playerId.
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "429":
+          $ref: "#/components/responses/TooManyRequestsError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /api/sessions/{sessionId}/players/{playerId}/gameplay/events/disconnect:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+      - $ref: "#/components/parameters/PlayerId"
+    post:
+      summary: Release a selected-player gameplay stream slot
+      description: Best-effort disconnect signal for a selected-player gameplay stream.
+      operationId: disconnectPlayerGameplayEvents
+      security:
+        - BearerAuth: []
+      tags:
+        - Sessions
+      parameters:
+        - name: clientId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: connectionAttemptId
+          in: query
+          required: true
+          schema:
+            type: string
       responses:
         "202":
           description: Disconnect request accepted
@@ -1113,7 +1202,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StartGameResponse"
+                $ref: "#/components/schemas/SessionBootstrap"
         "400":
           $ref: "#/components/responses/BadRequestError"
         "401":
@@ -1124,13 +1213,121 @@ paths:
           $ref: "#/components/responses/NotFoundError"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /api/sessions/{sessionId}/inputs:
+  /api/sessions/{sessionId}/players/{playerId}/actions:
     parameters:
       - $ref: "#/components/parameters/SessionId"
+      - $ref: "#/components/parameters/PlayerId"
+    get:
+      summary: List current actions for a selected player
+      description: Returns the current server-authored descriptors and action-set revision for the selected player.
+      operationId: listPlayerActions
+      security:
+        - BearerAuth: []
+      tags:
+        - Sessions
+      responses:
+        "200":
+          description: Current actions returned successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlayerActionsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /api/sessions/{sessionId}/players/{playerId}/actions/{interactionId}:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+      - $ref: "#/components/parameters/PlayerId"
+      - name: interactionId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Describe one current action
+      description: Returns the full current descriptor and action-set revision for one selected-player interaction.
+      operationId: describePlayerAction
+      security:
+        - BearerAuth: []
+      tags:
+        - Sessions
+      responses:
+        "200":
+          description: Action descriptor returned successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlayerActionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /api/sessions/{sessionId}/players/{playerId}/actions/{interactionId}/targets/{inputKey}:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+      - $ref: "#/components/parameters/PlayerId"
+      - name: interactionId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: inputKey
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Describe the current valid target/domain values for one action input
+      description: Returns the current server-authored input domain for a selected-player action input.
+      operationId: getPlayerActionTargets
+      security:
+        - BearerAuth: []
+      tags:
+        - Sessions
+      responses:
+        "200":
+          description: Input domain returned successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlayerActionTargetsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /api/sessions/{sessionId}/players/{playerId}/actions/{interactionId}/validate:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+      - $ref: "#/components/parameters/PlayerId"
+      - name: interactionId
+        in: path
+        required: true
+        schema:
+          type: string
     post:
-      summary: Submit generic gameplay input
-      description: Submit a gameplay input during gameplay phase. Supports action and promptResponse for clients.
-      operationId: submitInput
+      summary: Validate collector-shaped action inputs
+      description: Validates one selected-player action using collector-shaped inputs. Path fields are authoritative; clients do not send a GameInput envelope.
+      operationId: validatePlayerAction
       security:
         - BearerAuth: []
       tags:
@@ -1140,14 +1337,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/SubmitInputRequest"
+              $ref: "#/components/schemas/PlayerActionRequest"
       responses:
         "200":
-          description: Input submission processed successfully
+          description: Validation result returned successfully
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SubmitInputResponse"
+                $ref: "#/components/schemas/PlayerActionValidateResponse"
         "400":
           $ref: "#/components/responses/BadRequestError"
         "401":
@@ -1160,13 +1357,19 @@ paths:
           $ref: "#/components/responses/ConflictError"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /api/sessions/{sessionId}/validate-input:
+  /api/sessions/{sessionId}/players/{playerId}/actions/{interactionId}/submit:
     parameters:
       - $ref: "#/components/parameters/SessionId"
+      - $ref: "#/components/parameters/PlayerId"
+      - name: interactionId
+        in: path
+        required: true
+        schema:
+          type: string
     post:
-      summary: Validate gameplay input
-      description: Validate a gameplay input before submitting it. Returns validation result plus the current gameplay version.
-      operationId: validateInput
+      summary: Submit collector-shaped action inputs
+      description: Submits one selected-player action using collector-shaped inputs. Path fields are authoritative; clients do not send a GameInput envelope.
+      operationId: submitPlayerAction
       security:
         - BearerAuth: []
       tags:
@@ -1176,14 +1379,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ValidateInputRequest"
+              $ref: "#/components/schemas/PlayerActionRequest"
       responses:
         "200":
-          description: Validation result returned successfully
+          description: Submission result returned successfully
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ValidateInputResponse"
+                $ref: "#/components/schemas/PlayerActionSubmitResponse"
         "400":
           $ref: "#/components/responses/BadRequestError"
         "401":
@@ -4626,7 +4829,7 @@ components:
         - displayName
     SessionStatus:
       type: object
-      description: Complete session status including all fields needed by the frontend. Durable lobby and gameplay details are provided via the SESSION_BOOTSTRAP SSE message.
+      description: Complete session status including all fields needed by the frontend. Durable lobby and gameplay details are provided via the gameplay.bootstrap SSE message.
       properties:
         sessionId:
           type: string
@@ -4683,7 +4886,45 @@ components:
         - lobby
         - gameplay
         - ended
-    SessionSnapshotLobby:
+    SessionBootstrapSession:
+      type: object
+      description: Stable session identity and phase for deterministic host bootstrapping.
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+          description: Unique identifier for the session
+        shortCode:
+          type: string
+          description: Memorable short code for sharing (e.g., 'swift-falcon-73')
+        gameId:
+          type: string
+          format: uuid
+          description: Unique identifier for the game definition
+        hostUserId:
+          type: string
+          format: uuid
+          description: User ID of the session host
+        status:
+          type: string
+          enum:
+            - active
+            - ended
+          description: Overall session status
+        phase:
+          $ref: "#/components/schemas/SessionSnapshotPhase"
+        setupProfileId:
+          type: string
+          nullable: true
+          description: Selected authored setup profile for this session
+      required:
+        - sessionId
+        - shortCode
+        - gameId
+        - hostUserId
+        - status
+        - phase
+    SessionLobbySnapshot:
       type: object
       required:
         - seats
@@ -4694,188 +4935,31 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SeatAssignment"
-          description: Current seat assignments for the session
+          description: Current public seat assignments for the session.
         canStart:
           type: boolean
-          description: Whether the lobby can currently be started
+          description: Whether the lobby can currently be started.
         hostUserId:
           type: string
           format: uuid
-          description: User ID of the session host
+          description: User ID of the session host.
         setupProfileId:
           type: string
           nullable: true
-          description: Selected authored setup profile for this session
-    ParameterType:
-      type: string
-      enum:
-        - cardId
-        - cardType
-        - playerId
-        - string
-        - number
-        - boolean
-        - zoneId
-        - pieceId
-        - dieId
-        - boardId
-        - edgeId
-        - vertexId
-        - spaceId
-        - resourceId
-      description: Type of parameter accepted by a runtime action
-    ActionParameterDefinition:
+          description: Selected authored setup profile for this session.
+    HostControlSnapshot:
       type: object
-      description: Defines a parameter for an action
       required:
-        - name
-        - type
+        - switchablePlayerIds
       properties:
-        name:
-          type: string
-        type:
-          $ref: "#/components/schemas/ParameterType"
-        required:
-          type: boolean
-          default: true
-        array:
-          type: boolean
-          default: false
-        minLength:
-          type: integer
-          minimum: 0
-          nullable: true
-        maxLength:
-          type: integer
-          minimum: 0
-          nullable: true
-        cardSetId:
-          type: string
-          nullable: true
-          description: Optional card set ID to specify which card set a CARD_ID parameter refers to
-        description:
-          type: string
-          nullable: true
-    ActionDefinition:
-      type: object
-      description: Defines an available player action with metadata and parameter definitions
-      required:
-        - actionType
-        - displayName
-        - parameters
-      properties:
-        actionType:
-          type: string
-          description: Unique action identifier
-        displayName:
-          type: string
-          description: UI display name for this action
-        description:
-          type: string
-          nullable: true
-          description: Optional help text describing the action
-        parameters:
-          type: array
-          items:
-            $ref: "#/components/schemas/ActionParameterDefinition"
-          description: List of parameters this action accepts
-        errorCodes:
+        switchablePlayerIds:
           type: array
           items:
             type: string
-          description: List of possible validation error codes
-          nullable: true
-    PlayerAvailableActions:
-      type: object
-      required:
-        - playerId
-        - actions
-      properties:
-        playerId:
-          type: string
-        actions:
-          type: array
-          items:
-            $ref: "#/components/schemas/ActionDefinition"
-    GameplayPromptOption:
-      type: object
-      required:
-        - id
-        - label
-      properties:
-        id:
-          type: string
-        label:
-          type: string
-    GameplayPromptInstance:
-      type: object
-      required:
-        - id
-        - promptId
-        - to
-        - options
-      properties:
-        id:
-          type: string
-        promptId:
-          type: string
-        to:
-          type: string
-        title:
-          type: string
-          nullable: true
-        payload:
-          type: string
-          nullable: true
-          description: JSON-serialized prompt payload
-        options:
-          type: array
-          items:
-            $ref: "#/components/schemas/GameplayPromptOption"
-    GameplaySnapshot:
-      type: object
-      required:
-        - version
-        - activePlayers
-        - controllablePlayerIds
-        - currentPhase
-        - seatViewsByPlayerId
-        - availableActions
-        - prompts
-      properties:
-        version:
-          type: integer
-          description: Monotonic gameplay version for stale-client detection
-        activePlayers:
-          type: array
-          items:
-            type: string
-          description: Player IDs currently active in the game state
-        controllablePlayerIds:
-          type: array
-          items:
-            type: string
-          description: Player IDs this user can control in the session
-        currentPhase:
-          type: string
-          description: Current reducer-native gameplay phase
-        seatViewsByPlayerId:
-          type: object
-          additionalProperties:
-            type: string
-          description: JSON-serialized reducer-projected UI views keyed by player ID
-        availableActions:
-          type: array
-          items:
-            $ref: "#/components/schemas/PlayerAvailableActions"
-          description: Available action metadata grouped by controllable player
-        prompts:
-          type: array
-          items:
-            $ref: "#/components/schemas/GameplayPromptInstance"
+          description: Player IDs the authenticated user may select for scoped gameplay.
     HistoryEntrySummary:
       type: object
-      description: Summary of a game state history entry
+      description: Summary of a game state history entry.
       required:
         - id
         - version
@@ -4885,28 +4969,21 @@ components:
       properties:
         id:
           type: string
-          description: Unique identifier for this history entry
         version:
           type: integer
-          description: Event store version number
         timestamp:
           type: string
           format: date-time
-          description: When this snapshot was created
         description:
           type: string
-          description: Human-readable description of the action
         playerId:
           type: string
           nullable: true
-          description: Player who performed the action
         actionType:
           type: string
           nullable: true
-          description: Type of action that triggered this snapshot
         isCurrent:
           type: boolean
-          description: Whether this is the current game state
     SessionSnapshotHistory:
       type: object
       required:
@@ -4919,430 +4996,466 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/HistoryEntrySummary"
-          description: Durable game history entries available to the current user
         currentIndex:
           type: integer
-          description: Index of the selected history entry
         canGoBack:
           type: boolean
-          description: Whether an earlier history entry exists
         canGoForward:
           type: boolean
-          description: Whether a later history entry exists
-    SessionSnapshotMessage:
+    ResourceMapDomainEntry:
       type: object
-      description: Durable session snapshot sent first on every session event stream connection
+      required:
+        - resourceId
+        - min
+        - max
+      properties:
+        resourceId:
+          type: string
+        label:
+          type: string
+          nullable: true
+        min:
+          type: integer
+        max:
+          type: integer
+    ChoiceDomainOption:
+      type: object
+      required:
+        - value
+        - label
+      properties:
+        value:
+          type: string
+        label:
+          type: string
+    InputDomain:
+      type: object
       required:
         - type
-        - toUser
-        - phase
-        - lobby
       properties:
         type:
           type: string
           enum:
-            - SESSION_BOOTSTRAP
-        toUser:
+            - target
+            - resourceMap
+            - boundedNumber
+            - choice
+            - opaque
+        targetKind:
           type: string
-          format: uuid
-          description: User ID this message is addressed to
-        phase:
-          $ref: "#/components/schemas/SessionSnapshotPhase"
-        lobby:
-          $ref: "#/components/schemas/SessionSnapshotLobby"
-        gameplay:
-          $ref: "#/components/schemas/GameplaySnapshot"
           nullable: true
+        boardId:
+          type: string
+          nullable: true
+        zoneId:
+          type: string
+          nullable: true
+        eligibleTargets:
+          type: array
+          nullable: true
+          items:
+            type: string
+        resources:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/ResourceMapDomainEntry"
+        min:
+          type: number
+          nullable: true
+        max:
+          type: number
+          nullable: true
+        step:
+          type: number
+          nullable: true
+        choices:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/ChoiceDomainOption"
+    InteractionInputDescriptor:
+      type: object
+      description: Canonical descriptor for one interaction input collector.
+      required:
+        - key
+        - kind
+        - domain
+      properties:
+        key:
+          type: string
+        kind:
+          type: string
+        domain:
+          $ref: "#/components/schemas/InputDomain"
+    InteractionContextOption:
+      type: object
+      required:
+        - id
+        - label
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+    InteractionContext:
+      type: object
+      required:
+        - to
+      properties:
+        to:
+          type: string
+        title:
+          type: string
+          nullable: true
+        payload:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/JsonValue"
+          x-kotlin-type: kotlinx.serialization.json.JsonElement
+          nullable: true
+        options:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/InteractionContextOption"
+    InteractionDescriptor:
+      type: object
+      description: Authoritative interaction descriptor resolved by the trusted bundle.
+      required:
+        - phaseName
+        - interactionKey
+        - interactionId
+        - surface
+        - kind
+        - label
+        - inputs
+        - available
+      properties:
+        phaseName:
+          type: string
+        interactionKey:
+          type: string
+        interactionId:
+          type: string
+        surface:
+          type: string
+        kind:
+          type: string
+          enum:
+            - action
+            - prompt
+        label:
+          type: string
+        shortLabel:
+          type: string
+          nullable: true
+        icon:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        emphasis:
+          type: string
+          enum:
+            - primary
+            - secondary
+            - destructive
+          nullable: true
+        group:
+          type: string
+          nullable: true
+        zoneId:
+          type: string
+          nullable: true
+        inputs:
+          type: array
+          description: Ordered input descriptors. Each entry is the canonical source for its collector key, collector kind, and valid-value domain.
+          items:
+            $ref: "#/components/schemas/InteractionInputDescriptor"
+        cost:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/JsonValue"
+          x-kotlin-type: kotlinx.serialization.json.JsonElement
+          nullable: true
+        currentResources:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/JsonValue"
+          x-kotlin-type: kotlinx.serialization.json.JsonElement
+          nullable: true
+        available:
+          type: boolean
+        unavailableReason:
+          type: string
+          nullable: true
+        context:
+          $ref: "#/components/schemas/InteractionContext"
+          nullable: true
+    ZoneHandles:
+      type: object
+      required:
+        - cardIds
+        - cardsById
+        - playableByCardId
+      properties:
+        cardIds:
+          type: array
+          items:
+            type: string
+        cardsById:
+          type: object
+          additionalProperties:
+            type: string
+        playableByCardId:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              $ref: "#/components/schemas/InteractionDescriptor"
+    PlayerGameplaySnapshot:
+      type: object
+      required:
+        - version
+        - playerId
+        - activePlayers
+        - currentPhase
+        - currentStage
+        - stageSeats
+        - view
+        - availableInteractions
+        - zones
+        - actionSetVersion
+      properties:
+        version:
+          type: integer
+          description: Monotonic gameplay version for stale-client detection.
+        actionSetVersion:
+          type: string
+          description: Opaque revision token for the selected player's current descriptors and input domains.
+        playerId:
+          type: string
+          description: Player ID this gameplay snapshot is scoped to.
+        activePlayers:
+          type: array
+          items:
+            type: string
+          description: Player IDs currently active in the game state.
+        currentPhase:
+          type: string
+          description: Current reducer-native gameplay phase.
+        currentStage:
+          type: string
+          nullable: true
+          description: Current stage within the phase. Null when the phase has no active stage.
+        stageSeats:
+          type: array
+          items:
+            type: string
+          description: Player IDs this stage currently admits.
+        view:
+          type: string
+          nullable: true
+          description: JSON-serialized reducer-projected UI view for the scoped player.
+        availableInteractions:
+          type: array
+          items:
+            $ref: "#/components/schemas/InteractionDescriptor"
+          description: Interaction descriptors for the scoped player, resolved authoritatively by the trusted bundle.
+        zones:
+          type: object
+          description: Zone handles for the scoped player, keyed by zone id.
+          additionalProperties:
+            $ref: "#/components/schemas/ZoneHandles"
+        boardStatic:
+          type: string
+          nullable: true
+          description: JSON-serialized session-scoped static view. Populated on gameplay bootstrap payloads only.
+        boardStaticHash:
+          type: string
+          nullable: true
+          description: Content hash of the session-scoped static view held on the host.
+    SessionBootstrap:
+      type: object
+      description: Deterministic session bootstrap payload used for first render before live SSE updates.
+      properties:
+        session:
+          $ref: "#/components/schemas/SessionBootstrapSession"
+        lobby:
+          $ref: "#/components/schemas/SessionLobbySnapshot"
+        control:
+          $ref: "#/components/schemas/HostControlSnapshot"
         history:
           $ref: "#/components/schemas/SessionSnapshotHistory"
           nullable: true
-    GameplayUpdateMessage:
-      type: object
-      required:
-        - type
-        - toUser
-        - gameplay
-      properties:
-        type:
+        selectedPlayerId:
           type: string
-          enum:
-            - GAMEPLAY_UPDATE
-        toUser:
-          type: string
-          format: uuid
+          nullable: true
+          description: Player selected for the initial scoped gameplay stream, if gameplay is available.
         gameplay:
-          $ref: "#/components/schemas/GameplaySnapshot"
-    GameStartedMessage:
-      type: object
-      required:
-        - type
-        - toUser
-        - activePlayers
-        - controllablePlayerIds
-      properties:
-        type:
-          type: string
-          enum:
-            - GAME_STARTED
-        toUser:
-          type: string
-          format: uuid
-          description: User ID this message is addressed to
-        activePlayers:
-          type: array
-          items:
-            type: string
-          description: Player IDs of currently active players
-        controllablePlayerIds:
-          type: array
-          items:
-            type: string
-          description: Player IDs that this user can control in this session
-    YourTurnMessage:
-      type: object
-      required:
-        - type
-        - toUser
-        - availableActions
-        - activePlayers
-      properties:
-        type:
-          type: string
-          enum:
-            - YOUR_TURN
-        toUser:
-          type: string
-          format: uuid
-          description: User ID this message is addressed to
-        availableActions:
-          type: array
-          items:
-            $ref: "#/components/schemas/ActionDefinition"
-          description: List of action definitions available to the player
-        activePlayers:
-          type: array
-          items:
-            type: string
-          description: Player IDs whose turn it is
-    GameAction:
-      type: object
-      description: Represents a player action with type and parameters
-      required:
-        - actionType
-        - parameters
-      properties:
-        actionType:
-          type: string
-          description: Action type identifier from manifest availableActions
-        parameters:
-          type: string
-          description: JSON-serialized parameters specific to this action
-    ActionExecutedMessage:
-      type: object
-      required:
-        - type
-        - toUser
-        - playerId
-        - action
-      properties:
-        type:
-          type: string
-          enum:
-            - ACTION_EXECUTED
-        toUser:
-          type: string
-          format: uuid
-          description: User ID this message is addressed to
-        playerId:
-          type: string
-          description: Player ID who executed the action
-        action:
-          $ref: "#/components/schemas/GameAction"
-    ActionRejectedMessage:
-      type: object
-      required:
-        - type
-        - toUser
-        - reason
-      properties:
-        type:
-          type: string
-          enum:
-            - ACTION_REJECTED
-        toUser:
-          type: string
-          format: uuid
-          description: User ID this message is addressed to
-        reason:
-          type: string
-          description: Reason why the action was rejected
-        errorCode:
-          type: string
+          $ref: "#/components/schemas/PlayerGameplaySnapshot"
           nullable: true
-          description: Machine-readable error code from game logic validation
-        targetPlayer:
-          type: string
-          nullable: true
-          description: Player ID whose action was rejected
-    TurnChangedMessage:
+      required:
+        - session
+        - lobby
+        - control
+        - selectedPlayerId
+    LobbyBootstrapEvent:
       type: object
       required:
         - type
-        - toUser
-        - previousPlayers
-        - currentPlayers
-      properties:
-        type:
-          type: string
-          enum:
-            - TURN_CHANGED
-        toUser:
-          type: string
-          format: uuid
-          description: User ID this message is addressed to
-        previousPlayers:
-          type: array
-          items:
-            type: string
-          description: Player IDs of the previous active players
-        currentPlayers:
-          type: array
-          items:
-            type: string
-          description: Player IDs of the current active players
-    GameEndedMessage:
-      type: object
-      required:
-        - type
-        - toUser
-        - finalScores
-        - reason
-      properties:
-        type:
-          type: string
-          enum:
-            - GAME_ENDED
-        toUser:
-          type: string
-          format: uuid
-          description: User ID this message is addressed to
-        winner:
-          type: string
-          nullable: true
-          description: Player ID of the winner (if any)
-        finalScores:
-          type: object
-          additionalProperties:
-            type: integer
-          description: Map of player IDs to their final scores
-        reason:
-          type: string
-          description: Reason for game ending
-    StateUpdateMessage:
-      type: object
-      required:
-        - type
-        - toUser
         - phase
+        - lobby
+        - control
       properties:
         type:
           type: string
           enum:
-            - STATE_UPDATE
-        toUser:
-          type: string
-          format: uuid
-          description: User ID this message is addressed to
+            - lobby.bootstrap
         phase:
-          type: string
-          description: Current game phase
-    StateChangedMessage:
-      type: object
-      required:
-        - type
-        - toUser
-        - newState
-      properties:
-        type:
-          type: string
-          enum:
-            - STATE_CHANGED
-        toUser:
-          type: string
-          format: uuid
-          description: User ID this message is addressed to
-        newState:
-          type: string
-          description: Name of the new state
-    AvailableActionsMessage:
-      type: object
-      required:
-        - type
-        - toUser
-        - playerId
-        - actions
-      properties:
-        type:
-          type: string
-          enum:
-            - AVAILABLE_ACTIONS
-        toUser:
-          type: string
-          format: uuid
-          description: User ID this message is addressed to
-        playerId:
-          type: string
-          description: Player ID for whom actions are available
-        actions:
-          type: array
-          items:
-            $ref: "#/components/schemas/GameAction"
-          description: List of available game actions
-    ErrorMessage:
-      type: object
-      required:
-        - type
-        - toUser
-        - message
-      properties:
-        type:
-          type: string
-          enum:
-            - ERROR
-        toUser:
-          type: string
-          format: uuid
-          description: User ID this message is addressed to
-        message:
-          type: string
-          description: Error message
-        code:
-          type: string
+          $ref: "#/components/schemas/SessionSnapshotPhase"
+        lobby:
+          $ref: "#/components/schemas/SessionLobbySnapshot"
+        control:
+          $ref: "#/components/schemas/HostControlSnapshot"
+        history:
+          $ref: "#/components/schemas/SessionSnapshotHistory"
           nullable: true
-          description: Error code
-    LobbyUpdateMessage:
+    LobbyUpdatedEvent:
       type: object
       required:
         - type
-        - toUser
-        - seats
-        - canStart
-        - hostUserId
+        - lobby
+        - control
       properties:
         type:
           type: string
           enum:
-            - LOBBY_UPDATE
-        toUser:
-          type: string
-          format: uuid
-          description: User ID this message is addressed to
-        seats:
-          type: array
-          items:
-            $ref: "#/components/schemas/SeatAssignment"
-          description: Current seat assignments in the lobby
-        canStart:
-          type: boolean
-          description: Whether the game can be started
-        hostUserId:
-          type: string
-          description: User ID of the session host
-        setupProfileId:
-          type: string
-          nullable: true
-          description: Selected authored setup profile for this session
-    HistoryUpdatedMessage:
+            - lobby.updated
+        lobby:
+          $ref: "#/components/schemas/SessionLobbySnapshot"
+        control:
+          $ref: "#/components/schemas/HostControlSnapshot"
+    HistoryUpdatedEvent:
       type: object
-      description: Sent to host when history entries change
       required:
         - type
-        - toUser
-        - entries
-        - currentIndex
-        - canGoBack
-        - canGoForward
+        - history
       properties:
         type:
           type: string
           enum:
-            - HISTORY_UPDATED
-        toUser:
-          type: string
-          format: uuid
-          description: User ID this message is addressed to (host only)
-        entries:
-          type: array
-          items:
-            $ref: "#/components/schemas/HistoryEntrySummary"
-          description: List of history entries
-        currentIndex:
-          type: integer
-          description: Index of the current state in the history
-        canGoBack:
-          type: boolean
-          description: Whether there are earlier states to restore to
-        canGoForward:
-          type: boolean
-          description: Whether there are later states to restore to
-    HistoryRestoredMessage:
+            - history.updated
+        history:
+          $ref: "#/components/schemas/SessionSnapshotHistory"
+    HistoryRestoredEvent:
       type: object
-      description: Sent to all users when game state is restored from history
       required:
         - type
-        - toUser
         - restoredToVersion
       properties:
         type:
           type: string
           enum:
-            - HISTORY_RESTORED
-        toUser:
-          type: string
-          format: uuid
-          description: User ID this message is addressed to
+            - history.restored
         restoredToVersion:
           type: integer
-          description: The version number that was restored to
         description:
           type: string
           nullable: true
-          description: Description of the restored point
-    GameMessage:
+    SessionEndedEvent:
+      type: object
+      required:
+        - type
+        - reason
+      properties:
+        type:
+          type: string
+          enum:
+            - session.ended
+        reason:
+          type: string
+    LobbyEvent:
       oneOf:
-        - $ref: "#/components/schemas/SessionSnapshotMessage"
-        - $ref: "#/components/schemas/GameplayUpdateMessage"
-        - $ref: "#/components/schemas/GameStartedMessage"
-        - $ref: "#/components/schemas/YourTurnMessage"
-        - $ref: "#/components/schemas/ActionExecutedMessage"
-        - $ref: "#/components/schemas/ActionRejectedMessage"
-        - $ref: "#/components/schemas/TurnChangedMessage"
-        - $ref: "#/components/schemas/GameEndedMessage"
-        - $ref: "#/components/schemas/StateUpdateMessage"
-        - $ref: "#/components/schemas/StateChangedMessage"
-        - $ref: "#/components/schemas/AvailableActionsMessage"
-        - $ref: "#/components/schemas/ErrorMessage"
-        - $ref: "#/components/schemas/LobbyUpdateMessage"
-        - $ref: "#/components/schemas/HistoryUpdatedMessage"
-        - $ref: "#/components/schemas/HistoryRestoredMessage"
+        - $ref: "#/components/schemas/LobbyBootstrapEvent"
+        - $ref: "#/components/schemas/LobbyUpdatedEvent"
+        - $ref: "#/components/schemas/HistoryUpdatedEvent"
+        - $ref: "#/components/schemas/HistoryRestoredEvent"
+        - $ref: "#/components/schemas/SessionEndedEvent"
       discriminator:
         propertyName: type
         mapping:
-          SESSION_BOOTSTRAP: "#/components/schemas/SessionSnapshotMessage"
-          GAMEPLAY_UPDATE: "#/components/schemas/GameplayUpdateMessage"
-          GAME_STARTED: "#/components/schemas/GameStartedMessage"
-          YOUR_TURN: "#/components/schemas/YourTurnMessage"
-          ACTION_EXECUTED: "#/components/schemas/ActionExecutedMessage"
-          ACTION_REJECTED: "#/components/schemas/ActionRejectedMessage"
-          TURN_CHANGED: "#/components/schemas/TurnChangedMessage"
-          GAME_ENDED: "#/components/schemas/GameEndedMessage"
-          STATE_UPDATE: "#/components/schemas/StateUpdateMessage"
-          STATE_CHANGED: "#/components/schemas/StateChangedMessage"
-          AVAILABLE_ACTIONS: "#/components/schemas/AvailableActionsMessage"
-          ERROR: "#/components/schemas/ErrorMessage"
-          LOBBY_UPDATE: "#/components/schemas/LobbyUpdateMessage"
-          HISTORY_UPDATED: "#/components/schemas/HistoryUpdatedMessage"
-          HISTORY_RESTORED: "#/components/schemas/HistoryRestoredMessage"
+          lobby.bootstrap: "#/components/schemas/LobbyBootstrapEvent"
+          lobby.updated: "#/components/schemas/LobbyUpdatedEvent"
+          history.updated: "#/components/schemas/HistoryUpdatedEvent"
+          history.restored: "#/components/schemas/HistoryRestoredEvent"
+          session.ended: "#/components/schemas/SessionEndedEvent"
+    GameplayBootstrapEvent:
+      type: object
+      required:
+        - type
+        - gameplay
+      properties:
+        type:
+          type: string
+          enum:
+            - gameplay.bootstrap
+        gameplay:
+          $ref: "#/components/schemas/PlayerGameplaySnapshot"
+    GameplayUpdatedEvent:
+      type: object
+      required:
+        - type
+        - gameplay
+      properties:
+        type:
+          type: string
+          enum:
+            - gameplay.updated
+        gameplay:
+          $ref: "#/components/schemas/PlayerGameplaySnapshot"
+    GameplayResyncedEvent:
+      type: object
+      required:
+        - type
+        - gameplay
+      properties:
+        type:
+          type: string
+          enum:
+            - gameplay.resynced
+        gameplay:
+          $ref: "#/components/schemas/PlayerGameplaySnapshot"
+    GameplayErrorEvent:
+      type: object
+      required:
+        - type
+        - message
+      properties:
+        type:
+          type: string
+          enum:
+            - gameplay.error
+        code:
+          type: string
+          nullable: true
+        message:
+          type: string
+    GameplayEvent:
+      oneOf:
+        - $ref: "#/components/schemas/GameplayBootstrapEvent"
+        - $ref: "#/components/schemas/GameplayUpdatedEvent"
+        - $ref: "#/components/schemas/GameplayResyncedEvent"
+        - $ref: "#/components/schemas/GameplayErrorEvent"
+      discriminator:
+        propertyName: type
+        mapping:
+          gameplay.bootstrap: "#/components/schemas/GameplayBootstrapEvent"
+          gameplay.updated: "#/components/schemas/GameplayUpdatedEvent"
+          gameplay.resynced: "#/components/schemas/GameplayResyncedEvent"
+          gameplay.error: "#/components/schemas/GameplayErrorEvent"
     LogMessageDto:
       type: object
       description: Log entry from the game engine console output
@@ -5366,112 +5479,111 @@ components:
         - type
         - message
         - timestamp
-    StartGameResponse:
-      type: object
-      description: Response containing gameplay session data after starting the game. Durable gameplay details are sent via the SESSION_BOOTSTRAP SSE message.
-      properties:
-        sessionId:
-          type: string
-          format: uuid
-          description: Unique identifier for the game session
-        gameId:
-          type: string
-          format: uuid
-          description: Unique identifier for the game
-        shortCode:
-          type: string
-          description: Memorable short code for the session (e.g., 'swift-falcon-73'). Can be used to construct the play URL.
-      required:
-        - sessionId
-        - gameId
-        - shortCode
-    ActionGameInput:
+    PlayerActionsResponse:
       type: object
       required:
-        - kind
-        - playerId
-        - actionType
-        - params
+        - version
+        - actionSetVersion
+        - actions
       properties:
-        kind:
+        version:
+          type: integer
+        actionSetVersion:
           type: string
-          enum:
-            - action
-        playerId:
-          type: string
-        actionType:
-          type: string
-        params:
-          type: string
-          description: JSON-serialized action parameters
-    PromptResponseGameInput:
+        actions:
+          type: array
+          items:
+            $ref: "#/components/schemas/InteractionDescriptor"
+    PlayerActionResponse:
       type: object
       required:
-        - kind
-        - playerId
-        - promptId
-        - response
+        - version
+        - actionSetVersion
+        - action
       properties:
-        kind:
+        version:
+          type: integer
+        actionSetVersion:
           type: string
-          enum:
-            - promptResponse
-        playerId:
-          type: string
-        promptId:
-          type: string
-        response:
-          type: string
-          description: JSON-serialized prompt response payload
-    SystemGameInput:
+        action:
+          $ref: "#/components/schemas/InteractionDescriptor"
+    PlayerActionTargetsResponse:
       type: object
       required:
-        - kind
-        - event
+        - version
+        - actionSetVersion
+        - interactionId
+        - inputKey
+        - domain
       properties:
-        kind:
+        version:
+          type: integer
+        actionSetVersion:
           type: string
-          enum:
-            - system
-        event:
+        interactionId:
           type: string
-        payload:
+        inputKey:
           type: string
+        domain:
+          $ref: "#/components/schemas/InputDomain"
+        zoneCardsById:
+          type: object
           nullable: true
-          description: Optional JSON-serialized internal system payload
-    GameInput:
-      oneOf:
-        - $ref: "#/components/schemas/ActionGameInput"
-        - $ref: "#/components/schemas/PromptResponseGameInput"
-        - $ref: "#/components/schemas/SystemGameInput"
-      discriminator:
-        propertyName: kind
-        mapping:
-          action: "#/components/schemas/ActionGameInput"
-          promptResponse: "#/components/schemas/PromptResponseGameInput"
-          system: "#/components/schemas/SystemGameInput"
-    SubmitInputRequest:
+          additionalProperties:
+            type: string
+    PlayerActionRequest:
       type: object
       required:
-        - input
         - expectedVersion
+        - actionSetVersion
+        - inputs
       properties:
-        input:
-          $ref: "#/components/schemas/GameInput"
         expectedVersion:
           type: integer
-          description: Client-observed gameplay version. Requests fail if the server has advanced beyond this version.
-    SubmitInputResponse:
+        actionSetVersion:
+          type: string
+        inputs:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/JsonValue"
+          x-kotlin-type: kotlinx.serialization.json.JsonElement
+    PlayerActionValidateResponse:
+      type: object
+      required:
+        - valid
+        - version
+        - actionSetVersion
+      properties:
+        valid:
+          type: boolean
+        version:
+          type: integer
+        actionSetVersion:
+          type: string
+        errorCode:
+          type: string
+          nullable: true
+        message:
+          type: string
+          nullable: true
+        fieldErrors:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: string
+    PlayerActionSubmitResponse:
       type: object
       required:
         - success
         - version
+        - actionSetVersion
       properties:
         success:
           type: boolean
         version:
           type: integer
-          description: Gameplay version after the accepted input. Rejections return the current server version.
+        actionSetVersion:
+          type: string
         accepted:
           type: boolean
           nullable: true
@@ -5481,33 +5593,8 @@ components:
         message:
           type: string
           nullable: true
-    ValidateInputRequest:
-      type: object
-      required:
-        - input
-        - expectedVersion
-      properties:
-        input:
-          $ref: "#/components/schemas/GameInput"
-        expectedVersion:
-          type: integer
-          description: Client-observed gameplay version. Validation fails if the server has advanced beyond this version.
-    ValidateInputResponse:
-      type: object
-      required:
-        - valid
-        - version
-      properties:
-        valid:
-          type: boolean
-        version:
-          type: integer
-          description: Current server gameplay version used for validation.
-        errorCode:
-          type: string
-          nullable: true
-        message:
-          type: string
+        gameplay:
+          $ref: "#/components/schemas/PlayerGameplaySnapshot"
           nullable: true
     UpdateSeatRequest:
       type: object
@@ -5524,30 +5611,25 @@ components:
           pattern: ^#[0-9A-Fa-f]{6}$
     RestoreHistoryRequest:
       type: object
-      description: Request to restore game state to a previous history point
+      description: Request to restore game state to a previous history point.
       required:
         - entryId
       properties:
         entryId:
           type: string
-          description: ID of the history entry to restore to
     RestoreHistoryResponse:
       type: object
-      description: Response after restoring game state from history
       required:
         - success
         - restoredToVersion
       properties:
         success:
           type: boolean
-          description: Whether the restore operation succeeded
         restoredToVersion:
           type: integer
-          description: The version number that was restored to
         message:
           type: string
           nullable: true
-          description: Optional message about the restore operation
     UserMessageEvent:
       type: object
       description: Event representing a user's message in the conversation
@@ -6223,25 +6305,96 @@ components:
           type: string
           description: Error message if success is false
           nullable: true
-    GameMessageType:
+    GameMessage:
+      oneOf:
+        - $ref: "#/components/schemas/LobbyBootstrapEvent"
+        - $ref: "#/components/schemas/LobbyUpdatedEvent"
+        - $ref: "#/components/schemas/HistoryUpdatedEvent"
+        - $ref: "#/components/schemas/HistoryRestoredEvent"
+        - $ref: "#/components/schemas/SessionEndedEvent"
+        - $ref: "#/components/schemas/GameplayBootstrapEvent"
+        - $ref: "#/components/schemas/GameplayUpdatedEvent"
+        - $ref: "#/components/schemas/GameplayResyncedEvent"
+        - $ref: "#/components/schemas/GameplayErrorEvent"
+    ParameterType:
       type: string
       enum:
-        - SESSION_BOOTSTRAP
-        - GAMEPLAY_UPDATE
-        - GAME_STARTED
-        - YOUR_TURN
-        - ACTION_EXECUTED
-        - ACTION_REJECTED
-        - TURN_CHANGED
-        - GAME_ENDED
-        - STATE_UPDATE
-        - STATE_CHANGED
-        - AVAILABLE_ACTIONS
-        - ERROR
-        - LOBBY_UPDATE
-        - HISTORY_UPDATED
-        - HISTORY_RESTORED
-      description: Type of game message sent via Server-Sent Events
+        - cardId
+        - cardType
+        - playerId
+        - string
+        - number
+        - boolean
+        - zoneId
+        - pieceId
+        - dieId
+        - boardId
+        - edgeId
+        - vertexId
+        - spaceId
+        - resourceId
+      description: Type of parameter accepted by a runtime action
+    ActionParameterDefinition:
+      type: object
+      description: Defines a parameter for an action
+      required:
+        - name
+        - type
+      properties:
+        name:
+          type: string
+        type:
+          $ref: "#/components/schemas/ParameterType"
+        required:
+          type: boolean
+          default: true
+        array:
+          type: boolean
+          default: false
+        minLength:
+          type: integer
+          minimum: 0
+          nullable: true
+        maxLength:
+          type: integer
+          minimum: 0
+          nullable: true
+        cardSetId:
+          type: string
+          nullable: true
+          description: Optional card set ID to specify which card set a CARD_ID parameter refers to
+        description:
+          type: string
+          nullable: true
+    ActionDefinition:
+      type: object
+      description: Defines an available player action with metadata and parameter definitions
+      required:
+        - actionType
+        - displayName
+        - parameters
+      properties:
+        actionType:
+          type: string
+          description: Unique action identifier
+        displayName:
+          type: string
+          description: UI display name for this action
+        description:
+          type: string
+          nullable: true
+          description: Optional help text describing the action
+        parameters:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActionParameterDefinition"
+          description: List of parameters this action accepts
+        errorCodes:
+          type: array
+          items:
+            type: string
+          description: List of possible validation error codes
+          nullable: true
     CardSetSourceType:
       type: string
       enum:

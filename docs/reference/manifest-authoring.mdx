@@ -34,7 +34,7 @@ export default defineTopologyManifest({
 with a default of `6`.
 
 Boards describe positions, connections, and structural sites. Randomized setup
-contents still belong in reducer setup code. In a Catan-style game, the
+contents still belong in reducer setup code. In a hex trading game, the
 manifest should define stable hex spaces such as `cell-01`, `cell-02`, and
 `cell-03`, while the reducer shuffles terrain pieces and number tokens onto
 those spaces at runtime. In a square-grid game, the manifest should define
@@ -296,8 +296,8 @@ Square templates can include `boardFieldsSchema`, `spaceFieldsSchema`,
 {
   "boardTemplates": [
     {
-      "id": "catan-island",
-      "name": "Catan island",
+      "id": "shared-hex-map",
+      "name": "Shared hex map",
       "layout": "hex",
       "orientation": "pointy-top",
       "spaces": [
@@ -308,13 +308,13 @@ Square templates can include `boardFieldsSchema`, `spaceFieldsSchema`,
       "edges": [
         {
           "ref": { "spaces": ["cell-01", "cell-02"] },
-          "typeId": "harbor"
+          "typeId": "route-site"
         }
       ],
       "vertices": [
         {
           "ref": { "spaces": ["cell-01", "cell-02", "cell-03"] },
-          "typeId": "settlement-site"
+          "typeId": "build-site"
         }
       ]
     }
@@ -325,7 +325,7 @@ Square templates can include `boardFieldsSchema`, `spaceFieldsSchema`,
       "name": "Main island",
       "layout": "hex",
       "scope": "shared",
-      "templateId": "catan-island"
+      "templateId": "shared-hex-map"
     }
   ]
 }
@@ -619,8 +619,7 @@ The UI can then render those same stable `(host.id, slotId)` pairs with
 `SlotSystem`:
 
 ```tsx
-import { useGameView, type SlotDefinition } from "@dreamboard/ui-sdk";
-import { SlotSystem } from "./components/dreamboard";
+import { SlotSystem, useGameView, type SlotDefinition } from "@dreamboard/ui-sdk";
 
 const playerMatSlots: SlotDefinition[] = [
   {

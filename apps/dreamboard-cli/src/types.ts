@@ -1,20 +1,21 @@
 export type Environment = "local" | "dev" | "prod";
 
-export type GlobalAuth = {
-  authToken?: string;
-  refreshToken?: string;
-};
-
 export type LocalMaintainerSdkPackageName =
   | "@dreamboard/api-client"
+  | "@dreamboard/reducer-contract"
   | "@dreamboard/app-sdk"
   | "@dreamboard/sdk-types"
+  | "@dreamboard/testing"
   | "@dreamboard/ui-sdk";
 
-export type LocalMaintainerRegistryPackages = Record<
-  LocalMaintainerSdkPackageName,
-  string
->;
+export type LocalMaintainerRegistryPackages = {
+  "@dreamboard/api-client": string;
+  "@dreamboard/sdk-types": string;
+  "@dreamboard/app-sdk": string;
+  "@dreamboard/testing"?: string;
+  "@dreamboard/ui-sdk": string;
+  "@dreamboard/reducer-contract"?: string;
+};
 
 export type LocalMaintainerRegistryConfig = {
   registryUrl: string;
@@ -31,9 +32,31 @@ export type EnvironmentConfig = {
   supabaseAnonKey: string;
 };
 
-export type GlobalConfig = GlobalAuth & {
+/**
+ * Non-credential configuration persisted at `~/.dreamboard/config.json`.
+ *
+ * IMPORTANT: `authToken` and `refreshToken` intentionally do NOT live here.
+ * Credentials are owned exclusively by the `CredentialStore` module
+ * (`config/credential-store.ts`). Mixing them into `GlobalConfig` was the
+ * root cause of the refresh-token-wipe bug: `saveGlobalConfig({ ...config })`
+ * could silently erase stored credentials if the caller forgot to include
+ * them. With credentials removed from this type, that failure mode is a
+ * type error.
+ *
+ * `credentialBackend` is a *selector*, not a credential: it only says where
+ * tokens are stored. The default (unset) is `"file"` because the OS keychain
+ * prompts the user for their login password on first use on macOS (and is
+ * re-prompted whenever the Node binary signature changes, e.g. after an
+ * `nvm`/`volta` upgrade). Users who want encrypted-at-rest storage can opt
+ * in by writing `"credentialBackend": "keychain"` into this file.
+ */
+export type CredentialBackendPreference = "file" | "keychain";
+
+export type GlobalConfig = {
   // Current environment (defaults to 'dev' if not set)
   environment?: Environment;
+  // Where stored credentials live. Unset = "file".
+  credentialBackend?: CredentialBackendPreference;
 };
 
 export type ProjectPendingSyncPhase =
@@ -98,15 +121,25 @@ export type LocalDiff = {
   deleted: string[];
 };
 
+/**
+ * A resolved, read-only snapshot of "what should this CLI invocation do".
+ *
+ * `authToken` and `refreshToken` are read-only projections of the active
+ * credentials at the moment `resolveConfig` runs. They are marked `readonly`
+ * to discourage reassignment from command code; the refresh path never
+ * mutates this object and instead goes through `CredentialStore` directly.
+ * Persisting a `ResolvedConfig` back into `GlobalConfig`/`auth.json` is
+ * not possible because `GlobalConfig` has no credential fields.
+ */
 export type ResolvedConfig = {
-  apiBaseUrl: string;
-  webBaseUrl: string;
-  supabaseUrl?: string;
-  supabaseAnonKey?: string;
-  authToken?: string;
-  refreshToken?: string;
-  authTokenSource?: "global" | "env" | "flag" | "none";
-  refreshTokenSource?: "global" | "env" | "none";
+  readonly apiBaseUrl: string;
+  readonly webBaseUrl: string;
+  readonly supabaseUrl?: string;
+  readonly supabaseAnonKey?: string;
+  readonly authToken?: string;
+  readonly refreshToken?: string;
+  readonly authTokenSource?: "global" | "env" | "flag" | "none";
+  readonly refreshTokenSource?: "global" | "env" | "none";
 };
 
 export type ApiError = {

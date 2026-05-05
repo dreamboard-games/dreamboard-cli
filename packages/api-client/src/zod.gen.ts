@@ -1214,7 +1214,7 @@ export const zSeatAssignment = z.object({
 });
 
 /**
- * Complete session status including all fields needed by the frontend. Durable lobby and gameplay details are provided via the SESSION_BOOTSTRAP SSE message.
+ * Complete session status including all fields needed by the frontend. Durable lobby and gameplay details are provided via the gameplay.bootstrap SSE message.
  */
 export const zSessionStatus = z.object({
     sessionId: z.uuid(),
@@ -1238,89 +1238,32 @@ export const zSessionSnapshotPhase = z.enum([
     'ended'
 ]);
 
-export const zSessionSnapshotLobby = z.object({
+/**
+ * Stable session identity and phase for deterministic host bootstrapping.
+ */
+export const zSessionBootstrapSession = z.object({
+    sessionId: z.uuid(),
+    shortCode: z.string(),
+    gameId: z.uuid(),
+    hostUserId: z.uuid(),
+    status: z.enum(['active', 'ended']),
+    phase: zSessionSnapshotPhase,
+    setupProfileId: z.optional(z.string())
+});
+
+export const zSessionLobbySnapshot = z.object({
     seats: z.array(zSeatAssignment),
     canStart: z.boolean(),
     hostUserId: z.uuid(),
     setupProfileId: z.optional(z.string())
 });
 
-/**
- * Type of parameter accepted by a runtime action
- */
-export const zParameterType = z.enum([
-    'cardId',
-    'cardType',
-    'playerId',
-    'string',
-    'number',
-    'boolean',
-    'zoneId',
-    'pieceId',
-    'dieId',
-    'boardId',
-    'edgeId',
-    'vertexId',
-    'spaceId',
-    'resourceId'
-]);
-
-/**
- * Defines a parameter for an action
- */
-export const zActionParameterDefinition = z.object({
-    name: z.string(),
-    type: zParameterType,
-    required: z.optional(z.boolean()).default(true),
-    array: z.optional(z.boolean()).default(false),
-    minLength: z.optional(z.int().gte(0)),
-    maxLength: z.optional(z.int().gte(0)),
-    cardSetId: z.optional(z.string()),
-    description: z.optional(z.string())
+export const zHostControlSnapshot = z.object({
+    switchablePlayerIds: z.array(z.string())
 });
 
 /**
- * Defines an available player action with metadata and parameter definitions
- */
-export const zActionDefinition = z.object({
-    actionType: z.string(),
-    displayName: z.string(),
-    description: z.optional(z.string()),
-    parameters: z.array(zActionParameterDefinition),
-    errorCodes: z.optional(z.array(z.string()))
-});
-
-export const zPlayerAvailableActions = z.object({
-    playerId: z.string(),
-    actions: z.array(zActionDefinition)
-});
-
-export const zGameplayPromptOption = z.object({
-    id: z.string(),
-    label: z.string()
-});
-
-export const zGameplayPromptInstance = z.object({
-    id: z.string(),
-    promptId: z.string(),
-    to: z.string(),
-    title: z.optional(z.string()),
-    payload: z.optional(z.string()),
-    options: z.array(zGameplayPromptOption)
-});
-
-export const zGameplaySnapshot = z.object({
-    version: z.int(),
-    activePlayers: z.array(z.string()),
-    controllablePlayerIds: z.array(z.string()),
-    currentPhase: z.string(),
-    seatViewsByPlayerId: z.record(z.string(), z.string()),
-    availableActions: z.array(zPlayerAvailableActions),
-    prompts: z.array(zGameplayPromptInstance)
-});
-
-/**
- * Summary of a game state history entry
+ * Summary of a game state history entry.
  */
 export const zHistoryEntrySummary = z.object({
     id: z.string(),
@@ -1339,179 +1282,201 @@ export const zSessionSnapshotHistory = z.object({
     canGoForward: z.boolean()
 });
 
+export const zResourceMapDomainEntry = z.object({
+    resourceId: z.string(),
+    label: z.optional(z.string()),
+    min: z.int(),
+    max: z.int()
+});
+
+export const zChoiceDomainOption = z.object({
+    value: z.string(),
+    label: z.string()
+});
+
+export const zInputDomain = z.object({
+    type: z.enum([
+        'target',
+        'resourceMap',
+        'boundedNumber',
+        'choice',
+        'opaque'
+    ]),
+    targetKind: z.optional(z.string()),
+    boardId: z.optional(z.string()),
+    zoneId: z.optional(z.string()),
+    eligibleTargets: z.optional(z.array(z.string())),
+    resources: z.optional(z.array(zResourceMapDomainEntry)),
+    min: z.optional(z.number()),
+    max: z.optional(z.number()),
+    step: z.optional(z.number()),
+    choices: z.optional(z.array(zChoiceDomainOption))
+});
+
 /**
- * Durable session snapshot sent first on every session event stream connection
+ * Canonical descriptor for one interaction input collector.
  */
-export const zSessionSnapshotMessage = z.object({
-    type: z.enum(['SESSION_BOOTSTRAP']),
-    toUser: z.uuid(),
+export const zInteractionInputDescriptor = z.object({
+    key: z.string(),
+    kind: z.string(),
+    domain: zInputDomain
+});
+
+export const zInteractionContextOption = z.object({
+    id: z.string(),
+    label: z.string()
+});
+
+export const zInteractionContext = z.object({
+    to: z.string(),
+    title: z.optional(z.string()),
+    payload: z.optional(z.record(z.string(), zJsonValue)),
+    options: z.optional(z.array(zInteractionContextOption))
+});
+
+/**
+ * Authoritative interaction descriptor resolved by the trusted bundle.
+ */
+export const zInteractionDescriptor = z.object({
+    phaseName: z.string(),
+    interactionKey: z.string(),
+    interactionId: z.string(),
+    surface: z.string(),
+    kind: z.enum(['action', 'prompt']),
+    label: z.string(),
+    shortLabel: z.optional(z.string()),
+    icon: z.optional(z.string()),
+    description: z.optional(z.string()),
+    emphasis: z.optional(z.enum([
+        'primary',
+        'secondary',
+        'destructive'
+    ])),
+    group: z.optional(z.string()),
+    zoneId: z.optional(z.string()),
+    inputs: z.array(zInteractionInputDescriptor),
+    cost: z.optional(z.record(z.string(), zJsonValue)),
+    currentResources: z.optional(z.record(z.string(), zJsonValue)),
+    available: z.boolean(),
+    unavailableReason: z.optional(z.string()),
+    context: z.optional(zInteractionContext)
+});
+
+export const zZoneHandles = z.object({
+    cardIds: z.array(z.string()),
+    cardsById: z.record(z.string(), z.string()),
+    playableByCardId: z.record(z.string(), z.array(zInteractionDescriptor))
+});
+
+export const zPlayerGameplaySnapshot = z.object({
+    version: z.int(),
+    actionSetVersion: z.string(),
+    playerId: z.string(),
+    activePlayers: z.array(z.string()),
+    currentPhase: z.string(),
+    currentStage: z.string(),
+    stageSeats: z.array(z.string()),
+    view: z.string(),
+    availableInteractions: z.array(zInteractionDescriptor),
+    zones: z.record(z.string(), zZoneHandles),
+    boardStatic: z.optional(z.string()),
+    boardStaticHash: z.optional(z.string())
+});
+
+/**
+ * Deterministic session bootstrap payload used for first render before live SSE updates.
+ */
+export const zSessionBootstrap = z.object({
+    session: zSessionBootstrapSession,
+    lobby: zSessionLobbySnapshot,
+    control: zHostControlSnapshot,
+    history: z.optional(zSessionSnapshotHistory),
+    selectedPlayerId: z.string(),
+    gameplay: z.optional(zPlayerGameplaySnapshot)
+});
+
+export const zLobbyBootstrapEvent = z.object({
+    type: z.enum(['lobby.bootstrap']),
     phase: zSessionSnapshotPhase,
-    lobby: zSessionSnapshotLobby,
-    gameplay: z.optional(zGameplaySnapshot),
+    lobby: zSessionLobbySnapshot,
+    control: zHostControlSnapshot,
     history: z.optional(zSessionSnapshotHistory)
 });
 
-export const zGameplayUpdateMessage = z.object({
-    type: z.enum(['GAMEPLAY_UPDATE']),
-    toUser: z.uuid(),
-    gameplay: zGameplaySnapshot
+export const zLobbyUpdatedEvent = z.object({
+    type: z.enum(['lobby.updated']),
+    lobby: zSessionLobbySnapshot,
+    control: zHostControlSnapshot
 });
 
-export const zGameStartedMessage = z.object({
-    type: z.enum(['GAME_STARTED']),
-    toUser: z.uuid(),
-    activePlayers: z.array(z.string()),
-    controllablePlayerIds: z.array(z.string())
+export const zHistoryUpdatedEvent = z.object({
+    type: z.enum(['history.updated']),
+    history: zSessionSnapshotHistory
 });
 
-export const zYourTurnMessage = z.object({
-    type: z.enum(['YOUR_TURN']),
-    toUser: z.uuid(),
-    availableActions: z.array(zActionDefinition),
-    activePlayers: z.array(z.string())
-});
-
-/**
- * Represents a player action with type and parameters
- */
-export const zGameAction = z.object({
-    actionType: z.string(),
-    parameters: z.string()
-});
-
-export const zActionExecutedMessage = z.object({
-    type: z.enum(['ACTION_EXECUTED']),
-    toUser: z.uuid(),
-    playerId: z.string(),
-    action: zGameAction
-});
-
-export const zActionRejectedMessage = z.object({
-    type: z.enum(['ACTION_REJECTED']),
-    toUser: z.uuid(),
-    reason: z.string(),
-    errorCode: z.optional(z.string()),
-    targetPlayer: z.optional(z.string())
-});
-
-export const zTurnChangedMessage = z.object({
-    type: z.enum(['TURN_CHANGED']),
-    toUser: z.uuid(),
-    previousPlayers: z.array(z.string()),
-    currentPlayers: z.array(z.string())
-});
-
-export const zGameEndedMessage = z.object({
-    type: z.enum(['GAME_ENDED']),
-    toUser: z.uuid(),
-    winner: z.optional(z.string()),
-    finalScores: z.record(z.string(), z.int()),
-    reason: z.string()
-});
-
-export const zStateUpdateMessage = z.object({
-    type: z.enum(['STATE_UPDATE']),
-    toUser: z.uuid(),
-    phase: z.string()
-});
-
-export const zStateChangedMessage = z.object({
-    type: z.enum(['STATE_CHANGED']),
-    toUser: z.uuid(),
-    newState: z.string()
-});
-
-export const zAvailableActionsMessage = z.object({
-    type: z.enum(['AVAILABLE_ACTIONS']),
-    toUser: z.uuid(),
-    playerId: z.string(),
-    actions: z.array(zGameAction)
-});
-
-export const zErrorMessage = z.object({
-    type: z.enum(['ERROR']),
-    toUser: z.uuid(),
-    message: z.string(),
-    code: z.optional(z.string())
-});
-
-export const zLobbyUpdateMessage = z.object({
-    type: z.enum(['LOBBY_UPDATE']),
-    toUser: z.uuid(),
-    seats: z.array(zSeatAssignment),
-    canStart: z.boolean(),
-    hostUserId: z.string(),
-    setupProfileId: z.optional(z.string())
-});
-
-/**
- * Sent to host when history entries change
- */
-export const zHistoryUpdatedMessage = z.object({
-    type: z.enum(['HISTORY_UPDATED']),
-    toUser: z.uuid(),
-    entries: z.array(zHistoryEntrySummary),
-    currentIndex: z.int(),
-    canGoBack: z.boolean(),
-    canGoForward: z.boolean()
-});
-
-/**
- * Sent to all users when game state is restored from history
- */
-export const zHistoryRestoredMessage = z.object({
-    type: z.enum(['HISTORY_RESTORED']),
-    toUser: z.uuid(),
+export const zHistoryRestoredEvent = z.object({
+    type: z.enum(['history.restored']),
     restoredToVersion: z.int(),
     description: z.optional(z.string())
 });
 
-export const zGameMessage = z.union([
+export const zSessionEndedEvent = z.object({
+    type: z.enum(['session.ended']),
+    reason: z.string()
+});
+
+export const zLobbyEvent = z.union([
     z.object({
-        type: z.literal('SESSION_BOOTSTRAP')
-    }).and(zSessionSnapshotMessage),
+        type: z.literal('lobby.bootstrap')
+    }).and(zLobbyBootstrapEvent),
     z.object({
-        type: z.literal('GAMEPLAY_UPDATE')
-    }).and(zGameplayUpdateMessage),
+        type: z.literal('lobby.updated')
+    }).and(zLobbyUpdatedEvent),
     z.object({
-        type: z.literal('GAME_STARTED')
-    }).and(zGameStartedMessage),
+        type: z.literal('history.updated')
+    }).and(zHistoryUpdatedEvent),
     z.object({
-        type: z.literal('YOUR_TURN')
-    }).and(zYourTurnMessage),
+        type: z.literal('history.restored')
+    }).and(zHistoryRestoredEvent),
     z.object({
-        type: z.literal('ACTION_EXECUTED')
-    }).and(zActionExecutedMessage),
+        type: z.literal('session.ended')
+    }).and(zSessionEndedEvent)
+]);
+
+export const zGameplayBootstrapEvent = z.object({
+    type: z.enum(['gameplay.bootstrap']),
+    gameplay: zPlayerGameplaySnapshot
+});
+
+export const zGameplayUpdatedEvent = z.object({
+    type: z.enum(['gameplay.updated']),
+    gameplay: zPlayerGameplaySnapshot
+});
+
+export const zGameplayResyncedEvent = z.object({
+    type: z.enum(['gameplay.resynced']),
+    gameplay: zPlayerGameplaySnapshot
+});
+
+export const zGameplayErrorEvent = z.object({
+    type: z.enum(['gameplay.error']),
+    code: z.optional(z.string()),
+    message: z.string()
+});
+
+export const zGameplayEvent = z.union([
     z.object({
-        type: z.literal('ACTION_REJECTED')
-    }).and(zActionRejectedMessage),
+        type: z.literal('gameplay.bootstrap')
+    }).and(zGameplayBootstrapEvent),
     z.object({
-        type: z.literal('TURN_CHANGED')
-    }).and(zTurnChangedMessage),
+        type: z.literal('gameplay.updated')
+    }).and(zGameplayUpdatedEvent),
     z.object({
-        type: z.literal('GAME_ENDED')
-    }).and(zGameEndedMessage),
+        type: z.literal('gameplay.resynced')
+    }).and(zGameplayResyncedEvent),
     z.object({
-        type: z.literal('STATE_UPDATE')
-    }).and(zStateUpdateMessage),
-    z.object({
-        type: z.literal('STATE_CHANGED')
-    }).and(zStateChangedMessage),
-    z.object({
-        type: z.literal('AVAILABLE_ACTIONS')
-    }).and(zAvailableActionsMessage),
-    z.object({
-        type: z.literal('ERROR')
-    }).and(zErrorMessage),
-    z.object({
-        type: z.literal('LOBBY_UPDATE')
-    }).and(zLobbyUpdateMessage),
-    z.object({
-        type: z.literal('HISTORY_UPDATED')
-    }).and(zHistoryUpdatedMessage),
-    z.object({
-        type: z.literal('HISTORY_RESTORED')
-    }).and(zHistoryRestoredMessage)
+        type: z.literal('gameplay.error')
+    }).and(zGameplayErrorEvent)
 ]);
 
 /**
@@ -1524,70 +1489,50 @@ export const zLogMessageDto = z.object({
     timestamp: z.iso.datetime()
 });
 
-/**
- * Response containing gameplay session data after starting the game. Durable gameplay details are sent via the SESSION_BOOTSTRAP SSE message.
- */
-export const zStartGameResponse = z.object({
-    sessionId: z.uuid(),
-    gameId: z.uuid(),
-    shortCode: z.string()
-});
-
-export const zActionGameInput = z.object({
-    kind: z.enum(['action']),
-    playerId: z.string(),
-    actionType: z.string(),
-    params: z.string()
-});
-
-export const zPromptResponseGameInput = z.object({
-    kind: z.enum(['promptResponse']),
-    playerId: z.string(),
-    promptId: z.string(),
-    response: z.string()
-});
-
-export const zSystemGameInput = z.object({
-    kind: z.enum(['system']),
-    event: z.string(),
-    payload: z.optional(z.string())
-});
-
-export const zGameInput = z.union([
-    z.object({
-        kind: z.literal('action')
-    }).and(zActionGameInput),
-    z.object({
-        kind: z.literal('promptResponse')
-    }).and(zPromptResponseGameInput),
-    z.object({
-        kind: z.literal('system')
-    }).and(zSystemGameInput)
-]);
-
-export const zSubmitInputRequest = z.object({
-    input: zGameInput,
-    expectedVersion: z.int()
-});
-
-export const zSubmitInputResponse = z.object({
-    success: z.boolean(),
+export const zPlayerActionsResponse = z.object({
     version: z.int(),
-    accepted: z.optional(z.boolean()),
-    errorCode: z.optional(z.string()),
-    message: z.optional(z.string())
+    actionSetVersion: z.string(),
+    actions: z.array(zInteractionDescriptor)
 });
 
-export const zValidateInputRequest = z.object({
-    input: zGameInput,
-    expectedVersion: z.int()
+export const zPlayerActionResponse = z.object({
+    version: z.int(),
+    actionSetVersion: z.string(),
+    action: zInteractionDescriptor
 });
 
-export const zValidateInputResponse = z.object({
+export const zPlayerActionTargetsResponse = z.object({
+    version: z.int(),
+    actionSetVersion: z.string(),
+    interactionId: z.string(),
+    inputKey: z.string(),
+    domain: zInputDomain,
+    zoneCardsById: z.optional(z.record(z.string(), z.string()))
+});
+
+export const zPlayerActionRequest = z.object({
+    expectedVersion: z.int(),
+    actionSetVersion: z.string(),
+    inputs: z.record(z.string(), zJsonValue)
+});
+
+export const zPlayerActionValidateResponse = z.object({
     valid: z.boolean(),
     version: z.int(),
+    actionSetVersion: z.string(),
     errorCode: z.optional(z.string()),
-    message: z.optional(z.string())
+    message: z.optional(z.string()),
+    fieldErrors: z.optional(z.record(z.string(), z.string()))
+});
+
+export const zPlayerActionSubmitResponse = z.object({
+    success: z.boolean(),
+    version: z.int(),
+    actionSetVersion: z.string(),
+    accepted: z.optional(z.boolean()),
+    errorCode: z.optional(z.string()),
+    message: z.optional(z.string()),
+    gameplay: z.optional(zPlayerGameplaySnapshot)
 });
 
 /**
@@ -1599,15 +1544,12 @@ export const zUpdateSeatRequest = z.object({
 });
 
 /**
- * Request to restore game state to a previous history point
+ * Request to restore game state to a previous history point.
  */
 export const zRestoreHistoryRequest = z.object({
     entryId: z.string()
 });
 
-/**
- * Response after restoring game state from history
- */
 export const zRestoreHistoryResponse = z.object({
     success: z.boolean(),
     restoredToVersion: z.int(),
@@ -1956,26 +1898,62 @@ export const zSandboxWebhookCompletePayload = z.object({
     error: z.optional(z.string())
 });
 
-/**
- * Type of game message sent via Server-Sent Events
- */
-export const zGameMessageType = z.enum([
-    'SESSION_BOOTSTRAP',
-    'GAMEPLAY_UPDATE',
-    'GAME_STARTED',
-    'YOUR_TURN',
-    'ACTION_EXECUTED',
-    'ACTION_REJECTED',
-    'TURN_CHANGED',
-    'GAME_ENDED',
-    'STATE_UPDATE',
-    'STATE_CHANGED',
-    'AVAILABLE_ACTIONS',
-    'ERROR',
-    'LOBBY_UPDATE',
-    'HISTORY_UPDATED',
-    'HISTORY_RESTORED'
+export const zGameMessage = z.union([
+    zLobbyBootstrapEvent,
+    zLobbyUpdatedEvent,
+    zHistoryUpdatedEvent,
+    zHistoryRestoredEvent,
+    zSessionEndedEvent,
+    zGameplayBootstrapEvent,
+    zGameplayUpdatedEvent,
+    zGameplayResyncedEvent,
+    zGameplayErrorEvent
 ]);
+
+/**
+ * Type of parameter accepted by a runtime action
+ */
+export const zParameterType = z.enum([
+    'cardId',
+    'cardType',
+    'playerId',
+    'string',
+    'number',
+    'boolean',
+    'zoneId',
+    'pieceId',
+    'dieId',
+    'boardId',
+    'edgeId',
+    'vertexId',
+    'spaceId',
+    'resourceId'
+]);
+
+/**
+ * Defines a parameter for an action
+ */
+export const zActionParameterDefinition = z.object({
+    name: z.string(),
+    type: zParameterType,
+    required: z.optional(z.boolean()).default(true),
+    array: z.optional(z.boolean()).default(false),
+    minLength: z.optional(z.int().gte(0)),
+    maxLength: z.optional(z.int().gte(0)),
+    cardSetId: z.optional(z.string()),
+    description: z.optional(z.string())
+});
+
+/**
+ * Defines an available player action with metadata and parameter definitions
+ */
+export const zActionDefinition = z.object({
+    actionType: z.string(),
+    displayName: z.string(),
+    description: z.optional(z.string()),
+    parameters: z.array(zActionParameterDefinition),
+    errorCodes: z.optional(z.array(z.string()))
+});
 
 /**
  * Type of source for the card set
@@ -2478,20 +2456,22 @@ export const zGetSessionByShortCodeData = z.object({
  */
 export const zGetSessionByShortCodeResponse = zSessionStatus;
 
-export const zGetSessionStatusData = z.object({
+export const zGetSessionBootstrapData = z.object({
     body: z.optional(z.never()),
     path: z.object({
         sessionId: z.uuid()
     }),
-    query: z.optional(z.never())
+    query: z.optional(z.object({
+        playerId: z.optional(z.string())
+    }))
 });
 
 /**
- * Session status retrieved successfully
+ * Session bootstrap retrieved successfully
  */
-export const zGetSessionStatusResponse = zSessionStatus;
+export const zGetSessionBootstrapResponse = zSessionBootstrap;
 
-export const zSubscribeToSessionEventsData = z.object({
+export const zSubscribeToSessionLobbyEventsData = z.object({
     body: z.optional(z.never()),
     path: z.object({
         sessionId: z.uuid()
@@ -2504,17 +2484,47 @@ export const zSubscribeToSessionEventsData = z.object({
 });
 
 /**
- * Server-Sent Events stream. Each event contains a JSON-serialized GameMessage.
- * Every connection begins with a `SESSION_BOOTSTRAP` event that fully describes the current durable session state.
- * After bootstrap, the stream includes only live updates and does not replay historical messages.
+ * Server-Sent Events stream. Each event contains a JSON-serialized LobbyEvent.
+ * Lobby events contain public session/control metadata only and never carry private gameplay.
  *
  */
-export const zSubscribeToSessionEventsResponse = zGameMessage;
+export const zSubscribeToSessionLobbyEventsResponse = zLobbyEvent;
 
-export const zDisconnectSessionEventsData = z.object({
+export const zDisconnectSessionLobbyEventsData = z.object({
     body: z.optional(z.never()),
     path: z.object({
         sessionId: z.uuid()
+    }),
+    query: z.object({
+        clientId: z.string(),
+        connectionAttemptId: z.string()
+    })
+});
+
+export const zSubscribeToPlayerGameplayEventsData = z.object({
+    body: z.optional(z.never()),
+    path: z.object({
+        sessionId: z.uuid(),
+        playerId: z.string()
+    }),
+    query: z.object({
+        clientId: z.string(),
+        connectionAttemptId: z.string(),
+        clientSource: z.optional(z.string())
+    })
+});
+
+/**
+ * Server-Sent Events stream. Each event contains a JSON-serialized GameplayEvent scoped to the path playerId.
+ *
+ */
+export const zSubscribeToPlayerGameplayEventsResponse = zGameplayEvent;
+
+export const zDisconnectPlayerGameplayEventsData = z.object({
+    body: z.optional(z.never()),
+    path: z.object({
+        sessionId: z.uuid(),
+        playerId: z.string()
     }),
     query: z.object({
         clientId: z.string(),
@@ -2548,25 +2558,59 @@ export const zStartGameData = z.object({
 /**
  * Game started successfully
  */
-export const zStartGameResponse2 = zStartGameResponse;
+export const zStartGameResponse = zSessionBootstrap;
 
-export const zSubmitInputData = z.object({
-    body: zSubmitInputRequest,
+export const zListPlayerActionsData = z.object({
+    body: z.optional(z.never()),
     path: z.object({
-        sessionId: z.uuid()
+        sessionId: z.uuid(),
+        playerId: z.string()
     }),
     query: z.optional(z.never())
 });
 
 /**
- * Input submission processed successfully
+ * Current actions returned successfully
  */
-export const zSubmitInputResponse2 = zSubmitInputResponse;
+export const zListPlayerActionsResponse = zPlayerActionsResponse;
 
-export const zValidateInputData = z.object({
-    body: zValidateInputRequest,
+export const zDescribePlayerActionData = z.object({
+    body: z.optional(z.never()),
     path: z.object({
-        sessionId: z.uuid()
+        sessionId: z.uuid(),
+        playerId: z.string(),
+        interactionId: z.string()
+    }),
+    query: z.optional(z.never())
+});
+
+/**
+ * Action descriptor returned successfully
+ */
+export const zDescribePlayerActionResponse = zPlayerActionResponse;
+
+export const zGetPlayerActionTargetsData = z.object({
+    body: z.optional(z.never()),
+    path: z.object({
+        sessionId: z.uuid(),
+        playerId: z.string(),
+        interactionId: z.string(),
+        inputKey: z.string()
+    }),
+    query: z.optional(z.never())
+});
+
+/**
+ * Input domain returned successfully
+ */
+export const zGetPlayerActionTargetsResponse = zPlayerActionTargetsResponse;
+
+export const zValidatePlayerActionData = z.object({
+    body: zPlayerActionRequest,
+    path: z.object({
+        sessionId: z.uuid(),
+        playerId: z.string(),
+        interactionId: z.string()
     }),
     query: z.optional(z.never())
 });
@@ -2574,7 +2618,22 @@ export const zValidateInputData = z.object({
 /**
  * Validation result returned successfully
  */
-export const zValidateInputResponse2 = zValidateInputResponse;
+export const zValidatePlayerActionResponse = zPlayerActionValidateResponse;
+
+export const zSubmitPlayerActionData = z.object({
+    body: zPlayerActionRequest,
+    path: z.object({
+        sessionId: z.uuid(),
+        playerId: z.string(),
+        interactionId: z.string()
+    }),
+    query: z.optional(z.never())
+});
+
+/**
+ * Submission result returned successfully
+ */
+export const zSubmitPlayerActionResponse = zPlayerActionSubmitResponse;
 
 export const zAddSeatData = z.object({
     body: z.optional(z.never()),

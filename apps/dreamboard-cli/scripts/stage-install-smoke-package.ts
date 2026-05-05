@@ -20,6 +20,7 @@ const sourcePackage = JSON.parse(
   keywords?: string[];
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
   description?: string;
   repository?: string | { type?: string; url?: string };
   homepage?: string;
@@ -52,6 +53,17 @@ const sdkDependencyRanges = Object.fromEntries(
         ),
       ],
       [
+        "@dreamboard/testing",
+        path.join(
+          packageRoot,
+          "..",
+          "..",
+          "packages",
+          "testing",
+          "package.json",
+        ),
+      ],
+      [
         "@dreamboard/ui-sdk",
         path.join(
           packageRoot,
@@ -80,6 +92,11 @@ const packagedDependencies = Object.fromEntries(
 if (sourcePackage.devDependencies?.playwright) {
   packagedDependencies.playwright = sourcePackage.devDependencies.playwright;
 }
+const packagedOptionalDependencies = Object.fromEntries(
+  Object.entries(sourcePackage.optionalDependencies ?? {}).filter(
+    ([packageName]) => !packageName.startsWith("@dreamboard/"),
+  ),
+);
 
 async function pruneTransientSkillArtifacts(rootDir: string) {
   const entries = await (
@@ -122,6 +139,9 @@ const packageJson: Record<string, unknown> = {
     node: ">=20",
   },
   dependencies: packagedDependencies,
+  ...(Object.keys(packagedOptionalDependencies).length > 0
+    ? { optionalDependencies: packagedOptionalDependencies }
+    : {}),
   dreamboardSdkDependencyRanges: sdkDependencyRanges,
   license: sourcePackage.license ?? "Apache-2.0",
 };

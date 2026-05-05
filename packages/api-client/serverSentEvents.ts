@@ -246,7 +246,7 @@ export const createSseClient = <TData = unknown>({
           sseMaxRetryAttempts !== undefined &&
           attempt >= sseMaxRetryAttempts
         ) {
-          break; // stop after firing error
+          throw error;
         }
 
         // exponential backoff: double retry each attempt, cap at 30s

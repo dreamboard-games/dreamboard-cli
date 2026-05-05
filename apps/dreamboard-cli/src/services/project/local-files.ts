@@ -13,9 +13,9 @@ import {
   readJsonFile,
   readTextFile,
   readTextFileIfExists,
-  writeJsonFile,
   writeTextFile,
 } from "../../utils/fs.js";
+import { atomicWriteFile } from "../../utils/atomic-file.js";
 import { hashContent } from "../../utils/crypto.js";
 import {
   materializeManifest,
@@ -202,7 +202,15 @@ export async function writeSnapshotFromFiles(
   }
 
   const snapshotPath = path.join(rootDir, PROJECT_DIR_NAME, SNAPSHOT_FILE);
-  await writeJsonFile(snapshotPath, snapshot);
+  // Atomic write: a crash mid-snapshot (e.g. user kills a long `dreamboard
+  // sync`) must not leave `.dreamboard/snapshot.json` truncated, or
+  // `getLocalDiff` will silently report everything as "added" on the
+  // next run and force a full re-sync.
+  await atomicWriteFile(
+    snapshotPath,
+    `${JSON.stringify(snapshot, null, 2)}\n`,
+    { mode: 0o644 },
+  );
 }
 
 function isIgnorableLocalDiffPath(filePath: string): boolean {

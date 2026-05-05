@@ -659,22 +659,19 @@ export default {
     const [placedVertices, setPlacedVertices] = useState<Set<string>>(
       new Set(),
     );
-    const [hoveredVertex, setHoveredVertex] = useState<string | null>(null);
-    const [lastPlaced, setLastPlaced] = useState<InteractiveVertex | null>(
-      null,
-    );
+    const [lastPlacedId, setLastPlacedId] = useState<string | null>(null);
 
-    const handleVertexClick = (vertex: InteractiveVertex) => {
+    const handleVertexClick = (vertexId: string) => {
       setPlacedVertices((prev) => {
         const next = new Set(prev);
-        if (next.has(vertex.id)) {
-          next.delete(vertex.id);
+        if (next.has(vertexId)) {
+          next.delete(vertexId);
         } else {
-          next.add(vertex.id);
+          next.add(vertexId);
         }
         return next;
       });
-      setLastPlaced(vertex);
+      setLastPlacedId(vertexId);
     };
 
     return (
@@ -717,12 +714,10 @@ export default {
               hasOwner={!!vertex.owner}
             />
           )}
-          // Enable interactive vertices
-          interactiveVertices={true}
-          onInteractiveVertexClick={handleVertexClick}
-          onInteractiveVertexEnter={(v) => setHoveredVertex(v.id)}
-          onInteractiveVertexLeave={() => setHoveredVertex(null)}
-          renderInteractiveVertex={(vertex, position, isHovered) => {
+          interactiveVertices={{
+            selectTargetId: handleVertexClick,
+          }}
+          renderInteractiveVertex={(vertex, position, state) => {
             const isPlaced = placedVertices.has(vertex.id);
             if (isPlaced) {
               return (
@@ -739,7 +734,7 @@ export default {
             return (
               <DefaultInteractiveVertex
                 position={position}
-                isHovered={isHovered}
+                isHovered={state.isHovered}
                 color="rgba(255, 255, 255, 0.15)"
                 hoverColor="rgba(34, 197, 94, 0.7)"
               />
@@ -751,15 +746,9 @@ export default {
           <div className="p-3 bg-slate-800 rounded-lg text-white">
             Settlements placed: {placedVertices.size}
           </div>
-          {hoveredVertex && (
+          {lastPlacedId && (
             <div className="p-3 bg-slate-800 rounded-lg text-slate-300">
-              Hovering: {hoveredVertex}
-            </div>
-          )}
-          {lastPlaced && (
-            <div className="p-3 bg-slate-800 rounded-lg text-slate-300">
-              Last placed adjacent to:{" "}
-              {lastPlaced.adjacentTileIds.slice(0, 3).join(", ")}
+              Last changed: {lastPlacedId}
             </div>
           )}
         </div>
@@ -771,22 +760,21 @@ export default {
    * Interactive Edge Placement
    * Click edges to place roads - Catan style!
    */
-  "Interactive Edge Placement": () => {
-    const [placedEdges, setPlacedEdges] = useState<Set<string>>(new Set());
-    const [hoveredEdge, setHoveredEdge] = useState<string | null>(null);
-    const [lastPlaced, setLastPlaced] = useState<InteractiveEdge | null>(null);
+    "Interactive Edge Placement": () => {
+      const [placedEdges, setPlacedEdges] = useState<Set<string>>(new Set());
+    const [lastPlacedId, setLastPlacedId] = useState<string | null>(null);
 
-    const handleEdgeClick = (edge: InteractiveEdge) => {
+    const handleEdgeClick = (edgeId: string) => {
       setPlacedEdges((prev) => {
         const next = new Set(prev);
-        if (next.has(edge.id)) {
-          next.delete(edge.id);
+        if (next.has(edgeId)) {
+          next.delete(edgeId);
         } else {
-          next.add(edge.id);
+          next.add(edgeId);
         }
         return next;
       });
-      setLastPlaced(edge);
+      setLastPlacedId(edgeId);
     };
 
     return (
@@ -826,12 +814,10 @@ export default {
               hasOwner={!!vertex.owner}
             />
           )}
-          // Enable interactive edges
-          interactiveEdges={true}
-          onInteractiveEdgeClick={handleEdgeClick}
-          onInteractiveEdgeEnter={(e) => setHoveredEdge(e.id)}
-          onInteractiveEdgeLeave={() => setHoveredEdge(null)}
-          renderInteractiveEdge={(edge, position, isHovered) => {
+          interactiveEdges={{
+            selectTargetId: handleEdgeClick,
+          }}
+          renderInteractiveEdge={(edge, position, state) => {
             const isPlaced = placedEdges.has(edge.id);
             if (isPlaced) {
               return (
@@ -849,7 +835,7 @@ export default {
             return (
               <DefaultInteractiveEdge
                 position={position}
-                isHovered={isHovered}
+                isHovered={state.isHovered}
                 color="rgba(255, 255, 255, 0.1)"
                 hoverColor="rgba(251, 146, 60, 0.7)"
               />
@@ -861,15 +847,9 @@ export default {
           <div className="p-3 bg-slate-800 rounded-lg text-white">
             Roads placed: {placedEdges.size}
           </div>
-          {hoveredEdge && (
+          {lastPlacedId && (
             <div className="p-3 bg-slate-800 rounded-lg text-slate-300">
-              Hovering: {hoveredEdge}
-            </div>
-          )}
-          {lastPlaced && (
-            <div className="p-3 bg-slate-800 rounded-lg text-slate-300">
-              Last placed between:{" "}
-              {lastPlaced.adjacentTileIds.slice(0, 2).join(" & ")}
+              Last changed: {lastPlacedId}
             </div>
           )}
         </div>
@@ -885,34 +865,34 @@ export default {
     type PlacementMode = "settlement" | "road" | null;
     const [placementMode, setPlacementMode] = useState<PlacementMode>(null);
     const [placedVertices, setPlacedVertices] = useState<
-      Map<string, { vertex: InteractiveVertex; player: string }>
+      Map<string, { player: string }>
     >(new Map());
     const [placedEdges, setPlacedEdges] = useState<
-      Map<string, { edge: InteractiveEdge; player: string }>
+      Map<string, { player: string }>
     >(new Map());
     const [currentPlayer, setCurrentPlayer] = useState<string>("player1");
 
-    const handleVertexClick = (vertex: InteractiveVertex) => {
+    const handleVertexClick = (vertexId: string) => {
       if (placementMode !== "settlement") return;
       setPlacedVertices((prev) => {
         const next = new Map(prev);
-        if (next.has(vertex.id)) {
-          next.delete(vertex.id);
+        if (next.has(vertexId)) {
+          next.delete(vertexId);
         } else {
-          next.set(vertex.id, { vertex, player: currentPlayer });
+          next.set(vertexId, { player: currentPlayer });
         }
         return next;
       });
     };
 
-    const handleEdgeClick = (edge: InteractiveEdge) => {
+    const handleEdgeClick = (edgeId: string) => {
       if (placementMode !== "road") return;
       setPlacedEdges((prev) => {
         const next = new Map(prev);
-        if (next.has(edge.id)) {
-          next.delete(edge.id);
+        if (next.has(edgeId)) {
+          next.delete(edgeId);
         } else {
-          next.set(edge.id, { edge, player: currentPlayer });
+          next.set(edgeId, { player: currentPlayer });
         }
         return next;
       });
@@ -1004,12 +984,16 @@ export default {
               hasOwner={!!vertex.owner}
             />
           )}
-          // Toggle interactive layers based on mode
-          interactiveVertices={placementMode === "settlement"}
-          interactiveEdges={placementMode === "road"}
-          onInteractiveVertexClick={handleVertexClick}
-          onInteractiveEdgeClick={handleEdgeClick}
-          renderInteractiveVertex={(vertex, position, isHovered) => {
+          interactiveVertices={{
+            enabled: placementMode === "settlement",
+            selectTargetId: handleVertexClick,
+          }}
+          interactiveEdges={{
+            enabled: placementMode === "road",
+            selectTargetId: handleEdgeClick,
+          }}
+          renderInteractiveVertex={(vertex, position, state) => {
+            if (!state.isEnabled) return null;
             const placed = placedVertices.get(vertex.id);
             if (placed) {
               return (
@@ -1026,12 +1010,13 @@ export default {
             return (
               <DefaultInteractiveVertex
                 position={position}
-                isHovered={isHovered}
+                isHovered={state.isHovered}
                 hoverColor={playerColors[currentPlayer]}
               />
             );
           }}
-          renderInteractiveEdge={(edge, position, isHovered) => {
+          renderInteractiveEdge={(edge, position, state) => {
+            if (!state.isEnabled) return null;
             const placed = placedEdges.get(edge.id);
             if (placed) {
               return (
@@ -1049,7 +1034,7 @@ export default {
             return (
               <DefaultInteractiveEdge
                 position={position}
-                isHovered={isHovered}
+                isHovered={state.isHovered}
                 hoverColor={playerColors[currentPlayer]}
               />
             );
@@ -1082,9 +1067,6 @@ export default {
    * Demonstrates custom renderers for interactive elements
    */
   "Custom Interactive Styling": () => {
-    const [hoveredVertex, setHoveredVertex] = useState<string | null>(null);
-    const [hoveredEdge, setHoveredEdge] = useState<string | null>(null);
-
     return (
       <div className="p-6 bg-slate-900 min-h-screen">
         <h2 className="text-xl font-bold text-white mb-4">
@@ -1124,87 +1106,85 @@ export default {
               hasOwner={!!vertex.owner}
             />
           )}
-          // Enable both interactive layers
-          interactiveVertices={true}
-          interactiveEdges={true}
+          interactiveVertices={{
+            eligible: new Set(["settle-1", "settle-2"]),
+            selectTargetId: () => undefined,
+          }}
+          interactiveEdges={{
+            eligible: new Set(["road-5", "road-6"]),
+            selectTargetId: () => undefined,
+          }}
           interactiveVertexSize={10}
           interactiveEdgeSize={8}
-          onInteractiveVertexEnter={(v) => setHoveredVertex(v.id)}
-          onInteractiveVertexLeave={() => setHoveredVertex(null)}
-          onInteractiveEdgeEnter={(e) => setHoveredEdge(e.id)}
-          onInteractiveEdgeLeave={() => setHoveredEdge(null)}
           // Custom purple theme for vertices
-          renderInteractiveVertex={(vertex, position, isHovered) => (
-            <g>
-              <circle
-                cx={position.x}
-                cy={position.y}
-                r={isHovered ? 10 : 6}
-                fill={isHovered ? "#a855f7" : "rgba(168, 85, 247, 0.3)"}
-                stroke={isHovered ? "#c084fc" : "rgba(168, 85, 247, 0.5)"}
-                strokeWidth={isHovered ? 2 : 1}
-                className="transition-all duration-150"
-              />
-              {isHovered && (
+          renderInteractiveVertex={(vertex, position, state) =>
+            state.isEligible ? (
+              <g>
                 <circle
                   cx={position.x}
                   cy={position.y}
-                  r={16}
-                  fill="none"
-                  stroke="#c084fc"
-                  strokeWidth={1}
-                  strokeDasharray="3 3"
-                  className="animate-spin"
-                  style={{ animationDuration: "3s" }}
+                  r={state.isHovered ? 10 : 6}
+                  fill={
+                    state.isHovered ? "#a855f7" : "rgba(168, 85, 247, 0.3)"
+                  }
+                  stroke={
+                    state.isHovered ? "#c084fc" : "rgba(168, 85, 247, 0.5)"
+                  }
+                  strokeWidth={state.isHovered ? 2 : 1}
+                  className="transition-all duration-150"
                 />
-              )}
-            </g>
-          )}
+                {state.isHovered && (
+                  <circle
+                    cx={position.x}
+                    cy={position.y}
+                    r={16}
+                    fill="none"
+                    stroke="#c084fc"
+                    strokeWidth={1}
+                    strokeDasharray="3 3"
+                    className="animate-spin"
+                    style={{ animationDuration: "3s" }}
+                  />
+                )}
+              </g>
+            ) : null
+          }
           // Custom cyan theme for edges
-          renderInteractiveEdge={(edge, position, isHovered) => (
-            <g>
-              <line
-                x1={position.x1}
-                y1={position.y1}
-                x2={position.x2}
-                y2={position.y2}
-                stroke={isHovered ? "#06b6d4" : "rgba(6, 182, 212, 0.25)"}
-                strokeWidth={isHovered ? 6 : 3}
-                strokeLinecap="round"
-                className="transition-all duration-150"
-              />
-              {isHovered && (
-                <>
-                  <circle
-                    cx={position.x1}
-                    cy={position.y1}
-                    r={4}
-                    fill="#06b6d4"
-                  />
-                  <circle
-                    cx={position.x2}
-                    cy={position.y2}
-                    r={4}
-                    fill="#06b6d4"
-                  />
-                </>
-              )}
-            </g>
-          )}
+          renderInteractiveEdge={(edge, position, state) =>
+            state.isEligible ? (
+              <g>
+                <line
+                  x1={position.x1}
+                  y1={position.y1}
+                  x2={position.x2}
+                  y2={position.y2}
+                  stroke={
+                    state.isHovered ? "#06b6d4" : "rgba(6, 182, 212, 0.25)"
+                  }
+                  strokeWidth={state.isHovered ? 6 : 3}
+                  strokeLinecap="round"
+                  className="transition-all duration-150"
+                />
+                {state.isHovered && (
+                  <>
+                    <circle
+                      cx={position.x1}
+                      cy={position.y1}
+                      r={4}
+                      fill="#06b6d4"
+                    />
+                    <circle
+                      cx={position.x2}
+                      cy={position.y2}
+                      r={4}
+                      fill="#06b6d4"
+                    />
+                  </>
+                )}
+              </g>
+            ) : null
+          }
         />
-
-        <div className="mt-4 flex gap-4">
-          {hoveredVertex && (
-            <div className="p-3 bg-purple-900/50 border border-purple-500 rounded-lg text-purple-200">
-              Vertex: {hoveredVertex}
-            </div>
-          )}
-          {hoveredEdge && (
-            <div className="p-3 bg-cyan-900/50 border border-cyan-500 rounded-lg text-cyan-200">
-              Edge: {hoveredEdge}
-            </div>
-          )}
-        </div>
       </div>
     );
   },

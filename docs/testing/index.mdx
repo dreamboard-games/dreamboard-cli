@@ -1,0 +1,158 @@
+---
+title: "Testing overview"
+description: "Generate and run Dreamboard reducer-native tests."
+---
+
+Dreamboard tests are reducer-native. They run authored scenarios against the
+same reducer contract that powers the game, using generated workspace types for
+player ids, interaction ids, params, phases, views, and assertion helpers.
+
+Use tests for repeatable gameplay coverage:
+
+- opening-state invariants
+- setup checkpoints reused by many scenarios
+- happy paths across a turn, round, or full game
+- rejection paths for illegal actors or params
+- prompt recipient and availability checks
+- UI component probes against reducer-projected plugin state
+
+## Workspace layout
+
+| Path | Ownership | Purpose |
+| --- | --- | --- |
+| `test/bases/*.base.ts` | Authored | Reusable seeded starting states via `defineBase`. |
+| `test/scenarios/*.scenario.ts` | Authored | Reducer-native scenario files via `defineScenario`. |
+| `test/ui/*.test.tsx` | Authored | Optional UI tests using `createTestRuntime`. |
+| `test/testing-types.ts` | Generated | Workspace-narrowed test import surface. |
+| `test/generated/*` | Generated | Base snapshots, testing contract, scenario manifest, projections, snapshots, and metadata. |
+
+Import test helpers from `../testing-types`. Do not import directly from
+`test/generated/*` and do not edit generated files by hand.
+
+## Command flow
+
+Generate or refresh reducer-native artifacts:
+
+```bash
+dreamboard test generate
+```
+
+Run all reducer scenarios:
+
+```bash
+dreamboard test run
+```
+
+Run one scenario file:
+
+```bash
+dreamboard test run --scenario test/scenarios/trade-full-lifecycle.scenario.ts
+```
+
+Refresh scenario snapshots while running:
+
+```bash
+dreamboard test run --update-snapshots
+```
+
+Public workspaces should normally omit `--runner`. The default runner is the
+reducer runner. Internal source-checkout lanes may also use `embedded` or
+`browser`, but those are parity lanes rather than the public authoring loop.
+
+## What generate does
+
+`dreamboard test generate`:
+
+1. Ensures `test/testing-types.ts` and `test/generated/testing-contract.ts`
+   exist and match the current workspace contract.
+2. Loads `test/bases/*.base.ts` and `test/scenarios/*.scenario.ts`.
+3. Validates that every scenario references an existing base.
+4. Executes base setup against the reducer to produce deterministic base
+   snapshots.
+5. Writes generated artifacts under `test/generated/`.
+
+Regenerate after changes that affect runtime or type shape:
+
+- `manifest.ts`
+- `app/game.ts`
+- phase files, interactions, card actions, targets, or views
+- setup profiles
+- generated `shared/generated/ui-contract.ts`
+- stale base fingerprints reported by `dreamboard test run`
+
+## What run does
+
+`dreamboard test run`:
+
+1. Ensures generated testing files exist.
+2. Loads bases, scenarios, generated base states, manifest, and game reducer.
+3. Checks generated base fingerprints against the current workspace.
+4. Starts each scenario from its base.
+5. Runs `when`.
+6. Checks optional `phase` and `stage`.
+7. Runs `then`.
+8. Prints one pass or fail line per scenario plus a summary.
+
+If the base artifact is stale, the runner fails before pretending the scenario
+is meaningful. Regenerate instead of debugging against an old snapshot.
+
+## Minimal base and scenario
+
+```ts
+// test/bases/initial-turn.base.ts
+import { defineBase } from "../testing-types";
+
+export default defineBase({
+  id: "initial-turn",
+  seed: 1337,
+  players: 4,
+  setup: async () => undefined,
+});
+```
+
+```ts
+// test/scenarios/smoke-initial-turn.scenario.ts
+import { defineScenario } from "../testing-types";
+
+export default defineScenario({
+  id: "smoke-initial-turn",
+  from: "initial-turn",
+  phase: "setup",
+  when: async () => undefined,
+  then: ({ state, interactions, expect, seat }) => {
+    expect(state()).toBe("setup");
+    expect(interactions(seat(0))).toHaveInteraction("placeSetupMarker");
+  },
+});
+```
+
+Use `seat(0)`, `seat(1)`, and `players()` instead of hard-coded `"player-1"`
+strings. This keeps tests portable across player counts and generated player id
+unions.
+
+## Recommended coverage
+
+Every game should have:
+
+- one opening-state scenario
+- one normal turn or round scenario
+- one scenario that crosses a phase boundary
+- one rejection scenario for out-of-turn or invalid params
+- one prompt recipient scenario if the game uses prompts
+- one setup-profile or setup-completion scenario when setup is non-trivial
+
+For larger games, create bases for expensive checkpoints such as post-setup,
+mid-game economy, pending trade, pending combat, or near-endgame. Do not make
+one scenario replay a full game just to test a late rule.
+
+## Split pages
+
+- [Bases](/docs/testing/bases) explains seeded checkpoints and inheritance.
+- [Scenarios](/docs/testing/scenarios) explains `defineScenario` and scenario
+  flow.
+- [Runtime assertions](/docs/testing/runtime-assertions) lists context helpers
+  and matchers.
+- [UI tests](/docs/testing/ui-tests) shows `createTestRuntime` with React
+  providers.
+- [Generated testing contracts](/docs/testing/generated-contracts) explains
+  generated files and stale-artifact failures.

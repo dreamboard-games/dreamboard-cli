@@ -70,6 +70,33 @@ normal authored workflow.
 The CLI materializes `.dreamboard/generated/manifest.json` from `manifest.ts`
 for local tooling. Treat that file as generated output, not authored source.
 
+## Authentication storage
+
+`dreamboard login` stores a refreshable session on the current machine.
+By default the CLI writes credentials to the operating system keychain
+(Keychain on macOS, Credential Vault on Windows, Secret Service on
+Linux), so the refresh token is encrypted at rest and is not readable
+by other tools that scan the home directory.
+
+If the native keyring is unavailable (for example in a container
+without libsecret) the CLI falls back to `~/.dreamboard/auth.json`
+owned by the current user. You can pin a specific backend with:
+
+```bash
+# Force the file-based backend even when the OS keychain is available.
+export DREAMBOARD_CREDENTIAL_BACKEND=file
+```
+
+Run `dreamboard auth status` to see which backend is active, the auth
+token source, and the access-token expiry.
+
+Credentials are only rewritten after a successful token rotation.
+Transient errors during `dreamboard sync` or `dreamboard compile` no
+longer clear the stored refresh token, so a network hiccup will not
+force you to log in again. If you ever need to start fresh, run
+`dreamboard logout` or `dreamboard auth clear` to wipe the session
+explicitly.
+
 ## Dev server
 
 Start a local server to play the compiled game in the browser:

@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import {
-  SessionStorageDevHostStorage,
-  type ActiveSession,
-} from "./dev-host-storage.js";
+import { SessionStorageDevHostStorage } from "./dev-host-storage.js";
 
 class MemoryStorage implements Storage {
   private readonly values = new Map<string, string>();
@@ -34,109 +31,14 @@ class MemoryStorage implements Storage {
 }
 
 describe("SessionStorageDevHostStorage", () => {
-  test("loads a persisted active session", () => {
-    const storage = new MemoryStorage();
-    const persistedSession: ActiveSession = {
-      sessionId: "session-1",
-      shortCode: "rapid-blaze-91",
-      gameId: "game-1",
-      seed: 1337,
-      compiledResultId: "compiled-result-1",
-      setupProfileId: null,
-    };
-    storage.setItem(
-      "dreamboard-dev-active-session",
-      JSON.stringify(persistedSession),
-    );
-
-    const devHostStorage = new SessionStorageDevHostStorage(storage);
-
-    expect(devHostStorage.loadActiveSession()).toEqual(persistedSession);
-  });
-
-  test("drops invalid persisted sessions", () => {
-    const storage = new MemoryStorage();
-    storage.setItem(
-      "dreamboard-dev-active-session",
-      JSON.stringify({
-        sessionId: "session-1",
-        gameId: "game-1",
-      }),
-    );
-
-    const devHostStorage = new SessionStorageDevHostStorage(storage);
-
-    expect(devHostStorage.loadActiveSession()).toBeNull();
-  });
-
-  test("falls back to a null seed when persisted seed is invalid", () => {
-    const storage = new MemoryStorage();
-    storage.setItem(
-      "dreamboard-dev-active-session",
-      JSON.stringify({
-        sessionId: "session-1",
-        shortCode: "rapid-blaze-91",
-        gameId: "game-1",
-        seed: "not-a-number",
-        compiledResultId: "compiled-result-1",
-      }),
-    );
-
-    const devHostStorage = new SessionStorageDevHostStorage(storage);
-
-    expect(devHostStorage.loadActiveSession()).toEqual({
-      sessionId: "session-1",
-      shortCode: "rapid-blaze-91",
-      gameId: "game-1",
-      seed: null,
-      compiledResultId: "compiled-result-1",
-      setupProfileId: null,
-    });
-  });
-
-  test("persists active session and sidebar state", () => {
+  test("persists sidebar state", () => {
     const storage = new MemoryStorage();
     const devHostStorage = new SessionStorageDevHostStorage(storage);
 
-    devHostStorage.persistActiveSession({
-      sessionId: "session-1",
-      shortCode: "rapid-blaze-91",
-      gameId: "game-1",
-      seed: 42,
-      compiledResultId: "compiled-result-1",
-      setupProfileId: "draft-profile",
-    });
     devHostStorage.persistSidebarOpen(true);
 
-    expect(
-      JSON.parse(storage.getItem("dreamboard-dev-active-session") ?? "null"),
-    ).toEqual({
-      sessionId: "session-1",
-      shortCode: "rapid-blaze-91",
-      gameId: "game-1",
-      seed: 42,
-      compiledResultId: "compiled-result-1",
-      setupProfileId: "draft-profile",
-    });
     expect(storage.getItem("dreamboard-dev-sidebar")).toBe("true");
     expect(devHostStorage.loadSidebarOpen()).toBe(true);
-  });
-
-  test("drops persisted sessions from the pre-compiled-result format", () => {
-    const storage = new MemoryStorage();
-    storage.setItem(
-      "dreamboard-dev-active-session",
-      JSON.stringify({
-        sessionId: "session-1",
-        shortCode: "rapid-blaze-91",
-        gameId: "game-1",
-        seed: 42,
-      }),
-    );
-
-    const devHostStorage = new SessionStorageDevHostStorage(storage);
-
-    expect(devHostStorage.loadActiveSession()).toBeNull();
   });
 
   test("defaults sidebar state to closed when nothing is stored", () => {
@@ -145,5 +47,26 @@ describe("SessionStorageDevHostStorage", () => {
     );
 
     expect(devHostStorage.loadSidebarOpen()).toBe(false);
+  });
+
+  test("persists selected player state", () => {
+    const storage = new MemoryStorage();
+    const devHostStorage = new SessionStorageDevHostStorage(storage);
+
+    devHostStorage.persistSelectedPlayerId(" player-2 ");
+
+    expect(storage.getItem("dreamboard-dev-selected-player")).toBe("player-2");
+    expect(devHostStorage.loadSelectedPlayerId()).toBe("player-2");
+  });
+
+  test("clears selected player state when no player is provided", () => {
+    const storage = new MemoryStorage();
+    const devHostStorage = new SessionStorageDevHostStorage(storage);
+
+    devHostStorage.persistSelectedPlayerId("player-2");
+    devHostStorage.persistSelectedPlayerId(null);
+
+    expect(storage.getItem("dreamboard-dev-selected-player")).toBeNull();
+    expect(devHostStorage.loadSelectedPlayerId()).toBeNull();
   });
 });

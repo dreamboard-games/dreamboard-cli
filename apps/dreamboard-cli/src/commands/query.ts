@@ -2,6 +2,7 @@ import { queryWorkshopRulebook } from "@dreamboard/api-client";
 import { defineCommand } from "citty";
 import { CONFIG_FLAG_ARGS } from "../command-args.js";
 import { loadGlobalConfig } from "../config/global-config.js";
+import { getStoredSession } from "../config/credential-store.js";
 import {
   configureClient,
   requireAuth,
@@ -25,7 +26,16 @@ export default defineCommand({
   },
   async run({ args }) {
     const parsedArgs = parseQueryCommandArgs(args);
-    const config = resolveConfig(await loadGlobalConfig(), parsedArgs);
+    const [globalConfig, storedSession] = await Promise.all([
+      loadGlobalConfig(),
+      getStoredSession(),
+    ]);
+    const config = resolveConfig(
+      globalConfig,
+      parsedArgs,
+      undefined,
+      storedSession,
+    );
     requireAuth(config);
     await configureClient(config);
 

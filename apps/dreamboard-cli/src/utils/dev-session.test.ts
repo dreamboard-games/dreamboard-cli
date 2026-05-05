@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
 import {
   createPersistedDevSession,
   generateRandomDevSeed,
+  loadPersistedDevSession,
   parseOptionalDevSeed,
   parseDevSeed,
 } from "./dev-session.js";
@@ -48,25 +52,45 @@ describe("generateRandomDevSeed", () => {
 });
 
 describe("createPersistedDevSession", () => {
-  test("creates the shared persisted session shape with default counters", () => {
+  test("creates the shared persisted session pointer", () => {
     expect(
       createPersistedDevSession({
+        sessionId: "session-1",
+      }),
+    ).toEqual({
+      sessionId: "session-1",
+    });
+  });
+});
+
+describe("loadPersistedDevSession", () => {
+  test("loads the shared persisted session pointer", async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), "dev-session-"));
+    const sessionFilePath = path.join(tempRoot, "session.json");
+    await writeFile(
+      sessionFilePath,
+      JSON.stringify({
         sessionId: "session-1",
         shortCode: "swift-falcon-73",
         gameId: "game-1",
         seed: 42,
-        compiledResultId: "compiled-result-1",
         createdAt: "2026-03-16T00:00:00.000Z",
+        controllablePlayerIds: "invalid",
+        yourTurnCount: 2.8,
       }),
-    ).toEqual({
+      "utf8",
+    );
+
+    expect(await loadPersistedDevSession(sessionFilePath)).toEqual({
       sessionId: "session-1",
-      shortCode: "swift-falcon-73",
-      gameId: "game-1",
-      seed: 42,
-      compiledResultId: "compiled-result-1",
-      createdAt: "2026-03-16T00:00:00.000Z",
-      controllablePlayerIds: [],
-      yourTurnCount: 0,
     });
+  });
+
+  test("returns null when the session file is missing", async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), "dev-session-"));
+
+    expect(
+      await loadPersistedDevSession(path.join(tempRoot, "session.json")),
+    ).toBeNull();
   });
 });

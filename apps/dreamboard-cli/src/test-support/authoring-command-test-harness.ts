@@ -93,6 +93,8 @@ type HarnessCalls = {
     projectRoot: string;
     deletedPaths: readonly string[];
   }>;
+  assertReducerContractPreflight: string[];
+  assertReducerBundleSmoke: Array<{ projectRoot: string }>;
   buildRemoteAlignedSnapshotFiles: Array<{
     localFiles: Record<string, string>;
     remoteUserFiles: Record<string, string>;
@@ -215,6 +217,10 @@ export type AuthoringCommandTestState = {
     string
   > | null;
   installWorkspaceDependenciesNextLocalDiffResult: LocalDiff | null;
+  ensureLocalMaintainerSnapshotResult:
+    | ProjectConfig["localMaintainerRegistry"]
+    | null;
+  didLocalMaintainerSnapshotChangeResult: boolean;
   applyWorkspaceCodegenError: Error | null;
   applyWorkspaceCodegenErrorOnCall: number | null;
   applyWorkspaceCodegenNextCollectLocalFilesResult: Record<
@@ -222,6 +228,8 @@ export type AuthoringCommandTestState = {
     string
   > | null;
   applyWorkspaceCodegenNextLocalDiffResult: LocalDiff | null;
+  reducerContractPreflightError: Error | null;
+  reducerBundleSmokeError: Error | null;
   fetchLatestRemoteSourcesResult: RemoteProjectSources | null;
   getAuthoringHeadSdkResult: RemoteProjectSources | null;
   findLatestSuccessfulCompiledResultResult: { id: string } | null;
@@ -272,6 +280,8 @@ function createDefaultState(): AuthoringCommandTestState {
   return {
     calls: {
       assertCliStaticScaffoldComplete: [],
+      assertReducerContractPreflight: [],
+      assertReducerBundleSmoke: [],
       buildRemoteAlignedSnapshotFiles: [],
       configureClient: [],
       getAuthoringHeadSdk: [],
@@ -349,10 +359,14 @@ function createDefaultState(): AuthoringCommandTestState {
     },
     installWorkspaceDependenciesNextCollectLocalFilesResult: null,
     installWorkspaceDependenciesNextLocalDiffResult: null,
+    ensureLocalMaintainerSnapshotResult: null,
+    didLocalMaintainerSnapshotChangeResult: false,
     applyWorkspaceCodegenError: null,
     applyWorkspaceCodegenErrorOnCall: null,
     applyWorkspaceCodegenNextCollectLocalFilesResult: null,
     applyWorkspaceCodegenNextLocalDiffResult: null,
+    reducerContractPreflightError: null,
+    reducerBundleSmokeError: null,
     fetchLatestRemoteSourcesResult: null,
     getAuthoringHeadSdkResult: {
       authoringStateId: "authoring-1",
@@ -397,7 +411,6 @@ function createDefaultState(): AuthoringCommandTestState {
       contentHash: "content-hash-1",
     },
     globalConfig: {
-      authToken: "token",
       environment: "local",
     },
     isManifestDifferentFromServerResult: false,
@@ -943,6 +956,28 @@ mock.module("../services/project/workspace-codegen.js", () => ({
   },
 }));
 
+mock.module("../services/project/reducer-contract-preflight.js", () => ({
+  assertReducerContractPreflight: async (projectRoot: string) => {
+    const state = authoringCommandTestHarness.current;
+    state.calls.assertReducerContractPreflight.push(projectRoot);
+    if (state.reducerContractPreflightError) {
+      throw state.reducerContractPreflightError;
+    }
+  },
+}));
+
+mock.module("../services/project/reducer-bundle-preflight.js", () => ({
+  assertReducerBundleSmoke: async (options: { projectRoot: string }) => {
+    const state = authoringCommandTestHarness.current;
+    state.calls.assertReducerBundleSmoke.push({
+      projectRoot: options.projectRoot,
+    });
+    if (state.reducerBundleSmokeError) {
+      throw state.reducerBundleSmokeError;
+    }
+  },
+}));
+
 mock.module("../services/project/workspace-dependencies.js", () => ({
   installWorkspaceDependencies: async (projectRoot: string) => {
     const state = authoringCommandTestHarness.current;
@@ -987,9 +1022,14 @@ mock.module("../services/project/local-maintainer-registry.js", () => ({
     authoringCommandTestHarness.current.calls.ensureLocalMaintainerSnapshot.push(
       apiBaseUrl,
     );
-    return null;
+    return structuredClone(
+      authoringCommandTestHarness.current.ensureLocalMaintainerSnapshotResult,
+    );
   },
-  didLocalMaintainerSnapshotChange: () => false,
+  didLocalMaintainerSnapshotChange: () =>
+    authoringCommandTestHarness.current.didLocalMaintainerSnapshotChangeResult,
+  isLocalMaintainerRegistryEnabled: (apiBaseUrl: string) =>
+    apiBaseUrl.includes("localhost") || apiBaseUrl.includes("127.0.0.1"),
   readWorkspaceLocalMaintainerRegistry: async () => null,
 }));
 

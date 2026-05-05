@@ -1,0 +1,199 @@
+# Prompts and choices
+
+Render prompt and choice interactions in player UI.
+
+Prompts are addressed interactions. They are authored with `promptInput`, routed
+to one or more players with `to`, and projected into the current seat's inbox.
+
+They are not effects and they are not local UI dialogs. A prompt is a reducer
+interaction whose submit path is the same as every other player action.
+
+## Author a prompt
+
+```ts
+const respondToTrade = defineInteraction<GameContract, typeof phaseState>()({
+  surface: "inbox",
+  label: "Respond to trade",
+  title: "Incoming trade offer",
+  presentation: {
+    mode: "dialog",
+    dialog: {
+      title: "Incoming trade offer",
+      description: "Review the offer and accept or reject it.",
+      dismissBehavior: { type: "minimize", trayLabel: "Trade pending" },
+    },
+  },
+  inputs: {
+    response: promptInput({
+      schema: z.enum(["accept", "reject"]),
+      target: choiceTarget
+        .options<GameState, "accept" | "reject">([
+          { id: "accept", label: "Accept" },
+          { id: "reject", label: "Reject" },
+        ])
+        .build(),
+    }),
+  },
+  to: ({ state }) => state.phase.pendingTrade?.targetPlayerIds ?? null,
+  reduce({ state, input, accept }) {
+    return accept(applyTradeResponse(state, input.playerId, input.params.response));
+  },
+});
+```
+
+The choice target gives the default inbox renderer enough information to render
+buttons, and it gives the server the same finite validation rule.
+
+The presentation block is optional, but it is the right place for dialog policy.
+If a prompt should stay visible until answered, set
+`dismissBehavior: { type: "none" }`. If it can be revisited later, use
+`dismiss` or `minimize`.
+
+## Default inbox rendering
+
+`WorkspaceGameShell` mounts `InboxSurface` automatically. Prompt-kind descriptors with
+`context.options` render as a titled group of buttons. Clicking an option
+submits:
+
+```ts
+{ [firstInputKey]: option.id }
+```
+
+This default is intentionally narrow. It is for single-input finite choices.
+
+## Custom prompt rendering
+
+Use a surface override when the prompt needs rich context, multiple inputs, or a
+different layout:
+
+```tsx
+<WorkspaceGameShell
+  surfaces={{
+    inbox: {
+      "playerTurn.respondToTrade": (descriptor, handle) => (
+        <TradeResponsePrompt
+          descriptor={descriptor}
+          handle={handle}
+          pendingTrade={view.pendingTrade}
+          myResources={view.myResources}
+        />
+      ),
+    },
+  }}
+/>;
+```
+
+The handle is typed by the generated `WorkspaceGameShell` surface map. You can
+also use `InteractionParamsOf` to type a standalone component:
+
+```tsx
+import type { InteractionParamsOf } from "@dreamboard/ui-contract";
+import type { InteractionDescriptor, InteractionHandle } from "@dreamboard/ui-sdk";
+
+type Params = InteractionParamsOf<"playerTurn.respondToTrade">;
+
+function TradeResponsePrompt({
+  descriptor,
+  handle,
+}: {
+  descriptor: InteractionDescriptor<"playerTurn.respondToTrade">;
+  handle: InteractionHandle<Params>;
+}) {
+  return (
+    <section aria-label={descriptor.label}>
+      <button onClick={() => void handle.submit({ response: "accept" })}>
+        Accept
+      </button>
+      <button onClick={() => void handle.submit({ response: "reject" })}>
+        Reject
+      </button>
+    </section>
+  );
+}
+```
+
+## Direct lookup
+
+Use `useInteractionByKey` when a prompt is rendered outside `InboxSurface`:
+
+```tsx
+import { useInteractionByKey } from "@dreamboard/ui-contract";
+
+const judge = useInteractionByKey("judgeRings.judgePlacement");
+
+if (!judge?.available) return null;
+
+return (
+  <JudgePanel
+    draft={judge.draft}
+    setDecision={(decision) => judge.setInput("decision", decision)}
+    submit={() => judge.submitDraft()}
+  />
+);
+```
+
+This is useful when the prompt UI is integrated into the board, such as a judge
+selecting the correct Venn zone directly on the diagram. If you render the
+prompt elsewhere, suppress the default inbox item:
+
+```tsx
+<WorkspaceGameShell
+  surfaces={{
+    inbox: {
+      "judgeRings.judgePlacement": () => null,
+    },
+  }}
+/>;
+```
+
+## Blocker prompts
+
+Use the `blocker` surface when the player must answer before continuing:
+
+```tsx
+<WorkspaceGameShell
+  surfaces={{
+    blocker: {
+      "playerTurn.discardCards": (descriptor, handle) => (
+        <DiscardCardsDialog descriptor={descriptor} handle={handle} />
+      ),
+    },
+  }}
+/>;
+```
+
+`WorkspaceGameShell` mounts a full-screen overlay only when at least one blocker
+descriptor is available. Unavailable blocker descriptors do not dim the UI.
+
+Use blockers for required reactions such as discard-before-play, mandatory
+defense choices, or pending simultaneous commitments. Use inbox for ordinary
+responses that can sit in the player's action area.
+
+## Multi-input prompts
+
+The default option renderer submits only the first input key. If the prompt has
+multiple inputs, render it yourself:
+
+```tsx
+const handle = useInteractionByKey("playerTurn.choosePayment");
+
+handle?.setInput("coin", 2);
+handle?.setInput("favor", 1);
+await handle?.submitDraft();
+```
+
+`submitDraft` validates the local draft with generated client schemas before
+submitting. For server-authoritative validation without submit, call
+`validateDraftServer`.
+
+## Prompt rules
+
+- Address prompts with `to`; do not check recipient identity in React.
+- Use `choiceTarget` for finite options so both UI and reducer validation share
+  one source.
+- Use custom renderers for rich prompts, but keep submission through the typed
+  handle.
+- Use `blocker` only when the prompt should block the screen.
+- Put dialog title, description, status sections, and dismiss behavior in the
+  reducer-authored `presentation` metadata so every renderer sees the same
+  policy.

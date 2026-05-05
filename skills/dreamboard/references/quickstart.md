@@ -1,88 +1,74 @@
 # Quickstart
 
-Install Dreamboard CLI, create a game, and iterate on manifest-driven scaffolding.
+Install Dreamboard, create a workspace, sync generated contracts, compile, and run locally.
+
+Use this page to create and run a workspace. It intentionally stops before a full game implementation; use the tutorials for real mechanics.
 
 ## Requirements
 
-- Node 20+
+- Node 20 or newer
+- A terminal that can run the Dreamboard CLI
 
-<Tip>
-  New to Dreamboard? Read [Core concepts](/docs/concepts) alongside this
-  page for the mental model and a glossary of the terms used in the CLI
-  output and the rest of the docs.
-</Tip>
-
-## Install Dreamboard
-
-Install the CLI:
+## Install
 
 ```bash
 npm install -g dreamboard
-```
-
-Log in:
-
-```bash
 dreamboard login
 ```
 
-A browser window opens for authentication. When it completes, the CLI prints
-your logged-in email and returns to the shell.
+`dreamboard login` opens a browser for authentication, then writes the CLI session locally.
 
-Create a game:
+## Create a workspace
 
 ```bash
-dreamboard new my-game --description "A trick-taking card game"
-cd my-game
+dreamboard new ring-arena --description "A compact card-and-zone deduction game"
+cd ring-arena
 ```
 
-`dreamboard new` creates a `./my-game/` workspace and finishes with `Created
-new game in ./my-game`, followed by a hint to run `dreamboard sync` and
-`dreamboard compile` next.
+The generated workspace contains authored files, generated contracts, a React UI, and reducer-native tests. Read [Workspace layout](./workspace-layout.md) before changing generated files.
 
-Edit `rule.md` and `manifest.ts`. Use
-[CLI](./cli.md) for command behavior,
-[Rule authoring](./rule-authoring.md) for the rules document and
-[Manifest authoring](./manifest-authoring.md) for the manifest
-schema.
+## Sync generated files
 
-Regenerate scaffolded files from your authored source:
+Run sync after changing `manifest.ts`, reducer definitions, testing contracts, or scaffold-owned files:
 
 ```bash
 dreamboard sync
 ```
 
-`dreamboard sync` regenerates scaffolded files and prints `Synced authored
-state <id>` when it finishes. It also prepares workspace dependencies after
-`package.json` changes.
+`sync` regenerates local contracts from authored source. If `sync` updates `package.json`, install dependencies before continuing:
 
-Compile the current authored head:
+```bash
+pnpm install
+```
+
+## Compile
 
 ```bash
 dreamboard compile
 ```
 
-A successful compile prints `Local typecheck passed` and `Compiled <id> for
-authored state <id>`. If there are diagnostics, fix them and run the command
-again.
+Compile runs local checks, builds the reducer bundle, and uploads the compiled artifact for the authored head. Fix type errors before moving to `dev`; type errors usually mean one of the generated contracts no longer matches the authored manifest or reducer.
 
-Start a local server to play the compiled game:
+## Run locally
 
 ```bash
 dreamboard dev
 ```
 
-The CLI prints `Dreamboard dev host ready at <url>` along with the local URL
-and backend session id. Open the URL in a browser to play the game; stop the
-server with `Ctrl+C`.
+Open the printed URL to play the current compiled game. Stop the dev host with `Ctrl+C`.
 
-Useful follow-up commands:
+## Add test coverage
 
-- `dreamboard pull` reconciles authored changes when the remote has advanced.
-- `dreamboard status` compares local and remote state.
-- `dreamboard clone <game-slug>` pulls an existing game into a local workspace.
+```bash
+dreamboard test generate
+dreamboard test run
+```
 
-For a concise command reference, see [CLI](./cli.md).
+`test generate` writes workspace-specific testing wrappers and generated contracts. `test run` replays scenario files under `test/scenarios`.
 
-For a full walkthrough, continue with
-[Building your first game](./building-your-first-game.md).
+## Next steps
+
+- [Manifest](./manifest.md) explains the static table model.
+- [Game contract](./game-contract.md) explains state and phase names.
+- [Interactions](./interactions.md) explains player commands and prompts.
+- [CLI](./cli.md) is the command reference.

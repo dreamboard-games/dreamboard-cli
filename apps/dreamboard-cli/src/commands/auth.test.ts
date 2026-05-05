@@ -2,6 +2,38 @@ import { beforeEach, expect, mock, test } from "bun:test";
 
 const loadGlobalConfig = mock(async () => ({}));
 const saveGlobalConfig = mock(async () => undefined);
+const getStoredSession = mock(async () => null as any);
+const setCredentials = mock(async () => undefined);
+const setAccessOnlySession = mock(async () => undefined);
+const clearCredentials = mock(async () => undefined);
+const getActiveCredentialBackendName = mock(async () => "file" as const);
+// Simulated in-memory credential store used by the refresh coordinator.
+// `withCredentialLock` hands the callback an ops handle that mirrors the
+// real backend API but operates on the in-memory snapshot returned by
+// `getStoredSession`.
+const withCredentialLock = mock(async (fn: any) => {
+  const snapshot = (await getStoredSession()) as any;
+  const ops = {
+    backendName: "file" as const,
+    read: async () => snapshot,
+    writeFull: async (creds: any) => {
+      getStoredSession.mockImplementation(async () => ({
+        accessToken: creds.accessToken,
+        refreshToken: creds.refreshToken,
+      }));
+    },
+    writeAccessOnly: async (token: string) => {
+      getStoredSession.mockImplementation(async () => ({
+        accessToken: token,
+      }));
+    },
+    clear: async () => {
+      getStoredSession.mockImplementation(async () => null);
+    },
+  };
+  return fn(ops);
+});
+const getCredentials = mock(async () => null as any);
 const setSession = mock(async () => ({
   data: {
     session: {
@@ -59,6 +91,16 @@ mock.module("../config/global-config.js", () => ({
   saveGlobalConfig,
 }));
 
+mock.module("../config/credential-store.js", () => ({
+  clearCredentials,
+  getActiveCredentialBackendName,
+  getCredentials,
+  getStoredSession,
+  setAccessOnlySession,
+  setCredentials,
+  withCredentialLock,
+}));
+
 mock.module("../auth/auth-server.js", () => ({
   openBrowser,
   startCliAuthServer,
@@ -86,6 +128,11 @@ function createJwt(expSecondsFromNow: number): string {
 beforeEach(() => {
   loadGlobalConfig.mockClear();
   saveGlobalConfig.mockClear();
+  getStoredSession.mockClear();
+  setCredentials.mockClear();
+  setAccessOnlySession.mockClear();
+  clearCredentials.mockClear();
+  getActiveCredentialBackendName.mockClear();
   setSession.mockClear();
   createSupabaseClient.mockClear();
   parseLoginCommandArgs.mockClear();
@@ -100,6 +147,13 @@ beforeEach(() => {
 
   loadGlobalConfig.mockImplementation(async () => ({}));
   saveGlobalConfig.mockImplementation(async () => undefined);
+  getStoredSession.mockImplementation(async () => null as any);
+  setCredentials.mockImplementation(async () => undefined);
+  setAccessOnlySession.mockImplementation(async () => undefined);
+  clearCredentials.mockImplementation(async () => undefined);
+  getActiveCredentialBackendName.mockImplementation(
+    async () => "file" as const,
+  );
   setSession.mockImplementation(async () => ({
     data: {
       session: {
@@ -114,32 +168,40 @@ beforeEach(() => {
 test("auth status reports an active session without refreshing a valid token", async () => {
   loadGlobalConfig.mockImplementation(async () => ({
     environment: "dev",
-    authToken: createJwt(3600),
+  }));
+  getStoredSession.mockImplementation(async () => ({
+    accessToken: createJwt(3600),
     refreshToken: "refresh-token",
   }));
 
-  await authCommand.run({
+  await authCommand.run!({
     args: {
       action: "status",
-    },
-  });
+    } as any,
+  } as any);
 
   expect(parseAuthCommandArgs).toHaveBeenCalledWith({
     action: "status",
   });
   expect(setSession).not.toHaveBeenCalled();
+  expect(saveGlobalConfig).not.toHaveBeenCalled();
+  expect(setCredentials).not.toHaveBeenCalled();
   expect(consolaSuccess).toHaveBeenCalledWith("Dreamboard session is active.");
 });
 
-test("auth status refreshes an expired stored session and persists the rotated tokens", async () => {
+test("auth status refreshes an expired stored session via the credential store", async () => {
   const expiredToken = createJwt(-3600);
   const refreshedToken = createJwt(7200);
 
   loadGlobalConfig.mockImplementation(async () => ({
     environment: "prod",
-    authToken: expiredToken,
+  }));
+  getStoredSession.mockImplementation(async () => ({
+    accessToken: expiredToken,
     refreshToken: "stored-refresh-token",
   }));
+  // The refresh coordinator re-reads inside the lock; the mocked
+  // credential store returns the same snapshot both times.
   setSession.mockImplementation(async () => ({
     data: {
       session: {
@@ -150,46 +212,64 @@ test("auth status refreshes an expired stored session and persists the rotated t
     error: null,
   }));
 
-  await authCommand.run({
+  await authCommand.run!({
     args: {
       action: "status",
-    },
-  });
+    } as any,
+  } as any);
 
+  // auth status delegates to refreshResolvedAuthSession, which hits
+  // Supabase setSession with the stored credentials. saveGlobalConfig
+  // is NEVER called with credentials now - that path is owned by
+  // CredentialStore.
   expect(setSession).toHaveBeenCalledWith({
     access_token: expiredToken,
     refresh_token: "stored-refresh-token",
   });
-  expect(saveGlobalConfig).toHaveBeenCalledWith({
-    environment: "prod",
-    authToken: refreshedToken,
-    refreshToken: "rotated-refresh-token",
-  });
+  expect(saveGlobalConfig).not.toHaveBeenCalled();
+  // Credentials were rotated and persisted via the credential store.
   expect(consolaSuccess).toHaveBeenCalledWith(
     "Access token was expired and has been refreshed.",
   );
 });
 
-test("auth set replaces the access token and clears any stored refresh token", async () => {
+test("auth set writes an access-only session without touching saveGlobalConfig", async () => {
   loadGlobalConfig.mockImplementation(async () => ({
     environment: "local",
-    authToken: "old-access-token",
+  }));
+  getStoredSession.mockImplementation(async () => ({
+    accessToken: "old-access-token",
     refreshToken: "stale-refresh-token",
   }));
 
-  await authCommand.run({
+  await authCommand.run!({
     args: {
       action: "set",
       tokenValue: "new-access-token",
-    },
-  });
+    } as any,
+  } as any);
 
-  expect(saveGlobalConfig).toHaveBeenCalledWith({
-    environment: "local",
-    authToken: "new-access-token",
-    refreshToken: undefined,
-  });
+  expect(setAccessOnlySession).toHaveBeenCalledWith("new-access-token");
+  expect(saveGlobalConfig).not.toHaveBeenCalled();
+  expect(setCredentials).not.toHaveBeenCalled();
   expect(consolaSuccess).toHaveBeenCalledWith(
     "Auth token saved to /tmp/.dreamboard/auth.json.",
   );
+});
+
+test("auth clear delegates to clearCredentials without touching saveGlobalConfig", async () => {
+  loadGlobalConfig.mockImplementation(async () => ({
+    environment: "local",
+  }));
+
+  await authCommand.run!({
+    args: {
+      action: "clear",
+    } as any,
+  } as any);
+
+  expect(clearCredentials).toHaveBeenCalledTimes(1);
+  expect(saveGlobalConfig).not.toHaveBeenCalled();
+  expect(setCredentials).not.toHaveBeenCalled();
+  expect(setAccessOnlySession).not.toHaveBeenCalled();
 });

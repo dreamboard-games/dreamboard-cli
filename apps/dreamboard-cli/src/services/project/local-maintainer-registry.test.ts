@@ -95,6 +95,7 @@ test("ensureLocalMaintainerSnapshot delegates to the source-checkout helper and 
       packages: {
         "@dreamboard/api-client": "0.1.0-local.1",
         "@dreamboard/app-sdk": "0.0.40-local.1",
+        "@dreamboard/reducer-contract": "1.0.0-local.1",
         "@dreamboard/sdk-types": "0.1.0-local.1",
         "@dreamboard/ui-sdk": "0.0.40-local.1",
       },

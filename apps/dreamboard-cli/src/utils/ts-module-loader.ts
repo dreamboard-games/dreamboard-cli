@@ -4,6 +4,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
 import { resolveCliRepoRoot } from "./repo-root.js";
+import { createRepoLocalPackageResolutionPlugin } from "./repo-local-package-resolution.js";
 
 const ESBUILD_EXTERNALS = [
   "playwright",
@@ -29,6 +30,7 @@ export async function bundleTypeScriptModuleText(
     sourcemap: "inline",
     external: ESBUILD_EXTERNALS,
     nodePaths: ESBUILD_NODE_PATHS,
+    plugins: [createRepoLocalPackageResolutionPlugin()],
     write: false,
   });
 

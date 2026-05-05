@@ -7,6 +7,12 @@ import { useMemo, useState, type ReactNode } from "react";
 import { clsx } from "clsx";
 import { usePanZoom } from "../../hooks/usePanZoom.js";
 import type { GeneratedSquareSpaceStateLike } from "../../types/tiled-board.js";
+import {
+  interactiveTargetRenderState,
+  isInteractiveTargetSelectable,
+  type InteractiveTargetLayer,
+  type InteractiveTargetRenderState,
+} from "./target-layer.js";
 
 // ============================================================================
 // Types
@@ -113,21 +119,17 @@ export interface SquareGridProps {
   minZoom?: number;
   maxZoom?: number;
   className?: string;
-  interactiveEdges?: boolean;
-  interactiveVertices?: boolean;
-  onInteractiveEdgeClick?: (edge: InteractiveSquareEdge) => void;
-  onInteractiveEdgeEnter?: (edge: InteractiveSquareEdge) => void;
-  onInteractiveEdgeLeave?: (edge: InteractiveSquareEdge) => void;
-  onInteractiveVertexClick?: (vertex: InteractiveSquareVertex) => void;
-  onInteractiveVertexEnter?: (vertex: InteractiveSquareVertex) => void;
-  onInteractiveVertexLeave?: (vertex: InteractiveSquareVertex) => void;
+  interactiveEdges?: InteractiveTargetLayer;
+  interactiveVertices?: InteractiveTargetLayer;
   renderInteractiveEdge?: (
     edge: InteractiveSquareEdge,
-    isHovered: boolean,
+    position: SquareEdgePosition,
+    state: InteractiveTargetRenderState,
   ) => ReactNode;
   renderInteractiveVertex?: (
     vertex: InteractiveSquareVertex,
-    isHovered: boolean,
+    position: SquareVertexPosition,
+    state: InteractiveTargetRenderState,
   ) => ReactNode;
 }
 
@@ -565,14 +567,8 @@ export function SquareGrid({
   minZoom = 0.5,
   maxZoom = 3,
   className,
-  interactiveEdges = false,
-  interactiveVertices = false,
-  onInteractiveEdgeClick,
-  onInteractiveEdgeEnter,
-  onInteractiveEdgeLeave,
-  onInteractiveVertexClick,
-  onInteractiveVertexEnter,
-  onInteractiveVertexLeave,
+  interactiveEdges,
+  interactiveVertices,
   renderInteractiveEdge,
   renderInteractiveVertex,
 }: SquareGridProps) {
@@ -839,44 +835,52 @@ export function SquareGrid({
 
       {interactiveEdges && (
         <g className="interactive-edges" aria-label="Interactive edges">
-          {autoInteractiveEdges.map((edge) => (
-            <g
-              key={edge.id}
-              onClick={() => onInteractiveEdgeClick?.(edge)}
-              onPointerEnter={() => {
-                setHoveredInteractiveEdgeId(edge.id);
-                onInteractiveEdgeEnter?.(edge);
-              }}
-              onPointerLeave={() => {
-                setHoveredInteractiveEdgeId((currentId) =>
-                  currentId === edge.id ? null : currentId,
-                );
-                onInteractiveEdgeLeave?.(edge);
-              }}
-              className={clsx(
-                (onInteractiveEdgeClick ||
-                  onInteractiveEdgeEnter ||
-                  onInteractiveEdgeLeave) &&
-                  "cursor-pointer",
-              )}
-            >
-              {renderInteractiveEdge ? (
-                renderInteractiveEdge(
-                  edge,
-                  hoveredInteractiveEdgeId === edge.id,
-                )
-              ) : (
-                <line
-                  x1={edge.position.x1}
-                  y1={edge.position.y1}
-                  x2={edge.position.x2}
-                  y2={edge.position.y2}
-                  stroke="transparent"
-                  strokeWidth={Math.max(12, cellSize * 0.18)}
-                />
-              )}
-            </g>
-          ))}
+          {autoInteractiveEdges.map((edge) => {
+            const state = interactiveTargetRenderState(
+              interactiveEdges,
+              edge.id,
+              hoveredInteractiveEdgeId === edge.id,
+            );
+            const isSelectable = isInteractiveTargetSelectable(
+              interactiveEdges,
+              state,
+            );
+            return (
+              <g
+                key={edge.id}
+                onClick={
+                  isSelectable
+                    ? () => {
+                        void interactiveEdges.selectTargetId?.(edge.id);
+                      }
+                    : undefined
+                }
+                onPointerEnter={() => setHoveredInteractiveEdgeId(edge.id)}
+                onPointerLeave={() => {
+                  setHoveredInteractiveEdgeId((currentId) =>
+                    currentId === edge.id ? null : currentId,
+                  );
+                }}
+                className={clsx(isSelectable && "cursor-pointer")}
+                role={isSelectable ? "button" : undefined}
+                tabIndex={isSelectable ? 0 : undefined}
+                aria-label={isSelectable ? `Select edge ${edge.id}` : undefined}
+              >
+                {renderInteractiveEdge ? (
+                  renderInteractiveEdge(edge, edge.position, state)
+                ) : state.isEnabled && state.isEligible ? (
+                  <line
+                    x1={edge.position.x1}
+                    y1={edge.position.y1}
+                    x2={edge.position.x2}
+                    y2={edge.position.y2}
+                    stroke="transparent"
+                    strokeWidth={Math.max(12, cellSize * 0.18)}
+                  />
+                ) : null}
+              </g>
+            );
+          })}
         </g>
       )}
 
@@ -890,42 +894,52 @@ export function SquareGrid({
 
       {interactiveVertices && (
         <g className="interactive-vertices" aria-label="Interactive vertices">
-          {autoInteractiveVertices.map((vertex) => (
-            <g
-              key={vertex.id}
-              onClick={() => onInteractiveVertexClick?.(vertex)}
-              onPointerEnter={() => {
-                setHoveredInteractiveVertexId(vertex.id);
-                onInteractiveVertexEnter?.(vertex);
-              }}
-              onPointerLeave={() => {
-                setHoveredInteractiveVertexId((currentId) =>
-                  currentId === vertex.id ? null : currentId,
-                );
-                onInteractiveVertexLeave?.(vertex);
-              }}
-              className={clsx(
-                (onInteractiveVertexClick ||
-                  onInteractiveVertexEnter ||
-                  onInteractiveVertexLeave) &&
-                  "cursor-pointer",
-              )}
-            >
-              {renderInteractiveVertex ? (
-                renderInteractiveVertex(
-                  vertex,
-                  hoveredInteractiveVertexId === vertex.id,
-                )
-              ) : (
-                <circle
-                  cx={vertex.position.x}
-                  cy={vertex.position.y}
-                  r={Math.max(8, cellSize * 0.12)}
-                  fill="transparent"
-                />
-              )}
-            </g>
-          ))}
+          {autoInteractiveVertices.map((vertex) => {
+            const state = interactiveTargetRenderState(
+              interactiveVertices,
+              vertex.id,
+              hoveredInteractiveVertexId === vertex.id,
+            );
+            const isSelectable = isInteractiveTargetSelectable(
+              interactiveVertices,
+              state,
+            );
+            return (
+              <g
+                key={vertex.id}
+                onClick={
+                  isSelectable
+                    ? () => {
+                        void interactiveVertices.selectTargetId?.(vertex.id);
+                      }
+                    : undefined
+                }
+                onPointerEnter={() => setHoveredInteractiveVertexId(vertex.id)}
+                onPointerLeave={() => {
+                  setHoveredInteractiveVertexId((currentId) =>
+                    currentId === vertex.id ? null : currentId,
+                  );
+                }}
+                className={clsx(isSelectable && "cursor-pointer")}
+                role={isSelectable ? "button" : undefined}
+                tabIndex={isSelectable ? 0 : undefined}
+                aria-label={
+                  isSelectable ? `Select vertex ${vertex.id}` : undefined
+                }
+              >
+                {renderInteractiveVertex ? (
+                  renderInteractiveVertex(vertex, vertex.position, state)
+                ) : state.isEnabled && state.isEligible ? (
+                  <circle
+                    cx={vertex.position.x}
+                    cy={vertex.position.y}
+                    r={Math.max(8, cellSize * 0.12)}
+                    fill="transparent"
+                  />
+                ) : null}
+              </g>
+            );
+          })}
         </g>
       )}
 

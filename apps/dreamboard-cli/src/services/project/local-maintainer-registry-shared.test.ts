@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { expect, test } from "bun:test";
 import {
+  SDK_PUBLISH_ORDER,
   didLocalMaintainerSnapshotChange,
   getLocalMaintainerNpmrcContent,
   isLocalMaintainerRegistryEnabled,
@@ -42,9 +43,21 @@ test("readWorkspaceLocalMaintainerRegistryFromPackageJson infers local snapshot 
     expect(result?.packages["@dreamboard/app-sdk"]).toBe("0.0.40-local.abc");
     expect(result?.packages["@dreamboard/ui-sdk"]).toBe("0.0.40-local.abc");
     expect(result?.packages["@dreamboard/sdk-types"]).toBe("0.1.0-local.abc");
+    expect(result?.packages["@dreamboard/reducer-contract"]).toBeUndefined();
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
+});
+
+test("SDK publish order includes reducer-contract before app-sdk", () => {
+  expect(SDK_PUBLISH_ORDER).toEqual([
+    "@dreamboard/api-client",
+    "@dreamboard/sdk-types",
+    "@dreamboard/reducer-contract",
+    "@dreamboard/app-sdk",
+    "@dreamboard/ui-sdk",
+    "@dreamboard/testing",
+  ]);
 });
 
 test("readWorkspaceLocalMaintainerRegistryFromPackageJson returns null for non-local package graphs", async () => {
@@ -87,7 +100,9 @@ test("local maintainer helper utilities preserve local registry semantics", () =
       packages: {
         "@dreamboard/api-client": "0.1.0-local.1",
         "@dreamboard/app-sdk": "0.0.40-local.1",
+        "@dreamboard/reducer-contract": "1.0.0-local.1",
         "@dreamboard/sdk-types": "0.1.0-local.1",
+        "@dreamboard/testing": "0.1.0-local.1",
         "@dreamboard/ui-sdk": "0.0.40-local.1",
       },
     }),

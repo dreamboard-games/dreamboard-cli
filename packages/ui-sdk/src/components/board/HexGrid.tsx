@@ -15,6 +15,12 @@ import type {
   GeneratedTiledEdgeStateLike,
   GeneratedTiledVertexStateLike,
 } from "../../types/tiled-board.js";
+import {
+  interactiveTargetRenderState,
+  isInteractiveTargetSelectable,
+  type InteractiveTargetLayer,
+  type InteractiveTargetRenderState,
+} from "./target-layer.js";
 
 // ============================================================================
 // Types
@@ -86,21 +92,15 @@ export interface HexGridProps {
 
   // Interactive Vertices & Edges (for Catan-style placement)
 
-  /** Auto-generates clickable vertex points (deduplicated where tiles meet) */
-  interactiveVertices?: boolean;
-  /** Auto-generates clickable edges (deduplicated where tiles meet) */
-  interactiveEdges?: boolean;
-  onInteractiveVertexClick?: (vertex: InteractiveVertex) => void;
-  onInteractiveVertexEnter?: (vertex: InteractiveVertex) => void;
-  onInteractiveVertexLeave?: (vertex: InteractiveVertex) => void;
-  onInteractiveEdgeClick?: (edge: InteractiveEdge) => void;
-  onInteractiveEdgeEnter?: (edge: InteractiveEdge) => void;
-  onInteractiveEdgeLeave?: (edge: InteractiveEdge) => void;
+  /** Reducer-aware vertex target layer from `board.targetLayers.vertex(...)`. */
+  interactiveVertices?: InteractiveTargetLayer;
+  /** Reducer-aware edge target layer from `board.targetLayers.edge(...)`. */
+  interactiveEdges?: InteractiveTargetLayer;
   /** Receives vertex geometry in absolute SVG coordinates. */
   renderInteractiveVertex?: (
     vertex: InteractiveVertex,
     position: { x: number; y: number },
-    isHovered: boolean,
+    state: InteractiveTargetRenderState,
   ) => ReactNode;
   /**
    * Receives edge geometry in the same absolute SVG coordinates as `renderEdge`.
@@ -108,7 +108,7 @@ export interface HexGridProps {
   renderInteractiveEdge?: (
     edge: InteractiveEdge,
     position: EdgePosition,
-    isHovered: boolean,
+    state: InteractiveTargetRenderState,
   ) => ReactNode;
   interactiveVertexSize?: number;
   interactiveEdgeSize?: number;
@@ -545,7 +545,7 @@ export const hexUtils = {
 
   /** Generate deduplicated interactive vertices from tiles (shared corners merged). */
   generateInteractiveVertices(
-    tiles: HexTileState[],
+    tiles: readonly HexTileState[],
     hexSize: number,
     orientation: HexOrientation,
   ): InteractiveVertex[] {
@@ -591,7 +591,7 @@ export const hexUtils = {
 
   /** Generate deduplicated interactive edges from tiles (shared edges merged). */
   generateInteractiveEdges(
-    tiles: HexTileState[],
+    tiles: readonly HexTileState[],
     hexSize: number,
     orientation: HexOrientation,
   ): InteractiveEdge[] {
@@ -629,10 +629,11 @@ export const hexUtils = {
           }
         } else {
           // Calculate edge angle
-          const angle = Math.atan2(
+          const edgeAngleRad = Math.atan2(
             corner2.y - corner1.y,
             corner2.x - corner1.x,
           );
+          const centerAngleRad = edgeAngleRad - Math.PI / 2;
 
           edgeMap.set(key, {
             id: `edge-${key}`,
@@ -643,7 +644,8 @@ export const hexUtils = {
               y2: corner2.y,
               midX,
               midY,
-              angle: (angle * 180) / Math.PI,
+              centerAngle: (centerAngleRad * 180) / Math.PI,
+              edgeAngle: (edgeAngleRad * 180) / Math.PI,
             },
             adjacentTileIds: [tile.id],
             edgeIndex: i,
@@ -677,14 +679,8 @@ export function HexGrid({
   maxZoom = 3,
   className,
   // Interactive props
-  interactiveVertices = false,
-  interactiveEdges = false,
-  onInteractiveVertexClick,
-  onInteractiveVertexEnter,
-  onInteractiveVertexLeave,
-  onInteractiveEdgeClick,
-  onInteractiveEdgeEnter,
-  onInteractiveEdgeLeave,
+  interactiveVertices,
+  interactiveEdges,
   renderInteractiveVertex,
   renderInteractiveEdge,
   interactiveVertexSize = 12,
@@ -730,54 +726,6 @@ export function HexGrid({
     if (!interactiveEdges) return [];
     return hexUtils.generateInteractiveEdges(tiles, hexSize, orientation);
   }, [interactiveEdges, tiles, hexSize, orientation]);
-
-  // Vertex event handlers
-  const handleVertexEnter = useCallback(
-    (vertex: InteractiveVertex) => {
-      setHoveredVertexId(vertex.id);
-      onInteractiveVertexEnter?.(vertex);
-    },
-    [onInteractiveVertexEnter],
-  );
-
-  const handleVertexLeave = useCallback(
-    (vertex: InteractiveVertex) => {
-      setHoveredVertexId(null);
-      onInteractiveVertexLeave?.(vertex);
-    },
-    [onInteractiveVertexLeave],
-  );
-
-  const handleVertexClick = useCallback(
-    (vertex: InteractiveVertex) => {
-      onInteractiveVertexClick?.(vertex);
-    },
-    [onInteractiveVertexClick],
-  );
-
-  // Edge event handlers
-  const handleEdgeEnter = useCallback(
-    (edge: InteractiveEdge) => {
-      setHoveredEdgeId(edge.id);
-      onInteractiveEdgeEnter?.(edge);
-    },
-    [onInteractiveEdgeEnter],
-  );
-
-  const handleEdgeLeave = useCallback(
-    (edge: InteractiveEdge) => {
-      setHoveredEdgeId(null);
-      onInteractiveEdgeLeave?.(edge);
-    },
-    [onInteractiveEdgeLeave],
-  );
-
-  const handleEdgeClick = useCallback(
-    (edge: InteractiveEdge) => {
-      onInteractiveEdgeClick?.(edge);
-    },
-    [onInteractiveEdgeClick],
-  );
 
   // Calculate bounds for viewBox
   const bounds = useMemo(() => {
@@ -874,6 +822,9 @@ export function HexGrid({
       {edges.length > 0 && (
         <g className="edges" role="list" aria-label="Hex edges">
           {edges.map((edge) => {
+            if (!("hex1" in edge) || !("hex2" in edge)) {
+              return null;
+            }
             const hex1 = getTileById(edge.hex1);
             const hex2 = getTileById(edge.hex2);
             if (!hex1 || !hex2) return null;
@@ -897,6 +848,9 @@ export function HexGrid({
       {vertices.length > 0 && (
         <g className="vertices" role="list" aria-label="Hex vertices">
           {vertices.map((vertex) => {
+            if (!("hexes" in vertex)) {
+              return null;
+            }
             const pos0 = tilePositions.get(vertex.hexes[0]);
             const pos1 = tilePositions.get(vertex.hexes[1]);
             const pos2 = tilePositions.get(vertex.hexes[2]);
@@ -922,36 +876,58 @@ export function HexGrid({
           aria-label="Interactive edges for placement"
         >
           {generatedEdges.map((edge) => {
-            const isHovered = hoveredEdgeId === edge.id;
+            const state = interactiveTargetRenderState(
+              interactiveEdges,
+              edge.id,
+              hoveredEdgeId === edge.id,
+            );
+            const isSelectable = isInteractiveTargetSelectable(
+              interactiveEdges,
+              state,
+            );
             return (
               <g
                 key={edge.id}
-                role="listitem"
-                className="cursor-pointer"
-                onPointerEnter={() => handleEdgeEnter(edge)}
-                onPointerLeave={() => handleEdgeLeave(edge)}
-                onClick={() => handleEdgeClick(edge)}
+                role={isSelectable ? "button" : undefined}
+                className={clsx(isSelectable && "cursor-pointer")}
+                onPointerEnter={() => setHoveredEdgeId(edge.id)}
+                onPointerLeave={() =>
+                  setHoveredEdgeId((currentId) =>
+                    currentId === edge.id ? null : currentId,
+                  )
+                }
+                onClick={
+                  isSelectable
+                    ? () => {
+                        void interactiveEdges.selectTargetId?.(edge.id);
+                      }
+                    : undefined
+                }
+                tabIndex={isSelectable ? 0 : undefined}
+                aria-label={isSelectable ? `Select edge ${edge.id}` : undefined}
               >
                 {/* Invisible touch target */}
-                <line
-                  x1={edge.position.x1}
-                  y1={edge.position.y1}
-                  x2={edge.position.x2}
-                  y2={edge.position.y2}
-                  stroke="transparent"
-                  strokeWidth={interactiveEdgeSize * 2}
-                  strokeLinecap="round"
-                />
-                {/* Visible edge */}
-                {renderInteractiveEdge ? (
-                  renderInteractiveEdge(edge, edge.position, isHovered)
-                ) : (
-                  <DefaultInteractiveEdge
-                    position={edge.position}
-                    isHovered={isHovered}
-                    strokeWidth={interactiveEdgeSize * 0.6}
+                {isSelectable && (
+                  <line
+                    x1={edge.position.x1}
+                    y1={edge.position.y1}
+                    x2={edge.position.x2}
+                    y2={edge.position.y2}
+                    stroke="transparent"
+                    strokeWidth={interactiveEdgeSize * 2}
+                    strokeLinecap="round"
                   />
                 )}
+                {/* Visible edge */}
+                {renderInteractiveEdge ? (
+                  renderInteractiveEdge(edge, edge.position, state)
+                ) : state.isEnabled && state.isEligible ? (
+                  <DefaultInteractiveEdge
+                    position={edge.position}
+                    isHovered={state.isHovered}
+                    strokeWidth={interactiveEdgeSize * 0.6}
+                  />
+                ) : null}
               </g>
             );
           })}
@@ -966,33 +942,57 @@ export function HexGrid({
           aria-label="Interactive vertices for placement"
         >
           {generatedVertices.map((vertex) => {
-            const isHovered = hoveredVertexId === vertex.id;
+            const state = interactiveTargetRenderState(
+              interactiveVertices,
+              vertex.id,
+              hoveredVertexId === vertex.id,
+            );
+            const isSelectable = isInteractiveTargetSelectable(
+              interactiveVertices,
+              state,
+            );
             return (
               <g
                 key={vertex.id}
-                role="listitem"
-                className="cursor-pointer"
-                onPointerEnter={() => handleVertexEnter(vertex)}
-                onPointerLeave={() => handleVertexLeave(vertex)}
-                onClick={() => handleVertexClick(vertex)}
+                role={isSelectable ? "button" : undefined}
+                className={clsx(isSelectable && "cursor-pointer")}
+                onPointerEnter={() => setHoveredVertexId(vertex.id)}
+                onPointerLeave={() =>
+                  setHoveredVertexId((currentId) =>
+                    currentId === vertex.id ? null : currentId,
+                  )
+                }
+                onClick={
+                  isSelectable
+                    ? () => {
+                        void interactiveVertices.selectTargetId?.(vertex.id);
+                      }
+                    : undefined
+                }
+                tabIndex={isSelectable ? 0 : undefined}
+                aria-label={
+                  isSelectable ? `Select vertex ${vertex.id}` : undefined
+                }
               >
                 {/* Invisible touch target */}
-                <circle
-                  cx={vertex.position.x}
-                  cy={vertex.position.y}
-                  r={interactiveVertexSize * 1.5}
-                  fill="transparent"
-                />
-                {/* Visible vertex */}
-                {renderInteractiveVertex ? (
-                  renderInteractiveVertex(vertex, vertex.position, isHovered)
-                ) : (
-                  <DefaultInteractiveVertex
-                    position={vertex.position}
-                    isHovered={isHovered}
-                    size={interactiveVertexSize * 0.6}
+                {isSelectable && (
+                  <circle
+                    cx={vertex.position.x}
+                    cy={vertex.position.y}
+                    r={interactiveVertexSize * 1.5}
+                    fill="transparent"
                   />
                 )}
+                {/* Visible vertex */}
+                {renderInteractiveVertex ? (
+                  renderInteractiveVertex(vertex, vertex.position, state)
+                ) : state.isEnabled && state.isEligible ? (
+                  <DefaultInteractiveVertex
+                    position={vertex.position}
+                    isHovered={state.isHovered}
+                    size={interactiveVertexSize * 0.6}
+                  />
+                ) : null}
               </g>
             );
           })}

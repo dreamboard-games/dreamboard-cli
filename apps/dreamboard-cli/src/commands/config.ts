@@ -10,6 +10,10 @@ import {
   loadGlobalConfig,
   saveGlobalConfig,
 } from "../config/global-config.js";
+import {
+  getStoredSession,
+  setAccessOnlySession,
+} from "../config/credential-store.js";
 
 export default defineCommand({
   meta: {
@@ -43,7 +47,13 @@ export default defineCommand({
     const globalConfig = await loadGlobalConfig();
 
     if (action === "show") {
-      const config = resolveConfig(globalConfig, parsedArgs);
+      const storedSession = await getStoredSession();
+      const config = resolveConfig(
+        globalConfig,
+        parsedArgs,
+        undefined,
+        storedSession,
+      );
       console.log(
         JSON.stringify(
           IS_PUBLISHED_BUILD
@@ -78,12 +88,15 @@ export default defineCommand({
       }
       const updated: GlobalConfig = { ...globalConfig };
       if (parsedArgs.env) updated.environment = parsedArgs.env as Environment;
-      const authToken = valueOrUndefined(parsedArgs.token);
-      if (authToken) {
-        updated.authToken = authToken;
-        updated.refreshToken = undefined;
-      }
       await saveGlobalConfig(updated);
+
+      const overrideToken = valueOrUndefined(parsedArgs.token);
+      if (overrideToken) {
+        // `config set --token` is an access-only override. Never write a
+        // refresh token through this path - that belongs to
+        // `dreamboard login`.
+        await setAccessOnlySession(overrideToken);
+      }
       consola.success("Config updated.");
       return;
     }

@@ -22,7 +22,7 @@ export type ScaffoldingOwnership = {
 };
 
 export const WORKSPACE_CODEGEN_OWNERSHIP: ScaffoldingOwnership = {
-  version: 22,
+  version: 25,
   allowedPaths: {
     rootFiles: [
       ".npmrc",
@@ -51,11 +51,7 @@ export const WORKSPACE_CODEGEN_OWNERSHIP: ScaffoldingOwnership = {
       "app/reducer-support.ts",
       "app/derived.ts",
     ],
-    seedFilePatterns: [
-      { prefix: "app/phases/", suffix: ".ts" },
-      { prefix: "ui/components/dreamboard/", suffix: ".ts" },
-      { prefix: "ui/components/dreamboard/", suffix: ".tsx" },
-    ],
+    seedFilePatterns: [{ prefix: "app/phases/", suffix: ".ts" }],
   },
   cliStatic: {
     exactFiles: [
@@ -66,6 +62,7 @@ export const WORKSPACE_CODEGEN_OWNERSHIP: ScaffoldingOwnership = {
       "ui/package.json",
       "ui/style.css",
       "ui/tsconfig.json",
+      "ui/components/dreamboard/index.ts",
     ],
     directoryPrefixes: [],
   },

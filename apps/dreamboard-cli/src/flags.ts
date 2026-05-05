@@ -54,9 +54,15 @@ const devCommandArgsSchema = configFlagsSchema.extend({
   "player-count": z.string().optional(),
   debug: z.boolean().default(false),
   resume: z.string().optional(),
+  "from-scenario": z.string().optional(),
   "new-session": z.boolean().default(false),
   open: z.boolean().default(false),
   port: z.string().optional(),
+});
+
+const joinCommandArgsSchema = configFlagsSchema.extend({
+  session: z.string().min(1).optional(),
+  player: z.string().min(1),
 });
 
 const loginCommandArgsSchema = configFlagsSchema;
@@ -85,6 +91,7 @@ export type SyncCommandArgs = z.infer<typeof syncCommandArgsSchema>;
 export type CompileCommandArgs = z.infer<typeof compileCommandArgsSchema>;
 export type StatusCommandArgs = z.infer<typeof statusCommandArgsSchema>;
 export type DevCommandArgs = z.infer<typeof devCommandArgsSchema>;
+export type JoinCommandArgs = z.infer<typeof joinCommandArgsSchema>;
 export type LoginCommandArgs = z.infer<typeof loginCommandArgsSchema>;
 export type ConfigCommandArgs = z.infer<typeof configCommandArgsSchema>;
 export type AuthCommandArgs = z.infer<typeof authCommandArgsSchema>;
@@ -150,6 +157,10 @@ export function parseStatusCommandArgs(args: unknown): StatusCommandArgs {
 
 export function parseDevCommandArgs(args: unknown): DevCommandArgs {
   return parseArgs("dev", devCommandArgsSchema, args);
+}
+
+export function parseJoinCommandArgs(args: unknown): JoinCommandArgs {
+  return parseArgs("join", joinCommandArgsSchema, args);
 }
 
 export function parseLoginCommandArgs(args: unknown): LoginCommandArgs {

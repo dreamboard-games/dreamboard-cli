@@ -83,8 +83,9 @@ Reducer helpers and UI hooks use the same terms:
 | `incident`  | Edges touching a vertex, or vertices touching an edge |
 | `occupancy` | Components currently on a space, edge, or vertex      |
 
-The shared reducer helpers live in `/docs/reference/reducer`. The shared UI
-hooks live in `/docs/reference/ui-library`.
+Reducer-side board helpers are covered in [Table queries and ops](./table-queries-and-ops.md).
+UI-side board rendering is covered in [Board surfaces](./board-surfaces.md)
+and [UI components](./ui-components.md).
 
 ## Choosing a layout
 
@@ -223,8 +224,7 @@ Use the headless topology hooks when the UI needs geometry-aware logic:
 - `useSquareBoard(...)` for square-specific neighbor and distance variants
 
 ```tsx
-import { useBoardTopology, useSquareBoard } from "@dreamboard/ui-sdk";
-import { HexGrid, SquareGrid } from "./components/dreamboard";
+import { HexGrid, SquareGrid, useBoardTopology, useSquareBoard } from "@dreamboard/ui-sdk";
 
 function ArenaBoard({ board, onEdgeClick, onVertexClick }) {
   const topology = useSquareBoard(board);
@@ -232,10 +232,8 @@ function ArenaBoard({ board, onEdgeClick, onVertexClick }) {
   return (
     <SquareGrid
       board={board}
-      interactiveEdges={true}
-      interactiveVertices={true}
-      onInteractiveEdgeClick={(edge) => onEdgeClick(edge.id)}
-      onInteractiveVertexClick={(vertex) => onVertexClick(vertex.id)}
+      interactiveEdges={{ selectTargetId: onEdgeClick }}
+      interactiveVertices={{ selectTargetId: onVertexClick }}
       renderCell={(row, col) => {
         const cell = topology.getCellAt(row, col);
         return <Cell ownerId={cell?.owner ?? null} />;
@@ -271,11 +269,10 @@ Use this rule when deciding what to expose:
 For example, a Catan-style board view should project all three so the UI can
 render roads and settlements and also expose placement targets.
 
-The important reducer-native detail is that callback IDs keep the board's exact
-runtime types. If the reducer view projects typed `edge.id` and `vertex.id`
-values, `board={board}` preserves those same types in
-`onInteractiveEdgeClick` and `onInteractiveVertexClick` instead of widening
-them to plain `string`.
+The important reducer-native detail is that target-layer IDs keep the board's
+exact runtime types. If the reducer view projects typed `edge.id` and
+`vertex.id` values, `board={board}` preserves those same ids through
+`selectTargetId` instead of forcing the UI to remap topology ids by hand.
 
 ## Runtime IDs
 

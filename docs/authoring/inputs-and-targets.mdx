@@ -1,0 +1,137 @@
+---
+title: "Inputs and targets"
+description: "Use collectors and target rules to type interaction params, project eligible targets, and validate submissions."
+---
+
+Inputs define interaction params. Targets define finite eligibility. Together they are the canonical path for player choices.
+
+## Target rules
+
+A target rule starts from a candidate set and filters it through predicates.
+
+```ts
+export const buildPathTarget = boardTarget
+  .edge<GameState, EdgeId>("main-board")
+  .where({
+    id: "empty",
+    errorCode: "EDGE_OCCUPIED",
+    message: "That edge already has a path.",
+    test: ({ state, targetId }) => !state.publicState.pathsByEdgeId[targetId],
+  })
+  .where({
+    id: "connected",
+    errorCode: "NOT_CONNECTED",
+    message: "Path must connect to your network.",
+    test: ({ state, q, targetId, playerId }) =>
+      isConnectedPathTarget(state, q, targetId, playerId),
+  })
+  .build();
+```
+
+The built rule exposes:
+
+- `eligible(ctx)`
+- `validate(ctx, id)`
+- `isEligible(ctx, id)`
+- `bind(ctx)` for a state/player/query-scoped rule
+
+Use the same rule in collectors and any reducer code that needs to re-check a second optional target.
+
+## Board inputs
+
+```ts
+inputs: {
+  edgeId: boardInput.edge<GameState, EdgeId>({
+    target: buildPathTarget,
+  }),
+}
+```
+
+Board inputs support `vertex`, `edge`, `space`, and `tile`. They carry target metadata such as board id and target kind so UI surfaces can highlight eligible board elements.
+
+## Card inputs
+
+```ts
+const playableCardTarget = cardTarget
+  .zone<GameState, ThingsDeckCardId>("things-hand")
+  .build();
+
+inputs: {
+  cardId: cardInput<GameState, ThingsDeckCardId>({
+    target: playableCardTarget,
+  }),
+}
+```
+
+Card targets enumerate cards from a shared or per-player zone, then apply predicates.
+
+## Choice targets and prompts
+
+Finite prompt choices should use `choiceTarget` with `promptInput`.
+
+```ts
+const responseTarget = choiceTarget
+  .options<GameState, "accept" | "reject">([
+    { id: "accept", label: "Accept" },
+    { id: "reject", label: "Reject" },
+  ])
+  .build();
+
+inputs: {
+  response: promptInput({
+    schema: z.enum(["accept", "reject"]),
+    target: responseTarget,
+  }),
+}
+```
+
+The target provides labeled options for UI and server-side validation for submit.
+
+## Form inputs
+
+Use `formInput(schema)` for free-form Zod-backed params. Prefer domain-specific helpers when the UI or agents can benefit from constraints:
+
+```ts
+formInput.choice<ResourceId>({ choices: RESOURCE_CHOICES })
+formInput.number({ min: 0, max: ({ q, playerId }) => q.player.resource(playerId, "coin") })
+formInput.resourceMap({ resources: [{ resourceId: "coin", max: 3 }] })
+```
+
+Free-form schemas are valid, but they are opaque to automated UI and bot flows.
+
+Use `defaultValue` when a form control should start with a real selection or value:
+
+```ts
+inputs: {
+  giveResource: formInput.choice<ResourceId>({
+    choices: RESOURCE_CHOICES,
+    defaultValue: resources.lumber,
+  }),
+}
+```
+
+Defaults are not requiredness flags. `formInput.choice(...)` is already required unless its schema is optional or nullable. Defaults are projected to UI descriptors, applied by generated client schemas, and exposed through `handle.values` so custom renderers can read the effective draft without local fallback casts. `handle.draft` remains partial because it is still the raw in-progress draft.
+
+## Engine-sampled inputs
+
+`rngInput.*` collectors are sampled by the trusted engine on submit. Clients do not supply these fields.
+
+```ts
+inputs: {
+  dice: rngInput.d6(2),
+},
+reduce({ input }) {
+  const values = input.params.dice.values;
+}
+```
+
+Use `rngInput` when the random result belongs to one interaction. Use [Effects](/docs/authoring/effects) when randomness should be queued as an engine instruction.
+
+## One source of truth
+
+Do not duplicate eligibility in the UI. The target rule should be the shared source for:
+
+- projected eligible targets
+- submit validation
+- reducer business logic that needs the same predicate
+- tests

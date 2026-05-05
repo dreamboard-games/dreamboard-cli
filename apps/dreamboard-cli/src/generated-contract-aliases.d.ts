@@ -3,41 +3,12 @@ declare module "@dreamboard/ui-contract" {
   export type GameView = Record<string, unknown>;
   export type InferView<_Name extends ViewName> = GameView;
 
-  export type ActionName = string;
-  export type ActionParams<_Name extends ActionName> = Record<string, unknown>;
-  export type ActionArgs<_Name extends ActionName> =
-    | []
-    | [Record<string, unknown>];
   export type PhaseName = string;
-  export type ActionNameForPhase<_Phase extends PhaseName> = ActionName;
-  export type ActionParamsForPhase<
-    _Phase extends PhaseName,
-    _Name extends ActionNameForPhase<_Phase>,
-  > = Record<string, unknown>;
-  export type ActionArgsForPhase<
-    _Phase extends PhaseName,
-    _Name extends ActionNameForPhase<_Phase>,
-  > = [] | [Record<string, unknown>];
-  export type ActionCommandForPhase<_Phase extends PhaseName> =
-    | { type: string }
-    | { type: string; params?: Record<string, unknown> };
-  export type PhaseCommands<_Phase extends PhaseName> = Record<
-    string,
-    (...args: [] | [Record<string, unknown>]) => {
-      type: string;
-      params?: Record<string, unknown>;
-    }
-  >;
-
-  export type PromptId = string;
-  export type PromptResponse<_Name extends PromptId> = unknown;
-  export type PromptInstanceId<_Name extends PromptId> = string;
 
   const uiContract: any;
   export default uiContract;
   export const uiStateSchema: any;
   export const uiContractSchema: any;
-  export const phaseCommands: Record<string, PhaseCommands<string>>;
 }
 
 declare module "@dreamboard/manifest-contract" {

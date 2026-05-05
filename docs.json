@@ -13,17 +13,69 @@
         "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Start",
             "pages": [
               "docs/index",
-              "docs/quickstart",
-              "docs/concepts"
+              "docs/start/quickstart",
+              "docs/start/workspace-layout",
+              "docs/start/core-concepts",
+              "docs/start/authoring-lifecycle"
+            ]
+          },
+          {
+            "group": "Authoring",
+            "pages": [
+              "docs/authoring/manifest",
+              "docs/authoring/manifest-fields",
+              "docs/authoring/boards-and-topology",
+              "docs/authoring/game-contract",
+              "docs/authoring/game-definition",
+              "docs/authoring/phases",
+              "docs/authoring/interactions",
+              "docs/authoring/card-actions",
+              "docs/authoring/effects",
+              "docs/authoring/views",
+              "docs/authoring/static-views",
+              "docs/authoring/derived-values",
+              "docs/authoring/stages-and-zones",
+              "docs/authoring/inputs-and-targets",
+              "docs/authoring/setup-bootstrap",
+              "docs/authoring/table-queries-and-ops"
+            ]
+          },
+          {
+            "group": "UI",
+            "pages": [
+              "docs/ui/architecture",
+              "docs/ui/game-shell",
+              "docs/ui/board-surfaces",
+              "docs/ui/hand-surfaces",
+              "docs/ui/prompts-and-choices",
+              "docs/ui/custom-renderers",
+              "docs/ui/components"
+            ]
+          },
+          {
+            "group": "Testing",
+            "pages": [
+              "docs/testing/index",
+              "docs/testing/bases",
+              "docs/testing/scenarios",
+              "docs/testing/runtime-assertions",
+              "docs/testing/ui-tests",
+              "docs/testing/generated-contracts"
             ]
           },
           {
             "group": "Tutorials",
             "pages": [
-              "docs/tutorials/building-your-first-game"
+              "docs/tutorials/ring-arena",
+              "docs/tutorials/hex-trading-expansion",
+              "docs/tutorials/worker-placement",
+              "docs/tutorials/deck-builder-market",
+              "docs/tutorials/trick-taking-card-game",
+              "docs/tutorials/area-control",
+              "docs/tutorials/route-building"
             ]
           },
           {
@@ -31,11 +83,9 @@
             "pages": [
               "docs/reference/cli",
               "docs/reference/rule-authoring",
-              "docs/reference/manifest-authoring",
               "docs/reference/tiled-board-topology",
-              "docs/reference/reducer",
-              "docs/reference/ui-library",
-              "docs/reference/testing"
+              "docs/reference/package-surfaces",
+              "docs/reference/troubleshooting"
             ]
           }
         ]
@@ -49,11 +99,19 @@
     },
     {
       "source": "/quickstart",
-      "destination": "/docs/quickstart"
+      "destination": "/docs/start/quickstart"
     },
     {
       "source": "/concepts",
-      "destination": "/docs/concepts"
+      "destination": "/docs/start/core-concepts"
+    },
+    {
+      "source": "/docs/quickstart",
+      "destination": "/docs/start/quickstart"
+    },
+    {
+      "source": "/docs/concepts",
+      "destination": "/docs/start/core-concepts"
     },
     {
       "source": "/reference/cli",
@@ -61,7 +119,11 @@
     },
     {
       "source": "/reference/manifest-authoring",
-      "destination": "/docs/reference/manifest-authoring"
+      "destination": "/docs/authoring/manifest"
+    },
+    {
+      "source": "/docs/reference/manifest-authoring",
+      "destination": "/docs/authoring/manifest"
     },
     {
       "source": "/reference/rule-authoring",
@@ -69,7 +131,11 @@
     },
     {
       "source": "/reference/reducer",
-      "destination": "/docs/reference/reducer"
+      "destination": "/docs/authoring/game-contract"
+    },
+    {
+      "source": "/docs/reference/reducer",
+      "destination": "/docs/authoring/game-contract"
     },
     {
       "source": "/reference/tiled-board-topology",
@@ -77,19 +143,35 @@
     },
     {
       "source": "/reference/game-interface",
-      "destination": "/docs/reference/ui-library"
+      "destination": "/docs/ui/architecture"
     },
     {
       "source": "/reference/ui-sdk",
-      "destination": "/docs/reference/ui-library"
+      "destination": "/docs/ui/architecture"
+    },
+    {
+      "source": "/reference/ui-library",
+      "destination": "/docs/ui/architecture"
+    },
+    {
+      "source": "/docs/reference/ui-library",
+      "destination": "/docs/ui/architecture"
     },
     {
       "source": "/reference/testing",
-      "destination": "/docs/reference/testing"
+      "destination": "/docs/testing"
+    },
+    {
+      "source": "/docs/reference/testing",
+      "destination": "/docs/testing"
     },
     {
       "source": "/tutorials/building-your-first-game",
-      "destination": "/docs/tutorials/building-your-first-game"
+      "destination": "/docs/tutorials/ring-arena"
+    },
+    {
+      "source": "/docs/tutorials/building-your-first-game",
+      "destination": "/docs/tutorials/ring-arena"
     }
   ],
   "navbar": {

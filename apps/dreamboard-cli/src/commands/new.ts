@@ -10,6 +10,7 @@ import {
 } from "../config/resolve.js";
 import { parseNewCommandArgs } from "../flags.js";
 import { loadGlobalConfig } from "../config/global-config.js";
+import { getStoredSession } from "../config/credential-store.js";
 import { normalizeSlug, titleFromSlug } from "../utils/strings.js";
 import { ensureDir, writeTextFile } from "../utils/fs.js";
 import { CONFIG_FLAG_ARGS } from "../command-args.js";
@@ -65,7 +66,16 @@ export default defineCommand({
       consola.info(`Normalized slug to '${normalizedSlug}'.`);
     }
 
-    const config = resolveConfig(await loadGlobalConfig(), parsedArgs);
+    const [globalConfig, storedSession] = await Promise.all([
+      loadGlobalConfig(),
+      getStoredSession(),
+    ]);
+    const config = resolveConfig(
+      globalConfig,
+      parsedArgs,
+      undefined,
+      storedSession,
+    );
     requireAuth(config);
     await configureClient(config);
     const localMaintainerRegistry = await ensureLocalMaintainerSnapshot(

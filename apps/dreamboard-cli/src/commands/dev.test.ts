@@ -18,16 +18,26 @@ const createSession = mock(async () => ({
   error: null,
   response: { status: 200 },
 }));
-const getSessionStatus = mock(async () => ({
+const getSessionBootstrap = mock(async () => ({
   data: {
-    sessionId: "cached-session",
-    shortCode: "cached-code",
-    gameId: "game-1",
-    hostUserId: "user-1",
-    status: "active" as const,
-    phase: "gameplay" as const,
-    seats: [],
-    canStart: false,
+    session: {
+      sessionId: "cached-session",
+      shortCode: "cached-code",
+      gameId: "game-1",
+      hostUserId: "user-1",
+      status: "active" as const,
+      phase: "gameplay" as const,
+      setupProfileId: null,
+    },
+    lobby: {
+      seats: [],
+      canStart: false,
+      hostUserId: "user-1",
+    },
+    control: { switchablePlayerIds: [] },
+    history: null,
+    selectedPlayerId: null,
+    gameplay: null,
   },
   error: null,
 }));
@@ -96,6 +106,17 @@ const runDevPreflight = mock(async () => ({
     id: "compiled-result-2",
   },
 }));
+const createSessionFromScenario = mock(async () => ({
+  sessionId: "scenario-session",
+  shortCode: "scenario-code",
+  gameId: "game-1",
+  seed: 2024,
+  playerCount: 3,
+  setupProfileId: "scenario-profile",
+  scenarioId: "smoke-opening",
+  phase: "play",
+  stage: "main",
+}));
 const openBrowser = mock(() => undefined);
 const startDreamboardDevServer = mock(async () => ({
   url: "http://localhost:5173/index.html",
@@ -112,7 +133,7 @@ console.log = consoleLog as typeof console.log;
 mock.module("@dreamboard/api-client", () => ({
   ...actualApiClient,
   createSession,
-  getSessionStatus,
+  getSessionBootstrap,
 }));
 
 mock.module("../config/resolve.js", () => ({
@@ -145,6 +166,10 @@ mock.module("../services/workflows/dev-preflight.js", () => ({
   runDevPreflight,
 }));
 
+mock.module("../services/testing/reducer-native-test-harness.js", () => ({
+  createSessionFromScenario,
+}));
+
 mock.module("../auth/auth-server.js", () => ({
   openBrowser,
 }));
@@ -161,11 +186,13 @@ mock.module("consola", () => ({
   },
 }));
 
-const devCommand = (await import("./dev.ts")).default;
+const devModule = await import("./dev.ts");
+const devCommand = devModule.default;
+const { waitForTermination } = devModule;
 
 function resetMocks(): void {
   createSession.mockClear();
-  getSessionStatus.mockClear();
+  getSessionBootstrap.mockClear();
   resolveProjectContext.mockClear();
   configureClient.mockClear();
   parseDevCommandArgs.mockClear();
@@ -175,6 +202,7 @@ function resetMocks(): void {
   writeJsonFile.mockClear();
   resolvePlayerCount.mockClear();
   runDevPreflight.mockClear();
+  createSessionFromScenario.mockClear();
   resolveSetupProfileSelectionForSession.mockClear();
   openBrowser.mockClear();
   startDreamboardDevServer.mockClear();
@@ -189,6 +217,7 @@ async function runWithAutoTermination(
 ): Promise<void> {
   const originalOn = process.on;
   const originalOff = process.off;
+  const originalExit = process.exit;
   const listeners = new Map<
     string | symbol,
     (...eventArgs: unknown[]) => void
@@ -210,14 +239,35 @@ async function runWithAutoTermination(
     }
     return process;
   }) as typeof process.off;
+  process.exit = mock((_code?: string | number | null | undefined) => {
+    return undefined as never;
+  }) as typeof process.exit;
 
   try {
     await devCommand.run({ args });
   } finally {
     process.on = originalOn;
     process.off = originalOff;
+    process.exit = originalExit;
   }
 }
+
+test("waitForTermination exits after graceful signal cleanup", async () => {
+  resetMocks();
+  const close = mock(async () => undefined);
+  const exitProcess = mock((_code: number) => undefined);
+
+  const waiting = waitForTermination(close, {
+    exitAfterShutdown: true,
+    exitProcess,
+  });
+  process.emit("SIGINT");
+  await waiting;
+
+  expect(close).toHaveBeenCalledTimes(1);
+  expect(exitProcess).toHaveBeenCalledWith(0);
+  expect(consolaInfo).toHaveBeenCalledWith("Stopped local dev host (SIGINT).");
+});
 
 test("dev creates a fresh session by default instead of reusing cached state", async () => {
   resetMocks();
@@ -226,7 +276,7 @@ test("dev creates a fresh session by default instead of reusing cached state", a
     env: "local",
   });
 
-  expect(getSessionStatus).not.toHaveBeenCalled();
+  expect(getSessionBootstrap).not.toHaveBeenCalled();
   expect(consolaWarn).not.toHaveBeenCalled();
   expect(createSession).toHaveBeenCalledWith({
     path: { gameId: "game-1" },
@@ -238,14 +288,25 @@ test("dev creates a fresh session by default instead of reusing cached state", a
       setupProfileId: undefined,
     },
   });
+  expect(writeJsonFile).toHaveBeenCalledWith(SESSION_FILE_PATH, {
+    sessionId: "fresh-session",
+  });
   expect(startDreamboardDevServer).toHaveBeenCalledWith(
     expect.objectContaining({
       runtimeConfig: expect.objectContaining({
-        sessionId: "fresh-session",
         autoStartGame: true,
+        initialSession: expect.objectContaining({
+          sessionId: "fresh-session",
+        }),
+      }),
+      config: expect.objectContaining({
+        apiBaseUrl: "https://api.example.com",
       }),
     }),
   );
+  const runtimeConfigArg =
+    startDreamboardDevServer.mock.calls[0]?.[0].runtimeConfig;
+  expect(runtimeConfigArg).not.toHaveProperty("authToken");
   expect(consolaInfo).toHaveBeenCalledWith(
     "Created session fresh-code (fresh-session).",
   );
@@ -289,7 +350,7 @@ test("dev reuses a compatible cached session when --resume is provided", async (
     resume: "cached-session",
   });
 
-  expect(getSessionStatus).toHaveBeenCalledWith({
+  expect(getSessionBootstrap).toHaveBeenCalledWith({
     path: { sessionId: "cached-session" },
   });
   expect(createSession).not.toHaveBeenCalled();
@@ -297,8 +358,10 @@ test("dev reuses a compatible cached session when --resume is provided", async (
   expect(startDreamboardDevServer).toHaveBeenCalledWith(
     expect.objectContaining({
       runtimeConfig: expect.objectContaining({
-        sessionId: "cached-session",
         autoStartGame: false,
+        initialSession: expect.objectContaining({
+          sessionId: "cached-session",
+        }),
       }),
     }),
   );
@@ -313,7 +376,7 @@ test("dev reuses a compatible cached session when --resume is provided", async (
   );
 });
 
-test("dev refuses to resume a cached session from an older compiled result", async () => {
+test("dev resumes from backend bootstrap without trusting cached compiled metadata", async () => {
   resetMocks();
 
   await runWithAutoTermination({
@@ -321,19 +384,13 @@ test("dev refuses to resume a cached session from an older compiled result", asy
     resume: "cached-session",
   });
 
-  expect(getSessionStatus).not.toHaveBeenCalled();
-  expect(consolaWarn).toHaveBeenCalledWith(
-    "Ignoring requested dev session cached-session: compiled result changed from compiled-result-1 to compiled-result-2",
-  );
-  expect(createSession).toHaveBeenCalledWith({
-    path: { gameId: "game-1" },
-    body: {
-      compiledResultId: "compiled-result-2",
-      seed: 1337,
-      playerCount: 4,
-      autoAssignSeats: true,
-      setupProfileId: undefined,
-    },
+  expect(getSessionBootstrap).toHaveBeenCalledWith({
+    path: { sessionId: "cached-session" },
+  });
+  expect(consolaWarn).not.toHaveBeenCalled();
+  expect(createSession).not.toHaveBeenCalled();
+  expect(writeJsonFile).toHaveBeenCalledWith(SESSION_FILE_PATH, {
+    sessionId: "cached-session",
   });
 });
 
@@ -349,16 +406,26 @@ test("dev resumes an explicitly requested lobby session", async () => {
     controllablePlayerIds: [],
     yourTurnCount: 0,
   }));
-  getSessionStatus.mockResolvedValueOnce({
+  getSessionBootstrap.mockResolvedValueOnce({
     data: {
-      sessionId: "cached-session",
-      shortCode: "cached-code",
-      gameId: "game-1",
-      hostUserId: "user-1",
-      status: "active" as const,
-      phase: "lobby" as const,
-      seats: [],
-      canStart: true,
+      session: {
+        sessionId: "cached-session",
+        shortCode: "cached-code",
+        gameId: "game-1",
+        hostUserId: "user-1",
+        status: "active" as const,
+        phase: "lobby" as const,
+        setupProfileId: null,
+      },
+      lobby: {
+        seats: [],
+        canStart: true,
+        hostUserId: "user-1",
+      },
+      control: { switchablePlayerIds: [] },
+      history: null,
+      selectedPlayerId: null,
+      gameplay: null,
     },
     error: null,
   });
@@ -368,7 +435,7 @@ test("dev resumes an explicitly requested lobby session", async () => {
     resume: "cached-session",
   });
 
-  expect(getSessionStatus).toHaveBeenCalledWith({
+  expect(getSessionBootstrap).toHaveBeenCalledWith({
     path: { sessionId: "cached-session" },
   });
   expect(consolaWarn).not.toHaveBeenCalled();
@@ -376,8 +443,10 @@ test("dev resumes an explicitly requested lobby session", async () => {
   expect(startDreamboardDevServer).toHaveBeenCalledWith(
     expect.objectContaining({
       runtimeConfig: expect.objectContaining({
-        sessionId: "cached-session",
         autoStartGame: false,
+        initialSession: expect.objectContaining({
+          sessionId: "cached-session",
+        }),
       }),
     }),
   );
@@ -411,9 +480,11 @@ test("dev refuses to resume a cached session when the selected setup profile cha
     "setup-profile": "draft-profile",
   });
 
-  expect(getSessionStatus).not.toHaveBeenCalled();
+  expect(getSessionBootstrap).toHaveBeenCalledWith({
+    path: { sessionId: "cached-session" },
+  });
   expect(consolaWarn).toHaveBeenCalledWith(
-    "Ignoring requested dev session cached-session: setup profile changed from base-profile to draft-profile",
+    "Ignoring requested dev session cached-session: setup profile changed from none to draft-profile",
   );
   expect(createSession).toHaveBeenCalledWith({
     path: { gameId: "game-1" },
@@ -425,6 +496,56 @@ test("dev refuses to resume a cached session when the selected setup profile cha
       setupProfileId: "draft-profile",
     },
   });
+});
+
+test("dev seeds a session from a typed scenario and disables autostart", async () => {
+  resetMocks();
+
+  await runWithAutoTermination({
+    env: "local",
+    "from-scenario": "smoke-opening",
+  });
+
+  expect(createSessionFromScenario).toHaveBeenCalledWith({
+    projectRoot: "/tmp/dreamboard-project",
+    scenarioId: "smoke-opening",
+    compiledResultId: "compiled-result-2",
+    gameId: "game-1",
+    debug: false,
+  });
+  expect(resolvePlayerCount).not.toHaveBeenCalled();
+  expect(resolveSetupProfileSelectionForSession).not.toHaveBeenCalled();
+  expect(createSession).not.toHaveBeenCalled();
+  expect(startDreamboardDevServer).toHaveBeenCalledWith(
+    expect.objectContaining({
+      runtimeConfig: expect.objectContaining({
+        autoStartGame: false,
+        playerCount: 3,
+        setupProfileId: "scenario-profile",
+        initialSession: expect.objectContaining({
+          sessionId: "scenario-session",
+          shortCode: "scenario-code",
+        }),
+      }),
+    }),
+  );
+  expect(consolaInfo).toHaveBeenCalledWith(
+    "Seeded session scenario-code (scenario-session) from scenario smoke-opening.",
+  );
+});
+
+test("dev rejects --resume with --from-scenario", async () => {
+  resetMocks();
+
+  await expect(
+    devCommand.run({
+      args: {
+        env: "local",
+        resume: "cached-session",
+        "from-scenario": "smoke-opening",
+      },
+    }),
+  ).rejects.toThrow("Cannot combine --resume with --from-scenario.");
 });
 
 process.on("exit", () => {

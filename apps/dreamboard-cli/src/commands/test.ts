@@ -88,6 +88,11 @@ const generateCommand = defineCommand({
       description: "Print full reducer-native validation details",
       default: false,
     },
+    "update-snapshots": {
+      type: "boolean",
+      description: "Refresh generated projection and scenario snapshots",
+      default: false,
+    },
     ...CONFIG_FLAG_ARGS,
   },
   async run({ args }) {
@@ -141,6 +146,11 @@ const runCommand = defineCommand({
       description: "Print full reducer-native validation details",
       default: false,
     },
+    "update-snapshots": {
+      type: "boolean",
+      description: "Refresh generated projection and scenario snapshots",
+      default: false,
+    },
     runner: {
       type: "string",
       valueHint: "internal-lane",
@@ -177,6 +187,7 @@ const runCommand = defineCommand({
       compiledResultId: runtimeIdentity.compiledResultId,
       gameId: runtimeIdentity.gameId,
       debug: Boolean(args.debug),
+      updateSnapshots: Boolean(args["update-snapshots"]),
     });
 
     for (const result of summary.results) {
