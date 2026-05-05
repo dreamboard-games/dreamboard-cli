@@ -97,4 +97,4 @@ Keep game-specific decoration local, but use SDK static board queries for reusab
 
 ## Deep topology reference
 
-For exact square/hex edge and vertex id rules, see [Tiled board topology](./tiled-board-topology.md).
+For exact square/hex edge and vertex id rules, see [Board topology](./board-topology.md).

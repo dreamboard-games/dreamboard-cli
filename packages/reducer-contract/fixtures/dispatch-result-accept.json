@@ -1,0 +1,42 @@
+{
+  "kind": "accept",
+  "state": {
+    "domain": { "currentPhase": "takeTurn" }
+  },
+  "trace": [
+    {
+      "kind": "acceptedClientInput",
+      "input": {
+        "kind": "interaction",
+        "playerId": "player-1",
+        "interactionId": "rollForResources",
+        "params": {}
+      }
+    },
+    {
+      "kind": "appliedEffect",
+      "effect": {
+        "effectId": "ef0",
+        "type": "rollDie",
+        "dieId": "die-red"
+      }
+    },
+    {
+      "kind": "appliedEffect",
+      "effect": {
+        "effectId": "ef1",
+        "type": "shuffleSharedZone",
+        "zoneId": "dev-deck"
+      },
+      "continuation": {
+        "id": "afterShuffle",
+        "data": {}
+      }
+    },
+    {
+      "kind": "rngConsumption",
+      "operation": "rollDie",
+      "traceEntry": "die-red:4"
+    }
+  ]
+}

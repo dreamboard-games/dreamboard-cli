@@ -1,0 +1,365 @@
+---
+title: "Star Settlers"
+description: "Learn how to build a game with hex board, resources, player trades and tech cards."
+---
+
+Star Settlers is a medium-complexity Dreamboard example that took inspirations from few popular board games. It uses a shared hex
+board where players can place their outposts on resource nodes and produce resources on dice roll. Player can freely trade resource with one another. 
+The first player reaches 10VP wins the game.
+
+This tutorial showcases the important concepts in the game. See the [Star Settlers source code](https://github.com/dreamboard-games/dreamboard-cli/tree/main/examples/star-settlers)
+if you want to reuse the same patterns in your own board games.
+
+## What you are building
+
+Star Settlers is a 3-4 player expansion game. Players collect resources from
+numbered terrain hexes, spend those resources to build routes and outposts,
+buy and play tech cards, negotiate trades, and race to 10VP.
+
+The example is useful because it exercises several Dreamboard concepts at once:
+
+| Concept | What Star Settlers demonstrates |
+| --- | --- |
+| Hex board | A shared sector board with spaces, edges, vertices, route placement, and building placement. |
+| Resource economy | Play resource counts, build costs, bank trades, and player-to-player transfers. |
+| Prompts | Trade offers that route prompts to non-active players. |
+| Card hands | A hidden tech deck, owner-only tech hands, card actions, and card follow-up inputs. |
+| Custom UI | A custom hex board and HUD that render projected views without reimplementing rules. |
+| Scenario tests | Tests for hex board interaction, dice, trading, and prompt behavior. |
+
+## How the source is organized
+
+Start by reading the source as layers:
+
+| Layer | Files | Purpose |
+| --- | --- | --- |
+| Intent | [`rule.md`](https://github.com/dreamboard-games/dreamboard-cli/blob/main/examples/star-settlers/rule.md) | Plain-language game rules. |
+| Table model | [`manifest.ts`](https://github.com/dreamboard-games/dreamboard-cli/blob/main/examples/star-settlers/manifest.ts) | Players, board topology, resources, pieces, cards, zones, and setup options. |
+| Core logic | [`app/*`](https://github.com/dreamboard-games/dreamboard-cli/tree/main/examples/star-settlers/app) | Trusted rules, phases, interactions, target rules, derived values, and views written in reducer style. |
+| UI | [`ui/*`](https://github.com/dreamboard-games/dreamboard-cli/tree/main/examples/star-settlers/ui) | React rendering over generated UI contracts. |
+| Tests | [`test/*`](https://github.com/dreamboard-games/dreamboard-cli/tree/main/examples/star-settlers/test) | Bases, scenarios, and UI contract tests. |
+
+The important boundary is that the reducer owns rules. The UI can render a rich
+board, cards, and dialogs, but legality lives in reducer interactions and target
+rules.
+
+## Model the board and game nouns
+
+Star Settlers starts in `manifest.ts`. The manifest names the table objects that
+the reducer, UI, and tests will refer to through generated types.
+
+The most important nouns are:
+
+- A shared hex board named `sector`.
+- Hex spaces for the inner sector and outer deep-space rim.
+- Edges and vertices for route and building placement.
+- Resource ids such as `carbon`, `alloy`, `water`, `fiber`, and `crystal`.
+- Piece types for routes, outposts, hubs, and the raider.
+- A tech-card set plus `tech-deck`, `tech-hand`, and `tech-played` zones.
+- A standard setup profile.
+
+The board template is where the hex topology becomes part of the contract:
+
+```ts
+export default defineTopologyManifest({
+  boardTemplates: [
+    {
+      id: "star-sector",
+      layout: "hex",
+      orientation: "pointy-top",
+      spaces: [
+        { id: "h-0-0", q: 0, r: 0, typeId: "land" },
+        { id: "h-1-0", q: 1, r: -1, typeId: "land" },
+      ],
+      edges: [
+        {
+          ref: { spaces: ["h-2-11", "o-16"] },
+          typeId: "relay",
+          fields: { relayIndex: 0 },
+        },
+      ],
+    },
+  ],
+});
+```
+
+After `dreamboard sync`, those ids become generated contracts. Reducer code can
+use typed ids, generated board helpers, and manifest-backed schemas instead of
+stringly-typed board logic.
+
+## Centralize hex board legality
+
+Outposts must obey a distance rule, routes must connect to a player's network, upgrades must target
+the player's own outposts, and the raider must move to a valid land hex.
+
+Those rules live in
+[`app/eligibility.ts`](https://github.com/dreamboard-games/dreamboard-cli/blob/main/examples/star-settlers/app/eligibility.ts)
+as board target rules:
+
+```ts
+export const buildRouteTarget = boardTarget
+  .edge<GameState, EdgeId>("sector")
+  .where({
+    id: "land",
+    errorCode: "DEEP_SPACE_ROUTE",
+    message: "Cannot build a route on deep space.",
+    test: ({ q, targetId }) => isLandEdge(q, targetId),
+  })
+  .where({
+    id: "connected",
+    errorCode: "ROUTE_NOT_CONNECTED",
+    message: "Route must connect to your network.",
+    test: ({ state, q, targetId, playerId }) =>
+      isConnectedRouteTarget(state, q, targetId, playerId),
+  })
+  .build();
+```
+
+The same target rule is used by an interaction collector:
+
+```ts
+inputs: {
+  edgeId: boardInput.edge<GameState, EdgeId>({
+    target: buildRouteTarget,
+  }),
+}
+```
+
+That gives you one source of truth for three surfaces:
+
+- The UI can highlight eligible board targets.
+- The trusted reducer validates the submitted target.
+- Tests can assert the projected interaction availability.
+
+This is the main pattern to carry into any topology-heavy game: write the
+legality once, then let Dreamboard project it.
+
+## Keep resources in the table
+
+Resources do not need a custom map in `publicState`. Star Settlers declares
+resource ids in the manifest, and the runtime table owns each player's current
+counts.
+
+Reducer code reads resources through `q.player.*`:
+
+```ts
+if (!q.player.canAfford(input.playerId, input.params.give)) {
+  return {
+    errorCode: "INSUFFICIENT_RESOURCES",
+    message: "You don't have the resources to offer.",
+  };
+}
+```
+
+It writes resource changes through `ops.*`:
+
+```ts
+return accept(
+  pipe(
+    state,
+    ops.spendResources({
+      playerId: input.playerId,
+      amounts: { [giveResource]: rate },
+    }),
+    ops.addResources({
+      playerId: input.playerId,
+      amounts: { [receiveResource]: 1 },
+    }),
+  ),
+);
+```
+
+Bank trades are a compact example of this pattern in
+[`app/phases/player-turn/bank-trade.ts`](https://github.com/dreamboard-games/dreamboard-cli/blob/main/examples/star-settlers/app/phases/player-turn/bank-trade.ts).
+The interesting part is not the exchange rate itself. It is that affordability,
+spending, and receiving all happen through the same reducer table APIs.
+
+## Model player trades as prompts
+
+The active player submits `offerTrade`, which stores a `pendingTrade` in
+player-turn phase state. The targeted players then receive `respondToTrade` in
+their inbox, even though they are not the active turn holder.
+
+```ts
+export const respondToTrade = defineInteraction<
+  GameContract,
+  typeof playerTurnPhaseStateSchema
+>()({
+  surface: "inbox",
+  label: "Respond to trade",
+  inputs: {
+    response: promptInput({
+      schema: z.enum(["accept", "reject"]),
+      target: respondToTradeTarget,
+    }),
+  },
+  to: ({ state }) => {
+    const trade = state.phase.pendingTrade;
+    if (!trade) return null;
+    return trade.targetPlayerIds.filter(
+      (pid) =>
+        !trade.acceptedBy.includes(pid) && !trade.rejectedBy.includes(pid),
+    );
+  },
+});
+```
+
+The key idea is that prompts are interactions. They use the same routing,
+input parsing, validation, and reducer flow as panel actions or board clicks.
+The only difference is where they surface and who they are routed to.
+
+Read the full trade lifecycle in
+[`app/phases/player-turn/player-trade.ts`](https://github.com/dreamboard-games/dreamboard-cli/blob/main/examples/star-settlers/app/phases/player-turn/player-trade.ts).
+
+## Use card actions for tech hands
+
+Star Settlers also demonstrates card zones and hand interactions.
+
+The manifest declares a hidden shared `tech-deck`, an owner-only per-player
+`tech-hand`, and a public `tech-played` discard zone. The player-turn phase
+registers that hand zone and its card actions:
+
+```ts
+export const playerTurn = definePhase<GameContract>()({
+  zones: [zones.techHand],
+  cardActions: {
+    playRelicCache,
+    playPatrol,
+    playBountySurvey,
+    playSignalLock,
+    playJumpGate,
+  },
+});
+```
+
+Each tech card uses `defineCardAction` because the action starts from a concrete
+card in the player's hand. Some cards are direct plays; others ask for follow-up
+inputs such as a board space, target player, or resource choice.
+
+The UI does not manually decide which cards are playable. It customizes the card
+face while `WorkspaceGameShell` handles zone rendering, disabled state, click
+routing, and follow-up inputs:
+
+```tsx
+<WorkspaceGameShell
+  surfaces={{
+    hand: {
+      zones: {
+        techHand: {
+          label: "Tech cards",
+          renderCardContent: (card) => <TechCardFace card={card} />,
+        },
+      },
+    },
+  }}
+/>;
+```
+
+For the full implementation, read
+[`app/phases/player-turn/tech-cards.ts`](https://github.com/dreamboard-games/dreamboard-cli/blob/main/examples/star-settlers/app/phases/player-turn/tech-cards.ts)
+and
+[`ui/App.tsx`](https://github.com/dreamboard-games/dreamboard-cli/blob/main/examples/star-settlers/ui/App.tsx).
+
+## Put state in the right place
+
+The game contract is intentionally narrow. Star Settlers stores source facts,
+not every value the UI might want to show.
+
+| State location | Star Settlers uses it for |
+| --- | --- |
+| Runtime table | Component locations, zone contents, card locations, and player resources. |
+| `publicState` | Shuffled terrain, number tokens, port assignments, patrol counts, and relic cache counts. |
+| Setup phase state | Snake placement round, current player index, current setup step, and last placed outpost. |
+| Player-turn phase state | Dice values, turn flags, raider/discard flow, and pending trade. |
+| Derived values | Longest route, fleet command, public INF, bank trade rates, and winner detection. |
+| Player view | The per-player payload the UI is allowed to render. |
+
+This split keeps the reducer easier to reason about:
+
+- Persistent game facts live in state or the table.
+- Flow-specific facts live in phase state.
+- Computed facts live in `defineDerived`.
+- UI payloads live in `defineView`.
+
+The main files are
+[`app/game-contract.ts`](https://github.com/dreamboard-games/dreamboard-cli/blob/main/examples/star-settlers/app/game-contract.ts),
+[`app/derived.ts`](https://github.com/dreamboard-games/dreamboard-cli/blob/main/examples/star-settlers/app/derived.ts),
+and
+[`app/player-view.ts`](https://github.com/dreamboard-games/dreamboard-cli/blob/main/examples/star-settlers/app/player-view.ts).
+
+## Render a custom UI without moving rules into React
+
+Star Settlers has a custom board, resource chrome, dice roller, player HUD, and
+tech-card hand. Those UI pieces read projected data and submit generated
+interaction handles.
+
+The board renderer uses `useHexBoardView` to combine static topology with the
+player view's terrain and number-token overlay:
+
+```tsx
+const sector = useHexBoardView("sector", { spaces: view.spaces });
+
+<HexGrid
+  board={sector}
+  interactiveVertices={board.targetLayers.vertex({
+    enabled: isMyTurn,
+    onError: onActionError,
+  })}
+  interactiveEdges={board.targetLayers.edge({
+    enabled: isMyTurn,
+    onError: onActionError,
+  })}
+/>;
+```
+
+The UI decides how a hex looks. It does not decide whether the hex, edge, or
+vertex is legal. That decision comes from the reducer target rules projected
+through generated UI contracts.
+
+Read the custom board in
+[`ui/star-settlers-board.tsx`](https://github.com/dreamboard-games/dreamboard-cli/blob/main/examples/star-settlers/ui/star-settlers-board.tsx)
+and the shell integration in
+[`ui/App.tsx`](https://github.com/dreamboard-games/dreamboard-cli/blob/main/examples/star-settlers/ui/App.tsx).
+
+## Test the important flows
+
+Star Settlers tests behavior instead of implementation details. The scenarios
+focus on flows that would be easy to break:
+
+| Scenario | What it protects |
+| --- | --- |
+| [`setup-place`](https://github.com/dreamboard-games/dreamboard-cli/blob/main/examples/star-settlers/test/scenarios/setup-place.scenario.ts) | Setup board placement and phase progression. |
+| [`player-turn-roll`](https://github.com/dreamboard-games/dreamboard-cli/blob/main/examples/star-settlers/test/scenarios/player-turn-roll.scenario.ts) | Engine-sampled dice input and turn state updates. |
+| [`relay-edge-rates`](https://github.com/dreamboard-games/dreamboard-cli/blob/main/examples/star-settlers/test/scenarios/relay-edge-rates.scenario.ts) | Port topology and derived bank trade rates. |
+| [`trade-offer-sparse`](https://github.com/dreamboard-games/dreamboard-cli/blob/main/examples/star-settlers/test/scenarios/trade-offer-sparse.scenario.ts) | Prompt routing for targeted trade recipients. |
+| [`trade-full-lifecycle`](https://github.com/dreamboard-games/dreamboard-cli/blob/main/examples/star-settlers/test/scenarios/trade-full-lifecycle.scenario.ts) | Non-active-player prompt response, confirmation, and resource transfer. |
+
+Run the same workflow in your own workspace:
+
+```bash
+dreamboard test generate
+dreamboard test run
+```
+
+Use reducer scenarios for rules and flow. Add UI tests only when you need to
+prove shell integration, custom renderers, or generated hooks.
+
+## Source map
+
+Use these files when you want to go deeper:
+
+| Topic | Source |
+| --- | --- |
+| Rules overview | [`rule.md`](https://github.com/dreamboard-games/dreamboard-cli/blob/main/examples/star-settlers/rule.md) |
+| Manifest and topology | [`manifest.ts`](https://github.com/dreamboard-games/dreamboard-cli/blob/main/examples/star-settlers/manifest.ts) |
+| State contract | [`app/game-contract.ts`](https://github.com/dreamboard-games/dreamboard-cli/blob/main/examples/star-settlers/app/game-contract.ts) |
+| Board target rules | [`app/eligibility.ts`](https://github.com/dreamboard-games/dreamboard-cli/blob/main/examples/star-settlers/app/eligibility.ts) |
+| Setup phase | [`app/phases/setup.ts`](https://github.com/dreamboard-games/dreamboard-cli/blob/main/examples/star-settlers/app/phases/setup.ts) |
+| Player-turn actions | [`app/phases/player-turn`](https://github.com/dreamboard-games/dreamboard-cli/tree/main/examples/star-settlers/app/phases/player-turn) |
+| Trade prompts | [`player-trade.ts`](https://github.com/dreamboard-games/dreamboard-cli/blob/main/examples/star-settlers/app/phases/player-turn/player-trade.ts) |
+| Tech cards | [`tech-cards.ts`](https://github.com/dreamboard-games/dreamboard-cli/blob/main/examples/star-settlers/app/phases/player-turn/tech-cards.ts) |
+| Derived values | [`app/derived.ts`](https://github.com/dreamboard-games/dreamboard-cli/blob/main/examples/star-settlers/app/derived.ts) |
+| Player projection | [`app/player-view.ts`](https://github.com/dreamboard-games/dreamboard-cli/blob/main/examples/star-settlers/app/player-view.ts) |
+| Custom board UI | [`ui/star-settlers-board.tsx`](https://github.com/dreamboard-games/dreamboard-cli/blob/main/examples/star-settlers/ui/star-settlers-board.tsx) |
+| Shell integration | [`ui/App.tsx`](https://github.com/dreamboard-games/dreamboard-cli/blob/main/examples/star-settlers/ui/App.tsx) |
+| Scenario tests | [`test/scenarios`](https://github.com/dreamboard-games/dreamboard-cli/tree/main/examples/star-settlers/test/scenarios) |

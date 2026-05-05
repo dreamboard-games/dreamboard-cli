@@ -66,15 +66,6 @@ input/presentation helpers, card actions, or is roughly 250-300 lines. Keep
 `index.ts` as the table of contents: import interactions, card actions, and
 phase state, then register them with `definePhase`.
 
-Avoid these shapes in canonical workspaces:
-
-- one mega phase file that mixes build, trade, prompts, card actions, and turn
-  cleanup
-- duplicated eligibility rules in both reducer and UI
-- UI code reading raw reducer state instead of the projected view and generated
-  UI contract
-- `reducer-support.ts` as a catch-all for every game rule
-
 ## Generated files
 
 Generated files are there to make the authored surface strongly typed. Do not edit them directly.
@@ -93,7 +84,7 @@ dreamboard sync
 dreamboard test generate
 ```
 
-## Canonical imports
+## Imports
 
 Use the public reducer surface for app code:
 

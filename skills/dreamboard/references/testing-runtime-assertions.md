@@ -30,7 +30,7 @@ Use `view(playerId)` for player-facing state:
 then: ({ view, expect, seat }) => {
   const p1View = view(seat(0));
   expect(p1View.resources.brick).toBe(2);
-  expect(p1View.roadsByEdgeId["edge-a"]).toBeDefined();
+  expect(p1View.pathsByEdgeId["edge-a"]).toBeDefined();
 };
 ```
 

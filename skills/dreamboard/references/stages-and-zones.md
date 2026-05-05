@@ -16,7 +16,7 @@ stages: {
   }),
   main: definePhaseStage<GameContract, typeof phaseState>()({
     when: ({ state }) => state.phase.step === "main",
-    allow: ["buildRoad", "tradeWithBank", "endTurn"],
+    allow: ["buildPath", "tradeWithBank", "endTurn"],
   }),
 }
 ```
@@ -38,20 +38,20 @@ Use stages when one phase has clear internal steps but the surrounding flow is s
 Zones declare which manifest player card zones render as generated hand surfaces.
 
 ```ts
-zones: [zones.devHand],
+zones: [zones.actionHand],
 cardActions: {
-  playKnight,
-  playYearOfPlenty,
-  playRoadBuilding,
+  playBoost,
+  playDrawCards,
+  playBuildPath,
 },
 ```
 
-Each entry is a manifest player zone id that stores cards. Import `zones` from the generated manifest contract and use handles such as `zones.devHand` instead of raw string ids. The runtime reads cards from listed zones and derives playable actions from phase `cardActions` whose `playFrom` matches the zone id.
+Each entry is a manifest player zone id that stores cards. Import `zones` from the generated manifest contract and use handles such as `zones.actionHand` instead of raw string ids. The runtime reads cards from listed zones and derives playable actions from phase `cardActions` whose `playFrom` matches the zone id.
 
 The runtime dry-runs each derived card action's validation to determine per-card playability for UI surfaces.
 
 ## Zone keys
 
-Manifest zone ids often use kebab case, such as `dev-hand`. Generated UI contracts expose JS-friendly zone keys such as `devHand` for surface configuration while preserving the manifest zone id at runtime.
+Manifest zone ids often use kebab case, such as `action-hand`. Generated UI contracts expose JS-friendly zone keys such as `actionHand` for surface configuration while preserving the manifest zone id at runtime.
 
 Keep the manifest zone id as the source of truth. Do not maintain a parallel UI-only zone id list.

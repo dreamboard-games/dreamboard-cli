@@ -1,0 +1,605 @@
+{
+  "currentStage": "playerTurn",
+  "stageSeats": [
+    "player-1"
+  ],
+  "view": {
+    "spaces": [
+      {
+        "id": "h-0-0",
+        "terrain": "crystalBelt",
+        "numberToken": 5
+      },
+      {
+        "id": "h-1-0",
+        "terrain": "carbonCloud",
+        "numberToken": 8
+      },
+      {
+        "id": "h-1-1",
+        "terrain": "carbonCloud",
+        "numberToken": 9
+      },
+      {
+        "id": "h-1-2",
+        "terrain": "fiberGrove",
+        "numberToken": 9
+      },
+      {
+        "id": "h-1-3",
+        "terrain": "carbonCloud",
+        "numberToken": 10
+      },
+      {
+        "id": "h-1-4",
+        "terrain": "waterWorld",
+        "numberToken": 5
+      },
+      {
+        "id": "h-1-5",
+        "terrain": "waterWorld",
+        "numberToken": 6
+      },
+      {
+        "id": "h-2-0",
+        "terrain": "crystalBelt",
+        "numberToken": 8
+      },
+      {
+        "id": "h-2-1",
+        "terrain": "waterWorld",
+        "numberToken": 4
+      },
+      {
+        "id": "h-2-10",
+        "terrain": "fiberGrove",
+        "numberToken": 6
+      },
+      {
+        "id": "h-2-11",
+        "terrain": "fiberGrove",
+        "numberToken": 11
+      },
+      {
+        "id": "h-2-2",
+        "terrain": "carbonCloud",
+        "numberToken": 10
+      },
+      {
+        "id": "h-2-3",
+        "terrain": "waterWorld",
+        "numberToken": 3
+      },
+      {
+        "id": "h-2-4",
+        "terrain": "deadZone",
+        "numberToken": null
+      },
+      {
+        "id": "h-2-5",
+        "terrain": "crystalBelt",
+        "numberToken": 2
+      },
+      {
+        "id": "h-2-6",
+        "terrain": "alloyField",
+        "numberToken": 11
+      },
+      {
+        "id": "h-2-7",
+        "terrain": "alloyField",
+        "numberToken": 12
+      },
+      {
+        "id": "h-2-8",
+        "terrain": "fiberGrove",
+        "numberToken": 3
+      },
+      {
+        "id": "h-2-9",
+        "terrain": "alloyField",
+        "numberToken": 4
+      },
+      {
+        "id": "o-0",
+        "terrain": "deepSpace",
+        "numberToken": null
+      },
+      {
+        "id": "o-1",
+        "terrain": "deepSpace",
+        "numberToken": null
+      },
+      {
+        "id": "o-10",
+        "terrain": "deepSpace",
+        "numberToken": null
+      },
+      {
+        "id": "o-11",
+        "terrain": "deepSpace",
+        "numberToken": null
+      },
+      {
+        "id": "o-12",
+        "terrain": "deepSpace",
+        "numberToken": null
+      },
+      {
+        "id": "o-13",
+        "terrain": "deepSpace",
+        "numberToken": null
+      },
+      {
+        "id": "o-14",
+        "terrain": "deepSpace",
+        "numberToken": null
+      },
+      {
+        "id": "o-15",
+        "terrain": "deepSpace",
+        "numberToken": null
+      },
+      {
+        "id": "o-16",
+        "terrain": "deepSpace",
+        "numberToken": null
+      },
+      {
+        "id": "o-17",
+        "terrain": "deepSpace",
+        "numberToken": null
+      },
+      {
+        "id": "o-2",
+        "terrain": "deepSpace",
+        "numberToken": null
+      },
+      {
+        "id": "o-3",
+        "terrain": "deepSpace",
+        "numberToken": null
+      },
+      {
+        "id": "o-4",
+        "terrain": "deepSpace",
+        "numberToken": null
+      },
+      {
+        "id": "o-5",
+        "terrain": "deepSpace",
+        "numberToken": null
+      },
+      {
+        "id": "o-6",
+        "terrain": "deepSpace",
+        "numberToken": null
+      },
+      {
+        "id": "o-7",
+        "terrain": "deepSpace",
+        "numberToken": null
+      },
+      {
+        "id": "o-8",
+        "terrain": "deepSpace",
+        "numberToken": null
+      },
+      {
+        "id": "o-9",
+        "terrain": "deepSpace",
+        "numberToken": null
+      }
+    ],
+    "coloniesByVertexId": {
+      "hex-vertex:-4,2,2": {
+        "ownerId": "player-1",
+        "kind": "outpost"
+      },
+      "hex-vertex:-7,-1,8": {
+        "ownerId": "player-3",
+        "kind": "outpost"
+      },
+      "hex-vertex:-8,4,4": {
+        "ownerId": "player-3",
+        "kind": "outpost"
+      },
+      "hex-vertex:-8,7,1": {
+        "ownerId": "player-1",
+        "kind": "outpost"
+      },
+      "hex-vertex:4,-5,1": {
+        "ownerId": "player-2",
+        "kind": "outpost"
+      },
+      "hex-vertex:7,-8,1": {
+        "ownerId": "player-4",
+        "kind": "outpost"
+      },
+      "hex-vertex:8,-1,-7": {
+        "ownerId": "player-2",
+        "kind": "outpost"
+      },
+      "hex-vertex:8,-4,-4": {
+        "ownerId": "player-4",
+        "kind": "outpost"
+      }
+    },
+    "routesByEdgeId": {
+      "hex-edge:-2,1,1::-4,2,2": {
+        "ownerId": "player-1"
+      },
+      "hex-edge:-5,-2,7::-7,-1,8": {
+        "ownerId": "player-3"
+      },
+      "hex-edge:-7,2,5::-8,4,4": {
+        "ownerId": "player-3"
+      },
+      "hex-edge:-7,5,2::-8,7,1": {
+        "ownerId": "player-1"
+      },
+      "hex-edge:2,-4,2::4,-5,1": {
+        "ownerId": "player-2"
+      },
+      "hex-edge:5,-7,2::7,-8,1": {
+        "ownerId": "player-4"
+      },
+      "hex-edge:7,-2,-5::8,-1,-7": {
+        "ownerId": "player-2"
+      },
+      "hex-edge:7,-2,-5::8,-4,-4": {
+        "ownerId": "player-4"
+      }
+    },
+    "portsByEdgeId": {
+      "hex-edge:2,5,-7::4,4,-8": "carbon",
+      "hex-edge:4,4,-8::5,2,-7": "crystal",
+      "hex-edge:7,-2,-5::8,-4,-4": "water",
+      "hex-edge:4,-8,4::5,-7,2": "3:1",
+      "hex-edge:1,-8,7::2,-7,5": "alloy",
+      "hex-edge:-4,-4,8::-5,-2,7": "3:1",
+      "hex-edge:-7,2,5::-8,4,4": "3:1",
+      "hex-edge:-5,7,-2::-7,8,-1": "fiber",
+      "hex-edge:-2,7,-5::-4,8,-4": "3:1"
+    },
+    "raiderSpaceId": "h-2-4",
+    "diceRolled": false,
+    "diceValues": null,
+    "raiderPending": false,
+    "discardPending": [],
+    "pendingTrade": null,
+    "techCardBoughtThisTurn": false,
+    "techCardPlayedThisTurn": false,
+    "setup": null,
+    "myResources": {
+      "alloy": 1,
+      "carbon": 0,
+      "crystal": 0,
+      "fiber": 0,
+      "water": 0
+    },
+    "myTechCardIds": [],
+    "myTechCardTypesById": {},
+    "myTechCardCount": 0,
+    "myTotalInfluence": 2,
+    "myBankTradeRates": {
+      "alloy": 3,
+      "water": 3,
+      "carbon": 3,
+      "crystal": 3,
+      "fiber": 3
+    },
+    "myDiscardRequired": 0,
+    "amITargetedByTrade": false,
+    "myTradeResponse": "none",
+    "influenceByPlayerId": {
+      "player-1": 2,
+      "player-2": 2,
+      "player-3": 2,
+      "player-4": 2
+    },
+    "patrolsByPlayerId": {
+      "player-1": 0,
+      "player-2": 0,
+      "player-3": 0,
+      "player-4": 0
+    },
+    "winnerPlayerId": null,
+    "longestRouteOwner": null,
+    "longestRouteLength": 0,
+    "fleetCommandOwner": null,
+    "fleetCommandSize": 0
+  },
+  "availableInteractions": [
+    {
+      "phaseName": "playerTurn",
+      "interactionKey": "playerTurn.rollDice",
+      "interactionId": "rollDice",
+      "surface": "panel",
+      "kind": "action",
+      "label": "Roll dice",
+      "icon": "🎲",
+      "emphasis": "primary",
+      "inputs": [],
+      "available": false,
+      "unavailableReason": "Not your turn",
+      "presentation": {
+        "mode": "dialog",
+        "dialog": {
+          "title": "Roll dice",
+          "description": "Roll to start your turn.",
+          "dismissBehavior": {
+            "type": "none"
+          }
+        }
+      }
+    },
+    {
+      "phaseName": "playerTurn",
+      "interactionKey": "playerTurn.moveRaider",
+      "interactionId": "moveRaider",
+      "surface": "board-space",
+      "kind": "action",
+      "label": "Move raider",
+      "inputs": [],
+      "available": false,
+      "unavailableReason": "Not your turn"
+    },
+    {
+      "phaseName": "playerTurn",
+      "interactionKey": "playerTurn.buildRoute",
+      "interactionId": "buildRoute",
+      "surface": "board-edge",
+      "kind": "action",
+      "label": "Build route",
+      "group": "build",
+      "inputs": [],
+      "available": false,
+      "unavailableReason": "Not your turn"
+    },
+    {
+      "phaseName": "playerTurn",
+      "interactionKey": "playerTurn.buildOutpost",
+      "interactionId": "buildOutpost",
+      "surface": "board-vertex",
+      "kind": "action",
+      "label": "Build outpost",
+      "group": "build",
+      "inputs": [],
+      "available": false,
+      "unavailableReason": "Not your turn"
+    },
+    {
+      "phaseName": "playerTurn",
+      "interactionKey": "playerTurn.upgradeToHub",
+      "interactionId": "upgradeToHub",
+      "surface": "board-vertex",
+      "kind": "action",
+      "label": "Upgrade to hub",
+      "group": "build",
+      "inputs": [],
+      "available": false,
+      "unavailableReason": "Not your turn"
+    },
+    {
+      "phaseName": "playerTurn",
+      "interactionKey": "playerTurn.buyTechCard",
+      "interactionId": "buyTechCard",
+      "surface": "panel",
+      "kind": "action",
+      "label": "Buy tech card",
+      "icon": "🎴",
+      "salience": "tertiary",
+      "inputs": [],
+      "available": false,
+      "unavailableReason": "Not your turn"
+    },
+    {
+      "phaseName": "playerTurn",
+      "interactionKey": "playerTurn.tradeWithBank",
+      "interactionId": "tradeWithBank",
+      "surface": "panel",
+      "kind": "action",
+      "label": "Trade with bank",
+      "inputs": [],
+      "available": false,
+      "unavailableReason": "Not your turn"
+    },
+    {
+      "phaseName": "playerTurn",
+      "interactionKey": "playerTurn.offerTrade",
+      "interactionId": "offerTrade",
+      "surface": "panel",
+      "kind": "action",
+      "label": "Offer trade",
+      "group": "trade",
+      "inputs": [],
+      "available": false,
+      "unavailableReason": "Not your turn"
+    },
+    {
+      "phaseName": "playerTurn",
+      "interactionKey": "playerTurn.confirmTrade",
+      "interactionId": "confirmTrade",
+      "surface": "panel",
+      "kind": "action",
+      "label": "Confirm trade",
+      "group": "trade",
+      "inputs": [],
+      "available": false,
+      "unavailableReason": "Not your turn",
+      "presentation": {
+        "mode": "dialog",
+        "dialog": {
+          "group": "pendingTrade",
+          "title": "Trade offer pending",
+          "description": "Choose an accepting player to confirm the trade, or cancel the offer.",
+          "dismissBehavior": {
+            "type": "minimize",
+            "trayLabel": "Trade",
+            "trayIcon": "🤝"
+          },
+          "statusSections": [
+            {
+              "label": "Offer",
+              "values": [],
+              "empty": "Nothing offered"
+            },
+            {
+              "label": "Request",
+              "values": [],
+              "empty": "Nothing requested"
+            },
+            {
+              "label": "Accepted",
+              "values": [],
+              "empty": "No one yet"
+            },
+            {
+              "label": "Rejected",
+              "values": [],
+              "empty": "No rejections"
+            },
+            {
+              "label": "Waiting",
+              "values": [],
+              "empty": "Everyone has responded"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "phaseName": "playerTurn",
+      "interactionKey": "playerTurn.cancelTrade",
+      "interactionId": "cancelTrade",
+      "surface": "panel",
+      "kind": "action",
+      "label": "Cancel trade",
+      "emphasis": "destructive",
+      "group": "trade",
+      "inputs": [],
+      "available": false,
+      "unavailableReason": "Not your turn",
+      "presentation": {
+        "mode": "dialog",
+        "dialog": {
+          "group": "pendingTrade",
+          "title": "Trade offer pending",
+          "description": "Choose an accepting player to confirm the trade, or cancel the offer.",
+          "dismissBehavior": {
+            "type": "minimize",
+            "trayLabel": "Trade",
+            "trayIcon": "🤝"
+          },
+          "statusSections": [
+            {
+              "label": "Offer",
+              "values": [],
+              "empty": "Nothing offered"
+            },
+            {
+              "label": "Request",
+              "values": [],
+              "empty": "Nothing requested"
+            },
+            {
+              "label": "Accepted",
+              "values": [],
+              "empty": "No one yet"
+            },
+            {
+              "label": "Rejected",
+              "values": [],
+              "empty": "No rejections"
+            },
+            {
+              "label": "Waiting",
+              "values": [],
+              "empty": "Everyone has responded"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "phaseName": "playerTurn",
+      "interactionKey": "playerTurn.endTurn",
+      "interactionId": "endTurn",
+      "surface": "panel",
+      "kind": "action",
+      "label": "End turn",
+      "emphasis": "primary",
+      "inputs": [],
+      "available": false,
+      "unavailableReason": "Not your turn"
+    },
+    {
+      "phaseName": "playerTurn",
+      "interactionKey": "playerTurn.playRelicCache",
+      "interactionId": "playRelicCache",
+      "surface": "hand",
+      "kind": "action",
+      "label": "Play relic cache",
+      "zoneId": "tech-hand",
+      "inputs": [],
+      "available": false,
+      "unavailableReason": "Not your turn"
+    },
+    {
+      "phaseName": "playerTurn",
+      "interactionKey": "playerTurn.playPatrol",
+      "interactionId": "playPatrol",
+      "surface": "hand",
+      "kind": "action",
+      "label": "Play patrol",
+      "zoneId": "tech-hand",
+      "inputs": [],
+      "available": false,
+      "unavailableReason": "Not your turn"
+    },
+    {
+      "phaseName": "playerTurn",
+      "interactionKey": "playerTurn.playBountySurvey",
+      "interactionId": "playBountySurvey",
+      "surface": "hand",
+      "kind": "action",
+      "label": "Play bounty survey",
+      "zoneId": "tech-hand",
+      "inputs": [],
+      "available": false,
+      "unavailableReason": "Not your turn"
+    },
+    {
+      "phaseName": "playerTurn",
+      "interactionKey": "playerTurn.playSignalLock",
+      "interactionId": "playSignalLock",
+      "surface": "hand",
+      "kind": "action",
+      "label": "Play signalLock",
+      "zoneId": "tech-hand",
+      "inputs": [],
+      "available": false,
+      "unavailableReason": "Not your turn"
+    },
+    {
+      "phaseName": "playerTurn",
+      "interactionKey": "playerTurn.playJumpGate",
+      "interactionId": "playJumpGate",
+      "surface": "hand",
+      "kind": "action",
+      "label": "Play jump gate",
+      "zoneId": "tech-hand",
+      "inputs": [],
+      "available": false,
+      "unavailableReason": "Not your turn"
+    }
+  ],
+  "zones": {
+    "tech-hand": {
+      "cardIds": [],
+      "cardsById": {},
+      "playableByCardId": {}
+    }
+  }
+}

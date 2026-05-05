@@ -62,7 +62,7 @@ For the end-to-end authoring loop, start with [references/quickstart.md](referen
   [references/effects.md](references/effects.md),
   [references/views.md](references/views.md)
 - Tiled Boards:
-  [references/tiled-board-topology.md](references/tiled-board-topology.md)
+  [references/board-topology.md](references/board-topology.md)
 - UI:
   [references/ui-architecture.md](references/ui-architecture.md),
   [references/game-shell.md](references/game-shell.md),

@@ -14,20 +14,20 @@ import { defineScenario } from "../testing-types";
 
 export default defineScenario({
   id: "setup-place",
-  description: "Seat 0 places a settlement and road during setup",
+  description: "Seat 0 places a marker and path during setup",
   from: "initial-turn",
   phase: "setup",
   when: async ({ game, seat }) => {
-    await game.submit(seat(0), "placeSetupSettlement", {
+    await game.submit(seat(0), "placeSetupMarker", {
       vertexId: "hex-vertex:-1,-1,2",
     });
-    await game.submit(seat(0), "placeSetupRoad", {
+    await game.submit(seat(0), "placeSetupPath", {
       edgeId: "hex-edge:-1,-1,2::-2,-2,4",
     });
   },
   then: ({ expect, state, view, seat }) => {
     expect(state()).toBe("setup");
-    expect(view(seat(0)).buildingsByVertexId["hex-vertex:-1,-1,2"]).toBeDefined();
+    expect(view(seat(0)).markersByVertexId["hex-vertex:-1,-1,2"]).toBeDefined();
   },
 });
 ```

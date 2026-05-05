@@ -139,10 +139,14 @@ const DOCS_TO_COPY: readonly ManagedDoc[] = [
     outputName: "table-queries-and-ops.md",
   },
   {
-    sourcePath: "reference/tiled-board-topology.mdx",
-    docsHref: "/docs/reference/tiled-board-topology",
-    aliases: ["/reference/tiled-board-topology"],
-    outputName: "tiled-board-topology.md",
+    sourcePath: "reference/board-topology.mdx",
+    docsHref: "/docs/reference/board-topology",
+    aliases: [
+      "/reference/board-topology",
+      "/reference/tiled-board-topology",
+      "/docs/reference/tiled-board-topology",
+    ],
+    outputName: "board-topology.md",
   },
   {
     sourcePath: "ui/architecture.mdx",
@@ -222,11 +226,6 @@ const DOCS_TO_COPY: readonly ManagedDoc[] = [
     sourcePath: "reference/package-surfaces.mdx",
     docsHref: "/docs/reference/package-surfaces",
     outputName: "package-surfaces.md",
-  },
-  {
-    sourcePath: "reference/troubleshooting.mdx",
-    docsHref: "/docs/reference/troubleshooting",
-    outputName: "troubleshooting.md",
   },
 ];
 

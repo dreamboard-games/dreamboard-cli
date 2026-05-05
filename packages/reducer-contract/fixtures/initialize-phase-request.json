@@ -1,0 +1,17 @@
+{
+  "state": {
+    "domain": {
+      "flow": {
+        "currentPhase": "main"
+      }
+    },
+    "runtime": {
+      "rng": {
+        "seed": 1337,
+        "cursor": 0,
+        "trace": []
+      }
+    }
+  },
+  "to": "cleanup"
+}

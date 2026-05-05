@@ -2,7 +2,7 @@
 
 See how authored Dreamboard files flow through sync, compile, runtime, UI projection, and tests.
 
-Dreamboard has one canonical lifecycle: author static structure, bind it into a reducer contract, register runtime behavior, project UI state, then verify it with generated tests.
+Dreamboard has one recommended lifecycle: author static structure, bind it into a reducer contract, register runtime behavior, project UI state, then verify it with generated tests.
 
 ```mermaid
 flowchart TD

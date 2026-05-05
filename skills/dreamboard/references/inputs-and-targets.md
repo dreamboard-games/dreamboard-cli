@@ -9,20 +9,20 @@ Inputs define interaction params. Targets define finite eligibility. Together th
 A target rule starts from a candidate set and filters it through predicates.
 
 ```ts
-export const buildRoadTarget = boardTarget
-  .edge<GameState, EdgeId>("island")
+export const buildPathTarget = boardTarget
+  .edge<GameState, EdgeId>("main-board")
   .where({
     id: "empty",
     errorCode: "EDGE_OCCUPIED",
-    message: "That edge already has a road.",
-    test: ({ state, targetId }) => !state.publicState.roadsByEdgeId[targetId],
+    message: "That edge already has a path.",
+    test: ({ state, targetId }) => !state.publicState.pathsByEdgeId[targetId],
   })
   .where({
     id: "connected",
     errorCode: "NOT_CONNECTED",
-    message: "Road must connect to your network.",
+    message: "Path must connect to your network.",
     test: ({ state, q, targetId, playerId }) =>
-      isConnectedRoadTarget(state, q, targetId, playerId),
+      isConnectedPathTarget(state, q, targetId, playerId),
   })
   .build();
 ```
@@ -41,7 +41,7 @@ Use the same rule in collectors and any reducer code that needs to re-check a se
 ```ts
 inputs: {
   edgeId: boardInput.edge<GameState, EdgeId>({
-    target: buildRoadTarget,
+    target: buildPathTarget,
   }),
 }
 ```

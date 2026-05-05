@@ -2,7 +2,7 @@
 
 Generate and run Dreamboard reducer-native tests.
 
-Dreamboard tests are reducer-native. They run authored scenarios against the
+Dreamboard tests run authored scenarios against the
 same reducer contract that powers the game, using generated workspace types for
 player ids, interaction ids, params, phases, views, and assertion helpers.
 
@@ -120,7 +120,7 @@ export default defineScenario({
   when: async () => undefined,
   then: ({ state, interactions, expect, seat }) => {
     expect(state()).toBe("setup");
-    expect(interactions(seat(0))).toHaveInteraction("placeSetupSettlement");
+    expect(interactions(seat(0))).toHaveInteraction("placeSetupMarker");
   },
 });
 ```

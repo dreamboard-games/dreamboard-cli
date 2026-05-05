@@ -1,0 +1,11 @@
+{
+  "state": {
+    "domain": {
+      "flow": {
+        "currentPhase": "main"
+      }
+    }
+  },
+  "playerIds": ["player-1", "player-2"],
+  "viewId": "player"
+}

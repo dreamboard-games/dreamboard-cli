@@ -1,9 +1,6 @@
----
-title: "Tiled board topology"
-description: "Author hex and square boards with shared reducer and UI topology primitives."
----
+# Board topology
 
-import TiledBoardHelpersExample from "/snippets/examples/tiled-board-helpers.mdx";
+Author hex and square boards with shared reducer and UI topology primitives.
 
 Use tiled boards when your game has stable spaces plus meaningful borders or
 corners.
@@ -24,7 +21,23 @@ workspaces.
 The generated manifest contract now preserves that mixed topology directly with
 template-level literals plus board-scoped edge and vertex helpers:
 
-<TiledBoardHelpersExample />
+{/* Generated from examples/board-contract-lab/app/authoring-benchmark-typing-smoke.ts (tiled-board-helpers) */}
+
+```ts
+const playerMatId = boardHelpers.boardIdForPlayer("player-mat", "player-1");
+const hexBoardIds = boardHelpers.boardIdsForLayout("hex");
+const frontierRouteId = boardHelpers.edgeIds("frontier-map", "ferry-route")[0]!;
+const frontierCheckpointId = boardHelpers.vertexIds(
+  "frontier-map",
+  "checkpoint",
+)[0]!;
+const marketTemplateBoards =
+  boardHelpers.boardBaseIdsForTemplate("market-template");
+const playerMatTemplateLayout = boardHelpers.boardTemplateLayout(
+  "player-mat-template",
+);
+//
+```
 
 ## What lives where
 
@@ -70,9 +83,9 @@ Reducer helpers and UI hooks use the same terms:
 | `incident`  | Edges touching a vertex, or vertices touching an edge |
 | `occupancy` | Components currently on a space, edge, or vertex      |
 
-Reducer-side board helpers are covered in [Table queries and ops](/docs/authoring/table-queries-and-ops).
-UI-side board rendering is covered in [Board surfaces](/docs/ui/board-surfaces)
-and [UI components](/docs/ui/components).
+Reducer-side board helpers are covered in [Table queries and ops](./table-queries-and-ops.md).
+UI-side board rendering is covered in [Board surfaces](./board-surfaces.md)
+and [UI components](./ui-components.md).
 
 ## Choosing a layout
 

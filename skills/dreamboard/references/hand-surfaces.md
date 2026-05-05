@@ -19,67 +19,51 @@ For card games and deck games, zone mode should be the default.
 Declare a hand zone once in the phase:
 
 ```ts
-zones: [zones.devHand],
+zones: [zones.actionHand],
 cardActions: {
-  playKnight,
-  playYearOfPlenty,
-  playRoadBuilding,
+  playBoost,
+  playDrawCards,
+  playBuildPath,
 },
 ```
 
 Import `zones` from the generated manifest contract so reducer code uses typed
-handles such as `zones.devHand`. The generated UI contract exposes the
-JS-friendly zone key `devHand` while the runtime projection is keyed by the
-manifest zone id `dev-hand`. Cards come from that manifest player zone, and
+handles such as `zones.actionHand`. The generated UI contract exposes the
+JS-friendly zone key `actionHand` while the runtime projection is keyed by the
+manifest zone id `action-hand`. Cards come from that manifest player zone, and
 playable actions are derived from `cardActions` whose `playFrom` is also
-`zones.devHand`.
+`zones.actionHand`.
 
 ## Zone mode in WorkspaceGameShell
 
 ```tsx
-import { Card, Hand, type HandSurfaceCardContext } from "@dreamboard/ui-sdk/components";
 import { WorkspaceGameShell } from "@dreamboard/ui-contract";
 
 <WorkspaceGameShell
   surfaces={{
     hand: {
       zones: {
-        devHand: (cards, contexts) => (
-          <DevCardHand cards={cards} contexts={contexts} />
-        ),
+        actionHand: {
+          renderCardContent: (card, ctx) => (
+            <div data-playable={!ctx.disabled}>
+              <strong>{card.name ?? card.id}</strong>
+              {ctx.interactions[0]?.label ? (
+                <span>{ctx.interactions[0].label}</span>
+              ) : null}
+            </div>
+          ),
+        },
       },
     },
   }}
 />;
-
-function DevCardHand({
-  cards,
-  contexts,
-}: {
-  cards: readonly ViewCard[];
-  contexts: readonly HandSurfaceCardContext[];
-}) {
-  const byCardId = new Map(contexts.map((ctx) => [ctx.card.id, ctx]));
-
-  return (
-    <Hand
-      cards={cards}
-      renderCard={({ card }) => {
-        const ctx = byCardId.get(card.id);
-        return (
-          <Card
-            card={card}
-            disabled={ctx?.disabled ?? true}
-            onClick={() => void ctx?.play?.()}
-          />
-        );
-      }}
-    />
-  );
-}
 ```
 
-Each `HandSurfaceCardContext` contains:
+`WorkspaceGameShell` owns the default hand layout, card click routing,
+disabled state, keyboard behavior, and follow-up input flow. Use
+`renderCardContent` when you only need to customize the card face.
+
+Each card context contains:
 
 | Field | Meaning |
 | --- | --- |
@@ -88,9 +72,10 @@ Each `HandSurfaceCardContext` contains:
 | `play` | A convenience submit function when exactly one interaction can be played directly. |
 | `disabled` | True when no available interaction can be played from this card. |
 
-`play` is `null` when the card needs disambiguation or follow-up inputs. In
-that case, render the specific choices yourself using `interactions` and the
-typed handle pattern below.
+`play` is `null` when the card needs disambiguation or follow-up inputs. The
+default zone renderer handles common follow-up flows for you. Use a full-hand
+renderer only when the default `<Hand>` fan is wrong for your game, such as a
+tableau, grid, or custom drag surface.
 
 ## Default zone rendering
 
@@ -101,7 +86,7 @@ import { HandSurface } from "@dreamboard/ui-sdk/components";
 
 <HandSurface
   zoneId="dev-hand"
-  renderCardContent={({ card }) => <span>{card.label}</span>}
+  renderCardContent={(card) => <span>{card.name ?? card.id}</span>}
 />;
 ```
 
@@ -136,42 +121,67 @@ a custom horizontal strip and choose a board zone in a separate board panel.
 Card actions often start with a card and then need another input: a board space,
 resource choice, target player, or amount.
 
-Use the card context to start the action, then collect the follow-up through
-the appropriate surface:
+Let the built-in zone renderer handle the normal path: it stores the selected
+card id, arms board targets when needed, and opens the default follow-up form
+for form inputs.
 
-```tsx
-function DevCardHand({ cards, contexts }: Props) {
-  const byCardId = new Map(contexts.map((ctx) => [ctx.card.id, ctx]));
+Star Settlers uses this for tech cards. One card asks for a board space plus a
+target player; another asks for two resource choices:
 
-  return (
-    <Hand
-      cards={cards}
-      renderCard={({ card }) => {
-        const ctx = byCardId.get(card.id);
-        const descriptor = ctx?.interactions.find((item) => item.available);
+```ts
+export const playPatrol = defineCardAction<
+  GameContract,
+  typeof playerTurnPhaseStateSchema
+>()({
+  cardType: cardTypes.patrol,
+  playFrom: zones.techHand,
+  inputs: {
+    raiderSpaceId: boardInput.space<GameState, SpaceId>({
+      target: raiderSpaceTarget,
+    }),
+    stealFromPlayerId: raiderSeizeTargetInput(),
+  },
+  reduce({ input }) {
+    // input.params.cardId is supplied by the selected hand card.
+    // input.params.raiderSpaceId is collected by the board surface.
+    // input.params.stealFromPlayerId is collected as a follow-up input.
+  },
+});
 
-        return (
-          <Card
-            card={card}
-            disabled={!descriptor}
-            onClick={() => {
-              if (!ctx?.play) {
-                descriptor && openFollowUp(descriptor.interactionKey, card.id);
-                return;
-              }
-              void ctx.play();
-            }}
-          />
-        );
-      }}
-    />
-  );
-}
+export const playBountySurvey = defineCardAction<
+  GameContract,
+  typeof playerTurnPhaseStateSchema
+>()({
+  cardType: cardTypes.bountySurvey,
+  playFrom: zones.techHand,
+  inputs: {
+    resource1: formInput.choice<ResourceId>({ choices: "resourceMap" }),
+    resource2: formInput.choice<ResourceId>({ choices: "resourceMap" }),
+  },
+});
 ```
 
-For a card that needs a board target, arm or remember the interaction and let
-the board surface collect the board input. For a card that needs form values,
-render a small inline form and submit with the descriptor handle.
+The UI still only customizes the card face:
+
+```tsx
+<WorkspaceGameShell
+  surfaces={{
+    hand: {
+      zones: {
+        techHand: {
+          label: "Tech cards",
+          renderCardContent: (card) => <TechCardFace card={card} />,
+        },
+      },
+    },
+  }}
+/>;
+```
+
+For the full implementation, read the synced Star Settlers source:
+[tech card actions](https://github.com/dreamboard-games/dreamboard-cli/blob/main/examples/star-settlers/app/phases/player-turn/tech-cards.ts)
+and
+[hand surface UI](https://github.com/dreamboard-games/dreamboard-cli/blob/main/examples/star-settlers/ui/App.tsx).
 
 ## Avoid duplicate rendering
 

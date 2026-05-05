@@ -46,7 +46,7 @@ Avoid this pattern:
 
 ```ts
 publicState: {
-  longestRoadByPlayerId: ...
+  scoreByPlayerId: ...
 }
 ```
 

@@ -1,10 +1,12 @@
 # Dreamboard
 
-Build rule-enforced multiplayer board games with a typed authoring SDK, generated contracts, and reusable UI surfaces.
+An agent-native framework for prototyping board games.
 
-Dreamboard is a local-first authoring framework for rule-enforced multiplayer board games. You describe the game in ordinary project files, Dreamboard generates typed contracts from that structure, and the runtime enforces the rules through a reducer bundle.
+Dreamboard is a local-first authoring framework for building rule-enforced multiplayer board games. It is great for early-stage board game prototyping where rules are changing fast and components need to be added or removed from the game for quick iteration.
+You develop and test the game locally by running `dreamboard dev`. When you are done, you run `dreamboard sync` and `dreamboard compile` to publish the game to Dreamboard to make your game available on desktop browser or mobile phone.
 
-The important promise is alignment. The manifest, reducer, UI, and tests all compile against the same generated contract, so renaming a zone, adding a card type, changing an interaction, or moving state between table data and projected views produces useful type errors instead of silent drift.
+It achieves this by providing strong defaults, templates and components for common types for board games, but it is flexible enough for user to customize the game when needed.
+And because of the opinionated choice, it works very well with coding agents (Claude Code, Codex, Cursor and etc) when pair with the skill.
 
 ## The authoring loop
 
@@ -13,10 +15,10 @@ Most work happens in five files or folders:
 | Layer | File or folder | Owns |
 | --- | --- | --- |
 | Intent | `rule.md` | Human-readable game rules and design decisions. |
-| Topology | `manifest.ts` | Players, boards, cards, zones, pieces, dice, resources, setup choices. |
-| Rules | `app/` | State schemas, phases, interactions, card actions, effects, views. |
-| Interface | `ui/` | Typed React UI built from generated view and interaction contracts. |
-| Verification | `test/` | Bases, scenarios, reducer runs, and UI tests. |
+| Topology | `manifest.ts` | Game components (e.g. boards, cards, zones, pieces, dice, resources) and player setup. |
+| Game | `app/` | Core logic for the game. |
+| Interface | `ui/` | React UI built from generated view and interaction contracts. |
+| Verification | `test/` | Game logic and UI tests by simulating real runs. |
 
 The CLI ties those files together:
 
@@ -69,9 +71,9 @@ export const gameContract = defineGameContract({
   manifest: manifestContract,
   phaseNames: ["play"] as const,
   state: {
-    public: z.object({ winnerPlayerId: ids.playerId.nullable() }),
-    private: z.object({}),
-    hidden: z.object({}),
+    public: z.object({ winnerPlayerId: ids.playerId.nullable() }) // state visible to all players,
+    private: z.object({}) // player state for each player,
+    hidden: z.object({}) // internal state for game - not visible,
   },
 });
 ```
@@ -93,11 +95,11 @@ const play = definePhase<GameContract>()({
   actor: ({ state }) => state.flow.activePlayers,
   interactions: {
     endTurn: defineInteraction<GameContract>()({
-      surface: "panel",
+      surface: "panel" // panel | hand | inbox | board ...,
       label: "End turn",
       inputs: {},
       reduce({ state, accept, fx, ops }) {
-        return accept(pipe(state, ops.advanceActivePlayer()));
+        return accept(pipe(state, ops.advanceActivePlayer())) // keep same state, advance to next player;
       },
     }),
   },

@@ -11,10 +11,10 @@ Board interactions come from `boardInput.*` collectors:
 ```ts
 inputs: {
   vertexId: boardInput.vertex<GameState, VertexId>({
-    target: buildSettlementTarget,
+    target: buildMarkerTarget,
   }),
   edgeId: boardInput.edge<GameState, EdgeId>({
-    target: buildRoadTarget,
+    target: buildPathTarget,
   }),
 }
 ```
@@ -40,7 +40,7 @@ when a screen should ignore a subset:
 <WorkspaceGameShell
   boardSurfaces={["board-vertex", "board-edge"]}
   board={({ eligible, select }) => (
-    <RoadAndSettlementBoard
+    <PathAndMarkerBoard
       eligibleVertices={eligible.vertex}
       eligibleEdges={eligible.edge}
       onVertexClick={(id) => select.vertex(id)}
@@ -109,17 +109,17 @@ resolve the ambiguity in reducer metadata with `dispatchPriority`; higher
 numbers win.
 
 ```ts
-export const upgradeToCity = defineInteraction<
+export const upgradeMarker = defineInteraction<
   GameContract,
   typeof playerTurnPhaseStateSchema
 >()({
   surface: "board-vertex",
-  label: "Upgrade to city",
+  label: "Upgrade marker",
   group: "build",
   dispatchPriority: 10,
   inputs: {
     vertexId: boardInput.vertex<GameState, VertexId>({
-      target: cityTarget,
+      target: markerUpgradeTarget,
     }),
   },
   reduce({ state, input, accept, ops }) {
@@ -127,8 +127,8 @@ export const upgradeToCity = defineInteraction<
       pipe(
         state,
         ops.moveComponentToVertex({
-          componentId: "city",
-          boardId: "island",
+          componentId: "upgraded-marker",
+          boardId: "main-board",
           vertexId: input.params.vertexId,
         }),
       ),
@@ -137,8 +137,8 @@ export const upgradeToCity = defineInteraction<
 });
 ```
 
-This is the Catan-class pattern: setup placement, normal build actions, city
-upgrades, roads, robber movement, and card follow-ups can all be live without
+This is the board-heavy pattern: setup placement, normal build actions, marker
+upgrades, route placement, movement, and card follow-ups can all be live without
 React recalculating which vertices, edges, or spaces are legal.
 
 ## Extra inputs

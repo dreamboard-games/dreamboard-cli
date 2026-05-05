@@ -1,100 +1,529 @@
 # Core concepts
 
-Learn Dreamboard's authoring vocabulary: manifest, contract, phase, interaction, target, view, surface, and scenario.
+Learn Dreamboard's core concepts through real reducer, UI, and test code.
 
-Dreamboard uses a small set of concepts consistently across reducer code, UI code, generated contracts, and tests.
+Dreamboard games are authored as a small TypeScript program. The same authored
+program feeds the reducer runtime, generated UI contract, generated testing
+contract, and local CLI checks.
+
+The snippets below use generic SDK-shaped code and scaffold patterns.
 
 ## Manifest
 
-The manifest is the static table model authored in `manifest.ts` with `defineTopologyManifest`. It declares players, card sets, zones, boards, pieces, dice, resources, setup options, and setup profiles.
+The manifest is the static table model. Author it in `manifest.ts` with
+`defineTopologyManifest`.
 
-The manifest is not just metadata. `dreamboard sync` turns it into generated ID unions, Zod schemas, runtime table types, setup helpers, and typed UI/test contracts.
+```ts
+import { defineTopologyManifest } from "@dreamboard/sdk-types";
+
+export default defineTopologyManifest({
+  players: {
+    minPlayers: 3,
+    maxPlayers: 4,
+    optimalPlayers: 4,
+  },
+
+  zones: [
+    {
+      id: "action-deck",
+      name: "Action Deck",
+      scope: "shared",
+      allowedCardSetIds: ["action-cards"],
+      visibility: "hidden",
+    },
+    {
+      id: "player-hand",
+      name: "Player Hand",
+      scope: "perPlayer",
+      allowedCardSetIds: ["action-cards"],
+      visibility: "ownerOnly",
+    },
+    {
+      id: "played-cards",
+      name: "Played Cards",
+      scope: "shared",
+      allowedCardSetIds: ["action-cards"],
+      visibility: "public",
+    },
+  ],
+
+  boardTemplates: [
+    {
+      id: "shared-board-template",
+      name: "Shared board template",
+      layout: "hex",
+      orientation: "pointy-top",
+      spaces: [
+        { id: "cell-01", q: 0, r: 0, typeId: "standard" },
+        { id: "cell-02", q: 1, r: -1, typeId: "standard" },
+      ],
+    },
+  ],
+});
+```
+
+`dreamboard sync` turns the manifest into generated ID unions, ID schemas,
+runtime table types, board helpers, setup helpers, and typed UI/test contracts.
 
 ## Game contract
 
-The game contract is authored with `defineGameContract`. It binds the generated manifest contract to reducer state schemas and phase names.
+The game contract binds the generated manifest contract to reducer state schemas
+and phase names.
 
-The contract is the reducer's type root. If a phase name, player id, card id, zone id, board id, or state field changes, code that depends on the old shape should fail to compile.
+```ts
+import { z } from "zod";
+import { ids, manifestContract } from "../shared/manifest-contract";
+import {
+  defineGameContract,
+  sparseCounts,
+  type GameStateOf,
+} from "@dreamboard/app-sdk/reducer";
+
+const playerTurnPhaseStateSchema = z.object({
+  step: z.enum(["roll", "resolve", "main", "cleanup"]),
+  diceRolled: z.boolean(),
+  diceValues: z
+    .tuple([z.number().int().min(1).max(6), z.number().int().min(1).max(6)])
+    .nullable(),
+});
+
+export const gameContract = defineGameContract({
+  manifest: manifestContract,
+  state: {
+    public: z.object({
+      progressByPlayer: sparseCounts(ids.playerId),
+    }),
+    private: z.object({}),
+    hidden: z.object({}),
+  },
+  phaseNames: ["setup", "playerTurn"] as const,
+});
+
+export type GameContract = typeof gameContract;
+export type GameState = GameStateOf<GameContract>;
+export type PlayerTurnPhaseState = z.infer<typeof playerTurnPhaseStateSchema>;
+```
+
+The contract is the reducer's type root. If a phase name, player id, card id,
+zone id, board id, or state field changes, dependent reducer/UI/test code should
+fail to compile.
 
 ## Game definition
 
-The game definition is authored with `defineGame`. It assembles initial state, setup profiles, phases, views, and the optional static view into one reducer definition.
+`defineGame` assembles the contract into a runnable reducer definition. Initial
+state belongs here, not in `defineGameContract`.
 
-The generated UI and testing contracts read from this definition, so registered phases and interactions become typed UI/test surfaces automatically.
+```ts
+import {
+  defineGame,
+  type ReducerGameDefinition,
+} from "@dreamboard/app-sdk/reducer";
+import { gameContract, type GameContract } from "./game-contract";
+import { phases } from "./phases";
+import { playerView } from "./player-view";
+import { boardStatic } from "./board-static";
+import setupProfiles from "./setup-profiles";
+
+const views = {
+  player: playerView,
+};
+
+const game: ReducerGameDefinition<GameContract, typeof phases, typeof views> =
+  defineGame({
+    contract: gameContract,
+    initial: {
+      public: ({ playerIds }) => {
+        const progressByPlayer: Record<string, number> = {};
+        for (const pid of playerIds) {
+          // Session-time player ids come from the manifest-backed setup.
+          progressByPlayer[pid] = 0;
+        }
+        return { progressByPlayer };
+      },
+      private: () => ({}),
+      hidden: () => ({}),
+    },
+    initialPhase: "setup",
+    setupProfiles,
+    phases,
+    views,
+    staticView: boardStatic,
+  });
+
+export default game;
+```
+
+Generated UI and testing contracts read from this definition. Registered phases
+and interactions become typed UI/test surfaces automatically.
 
 ## Phase
 
-A phase is a named slice of game flow authored with `definePhase`. A phase owns:
+A phase owns a slice of game flow: phase-local state, actor selection, optional
+entry behavior, interactions, card actions, stages, and zones.
 
-- its local phase-state schema
-- an optional `enter` hook
-- actor selection
-- interactions
-- card actions
-- effects
-- stages
-- zones
+```ts
+import { definePhase, pipe } from "@dreamboard/app-sdk/reducer";
+import { zones } from "../../../shared/manifest-contract";
+import {
+  playerTurnPhaseStateSchema,
+  type GameContract,
+} from "../../game-contract";
+import { rollDice } from "./roll-dice";
+import { playActionCard } from "./card-actions";
+import { endTurn } from "./end-turn";
+import { FRESH_TURN } from "./turn-state";
 
-Use phases for real game-flow states: setup, turn, discard, resolve prompt, round cleanup, end game.
+export const playerTurn = definePhase<GameContract>()({
+  kind: "player",
+  state: playerTurnPhaseStateSchema,
+  initialState: () => ({ ...FRESH_TURN }),
+  enter({ state, accept, ops, q }) {
+    const activePlayer = state.flow.activePlayers[0] ?? q.player.order()[0]!;
+
+    // Entering from setup seeds the first turn. Later turns are set by endTurn.
+    return accept(pipe(state, ops.setActivePlayers([activePlayer])));
+  },
+  actor: ({ state }) => state.flow.activePlayers,
+  zones: [zones.playerHand],
+  cardActions: {
+    playActionCard,
+  },
+  interactions: {
+    rollDice,
+    endTurn,
+  },
+});
+```
+
+Use phases for real game-flow states: setup, turn, discard, resolve prompt,
+round cleanup, and end game.
 
 ## Interaction
 
-An interaction is a player-submitted command or prompt authored with `defineInteraction`.
+An interaction is a player-submitted command or prompt. The trusted runtime
+authorizes the actor, validates input collectors, parses params, and only then
+calls `reduce`.
 
-Interactions declare:
+```ts
+import {
+  defineInteraction,
+  rngInput,
+  pipe,
+} from "@dreamboard/app-sdk/reducer";
+import {
+  playerTurnPhaseStateSchema,
+  type GameContract,
+} from "../../game-contract";
 
-- the UI surface where they appear
-- typed input collectors
-- optional availability and validation
-- reducer logic
-- labels and rendering hints
+export const rollDice = defineInteraction<
+  GameContract,
+  typeof playerTurnPhaseStateSchema
+>()({
+  surface: "panel",
+  label: "Roll dice",
+  step: "roll",
+  emphasis: "primary",
+  visibility: "all",
+  inputs: {
+    // The client submits no dice values. The trusted reducer bundle samples
+    // both dice and passes the result to reduce as input.params.dice.values.
+    dice: rngInput.d6(2),
+  },
+  validate({ state }) {
+    if (state.phase.diceRolled) {
+      return {
+        errorCode: "ALREADY_ROLLED",
+        message: "Already rolled this turn.",
+      };
+    }
+    return null;
+  },
+  reduce({ state, input, accept, ops }) {
+    const [d1, d2] = input.params.dice.values;
+    return accept(
+      pipe(
+        state,
+        ops.patchPhaseState({
+          step: "main",
+          diceRolled: true,
+          diceValues: [d1!, d2!],
+        }),
+      ),
+    );
+  },
+});
+```
 
-The trusted runtime authorizes actors, validates target collectors, parses params, and only then calls the reducer.
+Use `validate` for business rules. Do not repeat turn authorization in every
+interaction when phase-level `actor` already owns it.
 
 ## Card action
 
-A card action is a hand-oriented interaction authored with `defineCardAction`. It is tied to a `cardType` and a `playFrom` zone. The runtime adds the selected `cardId` to reducer params and generated hand surfaces can render playable cards without local card-action wiring.
+A card action is a hand-oriented interaction. It is tied to a `cardType` and a
+`playFrom` zone, and the runtime adds `cardId` to reducer params.
 
-Use `defineCardAction` for "play this card from hand" mechanics. Use `defineInteraction` for actions that are not fundamentally card-instance plays.
+```ts
+import { defineCardAction, pipe } from "@dreamboard/app-sdk/reducer";
+import {
+  playerTurnPhaseStateSchema,
+  type GameContract,
+} from "../../game-contract";
+import { cardTypes, zones } from "../../../shared/manifest-contract";
+
+export const playActionCard = defineCardAction<
+  GameContract,
+  typeof playerTurnPhaseStateSchema
+>()({
+  cardType: cardTypes.bonus,
+  playFrom: zones.playerHand,
+  label: "Play action card",
+  step: "main",
+  reduce({ state, input, accept, ops }) {
+    return accept(
+      pipe(
+        state,
+        ops.moveCardFromPlayerZoneToSharedZone({
+          playerId: input.playerId,
+          fromZoneId: zones.playerHand,
+          toZoneId: zones.playedCards,
+          cardId: input.params.cardId,
+          playedBy: input.playerId,
+        }),
+        ops.patchPhaseState({ actionCardPlayedThisTurn: true }),
+      ),
+    );
+  },
+});
+```
+
+Use `defineCardAction` for "play this card from hand" mechanics. Use
+`defineInteraction` for actions that are not fundamentally card-instance plays.
 
 ## Input collector
 
-An input collector describes one parameter for an interaction. Examples:
+An input collector describes one parameter for an interaction. Collectors are
+the source of reducer parameter types and client-facing metadata.
 
-- `boardInput.vertex({ target })`
-- `cardInput({ target })`
-- `promptInput({ schema, target })`
-- `formInput.choice(...)`
-- `rngInput.d6(2)`
+```ts
+import { boardInput, formInput } from "@dreamboard/app-sdk/reducer";
+import type { GameState } from "../../game-contract";
+import {
+  literals,
+  type ResourceId,
+  type SpaceId,
+} from "../../../shared/manifest-contract";
+import { tokenSpaceTarget } from "../../eligibility";
 
-Collectors are the source of both reducer parameter types and client-facing metadata. Engine-sampled collectors such as `rngInput.*` appear in reducer params but are omitted from client-submitted params.
+const moveTokenInputs = {
+  spaceId: boardInput.space<GameState, SpaceId>({
+    target: tokenSpaceTarget,
+  }),
+  receiveResource: formInput.choice<ResourceId>({
+    choices: literals.resourceIds.map((resourceId) => ({
+      value: resourceId,
+      label: resourceId,
+    })),
+  }),
+};
+```
+
+Engine-sampled collectors such as `rngInput.*` appear in reducer params but are
+omitted from client-submitted params.
 
 ## Target rule
 
-A target rule is a finite eligibility rule built with `boardTarget`, `cardTarget`, or `choiceTarget`.
+A target rule is a finite eligibility rule built with `boardTarget`,
+`cardTarget`, or `choiceTarget`.
 
-The same target rule should drive UI hints, submit validation, and tests. This avoids duplicating "which space/card/choice is legal?" in the UI and reducer.
+```ts
+import { boardTarget } from "@dreamboard/app-sdk/reducer";
+import type { GameState } from "./game-contract";
+import type { EdgeId } from "../shared/manifest-contract";
+import { markerAt } from "./reducer-support";
+
+export const buildMarkerTarget = boardTarget
+  .edge<GameState, EdgeId>("sector")
+  .where({
+    id: "empty",
+    errorCode: "EDGE_OCCUPIED",
+    message: "That edge already has a marker.",
+    test: ({ state, q, targetId }) => !markerAt(state, q, targetId),
+  })
+  .where({
+    id: "connected",
+    errorCode: "NOT_CONNECTED",
+    message: "Marker must connect to your network.",
+    // Local domain helpers can use the same state/q/playerId inputs as targets.
+    test: ({ state, q, targetId, playerId }) =>
+      isConnectedMarkerTarget(state, q, targetId, playerId),
+  })
+  .build();
+```
+
+The same rule should drive UI hints, submit validation, and tests. That keeps
+"which space/card/choice is legal?" out of duplicated UI code.
 
 ## View
 
-A view is a dynamic player-facing projection authored with `defineView`. It receives state, `playerId`, runtime helpers, and `q`. The UI reads views; it should not read raw reducer state.
+A dynamic view is the player-facing projection authored with `defineView`. UI
+code should read views and generated hooks, not raw reducer state.
+
+```ts
+import { defineView } from "@dreamboard/app-sdk/reducer";
+import type { GameContract, PlayerTurnPhaseState } from "./game-contract";
+import { scoreLeader } from "./derived";
+
+export const playerView = defineView<GameContract>()({
+  project({ state, playerId, q, derived }) {
+    const turn: PlayerTurnPhaseState | null =
+      state.flow.currentPhase === "playerTurn"
+        ? (state.phase as PlayerTurnPhaseState)
+        : null;
+
+    return {
+      diceRolled: turn?.diceRolled ?? false,
+      diceValues: turn?.diceValues ?? null,
+      myResources: q.player.resources(playerId),
+      leader: derived(scoreLeader),
+    };
+  },
+});
+```
+
+Views receive state, `playerId`, runtime helpers, table queries, and derived
+value access.
 
 ## Static view
 
-A static view is a session-scoped projection authored with `defineStaticView`. It receives only the manifest and static queries. Use it for immutable payloads such as board topology, labels, and precomputed decoration derived from the manifest.
+A static view is session-scoped immutable data derived from the manifest and
+static queries.
+
+```ts
+import { defineStaticView } from "@dreamboard/app-sdk/reducer";
+import type { GameContract } from "./game-contract";
+
+export const boardStatic = defineStaticView<GameContract>()({
+  project: ({ q }) => {
+    // Board topology does not change during play, so the UI can cache it.
+    return q.board.hex("sector");
+  },
+});
+```
+
+Use static views for board topology, labels, and precomputed decoration derived
+from the manifest.
 
 ## Derived value
 
-A derived value is a pure reusable computation authored with `defineDerived`. It is memoized for one state snapshot. Use derived values for expensive or shared calculations; keep source facts in state and compute aggregates from them.
+A derived value is a pure reusable computation authored with `defineDerived`.
+It is memoized for one state snapshot.
+
+```ts
+import { defineDerived } from "@dreamboard/app-sdk/reducer";
+import type { GameContract } from "./game-contract";
+import type { PlayerId } from "../shared/manifest-contract";
+
+// Finds the current leader from stored per-player progress for this state.
+export const scoreLeader = defineDerived<GameContract>()({
+  name: "scoreLeader",
+  compute: ({ state, q }): { playerId: PlayerId | null; score: number } => {
+    let playerId: PlayerId | null = null;
+    let score = 0;
+
+    for (const pid of q.player.order()) {
+      const playerScore = state.publicState.progressByPlayer[pid] ?? 0;
+      if (playerScore > score) {
+        playerId = pid;
+        score = playerScore;
+      }
+    }
+
+    return { playerId, score };
+  },
+});
+```
+
+Keep source facts in state and compute aggregates from them.
 
 ## Surface
 
-A surface is a UI routing hint on interactions. Common surfaces are `panel`, `hand`, `inbox`, `board-vertex`, `board-edge`, `board-space`, `blocker`, and `chrome`.
+A surface is a UI routing hint on interactions.
 
-Generated UI contracts group interaction keys by surface, so UI code can render typed surface-specific controls.
+```ts
+import {
+  defineInteraction,
+  formInput,
+  pipe,
+} from "@dreamboard/app-sdk/reducer";
+import {
+  playerTurnPhaseStateSchema,
+  type GameContract,
+  type GameState,
+} from "../../game-contract";
+import { literals } from "../../../shared/manifest-contract";
+
+export const payResources = defineInteraction<
+  GameContract,
+  typeof playerTurnPhaseStateSchema
+>()({
+  // The default GameShell renders blocker interactions as modal overlays.
+  surface: "blocker",
+  label: "Pay resources",
+  step: "cleanup",
+  inputs: {
+    payment: formInput.resourceMap<GameState>({
+      resources: literals.resourceIds.map((resourceId) => ({
+        resourceId,
+        // Each input row is capped to the submitting player's current amount,
+        // so the UI cannot draft a payment larger than their inventory.
+        max: ({ q, playerId }) => q.player.resource(playerId, resourceId),
+      })),
+    }),
+  },
+  to: ({ state }) => state.phase.pendingPaymentPlayerIds,
+  reduce({ state, input, accept, ops }) {
+    return accept(
+      pipe(
+        state,
+        ops.spendResources({
+          playerId: input.playerId,
+          amounts: input.params.payment,
+        }),
+      ),
+    );
+  },
+});
+```
+
+Common surfaces are `panel`, `hand`, `inbox`, `board-vertex`, `board-edge`,
+`board-space`, `blocker`, and `chrome`. Generated UI contracts group
+interaction keys by surface so UI code can render typed surface-specific
+controls.
 
 ## Scenario
 
-A scenario is a reducer-native test authored with `defineScenario`. It starts from a base, submits interactions, handles prompts/effects, and asserts on state, views, or available interactions.
+A scenario is a reducer-native test authored with `defineScenario`.
 
-Scenarios verify the same reducer bundle that `dreamboard dev` runs.
+```ts
+import { defineScenario } from "../testing-types";
+
+export default defineScenario({
+  id: "player-turn-roll",
+  description: "Seat 0 rolls dice on their first turn after setup",
+  from: "after-setup",
+  when: async ({ game, seat }) => {
+    // rollDice uses rngInput.d6(2), so the client submits no params.
+    await game.submit(seat(0), "rollDice", {});
+  },
+  then: ({ expect, state, view, seat }) => {
+    expect(state()).toBe("playerTurn");
+
+    const p1View = view(seat(0));
+    expect(p1View.diceRolled).toBe(true);
+    expect(p1View.diceValues).not.toBeNull();
+  },
+});
+```
+
+Scenarios verify the same reducer bundle that `dreamboard dev` runs. They are
+the fastest way to prove reducer behavior without a browser.

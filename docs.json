@@ -70,7 +70,7 @@
             "group": "Tutorials",
             "pages": [
               "docs/tutorials/ring-arena",
-              "docs/tutorials/hex-trading-expansion",
+              "docs/tutorials/star-settlers",
               "docs/tutorials/worker-placement",
               "docs/tutorials/deck-builder-market",
               "docs/tutorials/trick-taking-card-game",
@@ -83,9 +83,8 @@
             "pages": [
               "docs/reference/cli",
               "docs/reference/rule-authoring",
-              "docs/reference/tiled-board-topology",
-              "docs/reference/package-surfaces",
-              "docs/reference/troubleshooting"
+              "docs/reference/board-topology",
+              "docs/reference/package-surfaces"
             ]
           }
         ]
@@ -139,7 +138,19 @@
     },
     {
       "source": "/reference/tiled-board-topology",
-      "destination": "/docs/reference/tiled-board-topology"
+      "destination": "/docs/reference/board-topology"
+    },
+    {
+      "source": "/docs/reference/tiled-board-topology",
+      "destination": "/docs/reference/board-topology"
+    },
+    {
+      "source": "/reference/troubleshooting",
+      "destination": "/docs"
+    },
+    {
+      "source": "/docs/reference/troubleshooting",
+      "destination": "/docs"
     },
     {
       "source": "/reference/game-interface",
@@ -172,6 +183,10 @@
     {
       "source": "/docs/tutorials/building-your-first-game",
       "destination": "/docs/tutorials/ring-arena"
+    },
+    {
+      "source": "/docs/tutorials/hex-trading-expansion",
+      "destination": "/docs/tutorials/star-settlers"
     }
   ],
   "navbar": {

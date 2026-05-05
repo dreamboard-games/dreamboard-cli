@@ -1,0 +1,43 @@
+{
+  "name": "@dreamboard/reducer-contract",
+  "version": "6.0.0",
+  "description": "Single-source-of-truth wire contract between the JS reducer bundle and the Kotlin reducer runtime. The JSON Schema in ./schema is authoritative; TS and Kotlin artifacts are generated.",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./bundle": "./src/bundle.ts",
+    "./wire": "./generated/wire.ts",
+    "./zod": "./generated/zod.ts",
+    "./builders": "./generated/builders.ts",
+    "./version": "./generated/version.ts",
+    "./schema": "./schema/reducer-runtime.schema.json",
+    "./fixtures": "./fixtures/index.ts"
+  },
+  "files": [
+    "schema",
+    "generated",
+    "src",
+    "fixtures"
+  ],
+  "scripts": {
+    "generate": "node scripts/generate-ts.mjs && node scripts/generate-kotlin.mjs",
+    "generate:check": "node scripts/generate-check.mjs",
+    "build": "pnpm generate && tsc --noEmit",
+    "typecheck": "pnpm generate && tsc --noEmit",
+    "test": "pnpm generate && bun test",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@dreamboard/sdk-types": "workspace:*",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@dreamboard/typescript-config": "workspace:*",
+    "@types/bun": "latest",
+    "@types/node": "^24.3.0",
+    "typescript": "^5.9.2"
+  }
+}

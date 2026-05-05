@@ -1,0 +1,17 @@
+{
+  "state": {
+    "domain": {
+      "flow": {
+        "currentPhase": "main"
+      }
+    }
+  },
+  "input": {
+    "kind": "interaction",
+    "playerId": "player-1",
+    "interactionId": "claim",
+    "params": {
+      "target": "road-a"
+    }
+  }
+}

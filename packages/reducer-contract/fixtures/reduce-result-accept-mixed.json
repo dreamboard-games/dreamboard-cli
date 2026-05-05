@@ -1,0 +1,22 @@
+{
+  "kind": "accept",
+  "state": {
+    "domain": { "currentPhase": "takeTurn" },
+    "runtime": {}
+  },
+  "effects": [
+    { "effectId": "ef0", "type": "transition", "to": "resolve" },
+    { "effectId": "ef1", "type": "rollDie", "dieId": "die-red" },
+    {
+      "effectId": "ef2",
+      "type": "shuffleSharedZone",
+      "zoneId": "dev-deck"
+    }
+  ],
+  "continuations": {
+    "ef2": {
+      "id": "afterShuffle",
+      "data": {}
+    }
+  }
+}

@@ -2,27 +2,27 @@
 
 Use defineCardAction for first-class actions that play a card from a hand zone.
 
-Use `defineCardAction` when the player action starts from a concrete card in a hand or card zone: play a development card, reveal a tactic, discard a reaction, trigger a card ability.
+Use `defineCardAction` when the player action starts from a concrete card in a hand or card zone: play an action card, reveal a tactic, discard a reaction, trigger a card ability.
 
 ```ts
 import { cardTypes, zones } from "../shared/manifest-contract";
 
-const playKnight = defineCardAction<
+const playBoost = defineCardAction<
   GameContract,
   typeof playerTurnPhaseStateSchema
 >()({
-  cardType: cardTypes.knight,
-  playFrom: zones.devHand,
-  label: "Play knight",
+  cardType: cardTypes.boost,
+  playFrom: zones.actionHand,
+  label: "Play boost",
   step: "main",
   inputs: {
-    robberSpaceId: boardInput.space<GameState, SpaceId>({
-      target: robberSpaceTarget,
+    selectedSpaceId: boardInput.space<GameState, SpaceId>({
+      target: selectableSpaceTarget,
     }),
     stealFromPlayerId: formInput(ids.playerId.nullable()),
   },
   validate({ state }) {
-    return validateCanPlayDevCard(state);
+    return validateCanPlayActionCard(state);
   },
   reduce({ state, input, accept, ops }) {
     return accept(
@@ -30,12 +30,12 @@ const playKnight = defineCardAction<
         state,
         ops.moveCardFromPlayerZoneToSharedZone({
           playerId: input.playerId,
-          fromZoneId: zones.devHand,
-          toZoneId: "played-dev",
+          fromZoneId: zones.actionHand,
+          toZoneId: zones.playedCards,
           cardId: input.params.cardId,
           playedBy: input.playerId,
         }),
-        ops.patchPublicState({ robberSpaceId: input.params.robberSpaceId }),
+        ops.patchPublicState({ selectedSpaceId: input.params.selectedSpaceId }),
       ),
     );
   },
@@ -63,15 +63,15 @@ Card actions do not take `surface` or `group`. They are always card-anchored han
 Declare the hand zone once in the phase:
 
 ```ts
-zones: [zones.devHand],
+zones: [zones.actionHand],
 cardActions: {
-  playKnight,
-  playYearOfPlenty,
-  playRoadBuilding,
+  playBoost,
+  playDrawCards,
+  playBuildPath,
 },
 ```
 
-The reducer projection is keyed by the manifest zone id, such as `dev-hand`. Import `zones` and `cardTypes` from the generated manifest contract so authoring code uses typed handles instead of raw string ids. The generated UI contract exposes the JS-friendly renderer key `devHand` for `WorkspaceGameShell` hand surfaces. Cards come from the listed manifest player zone; playable descriptors are derived from `cardActions` whose `playFrom` matches that zone.
+The reducer projection is keyed by the manifest zone id, such as `action-hand`. Import `zones` and `cardTypes` from the generated manifest contract so authoring code uses typed handles instead of raw string ids. The generated UI contract exposes the JS-friendly renderer key `actionHand` for `WorkspaceGameShell` hand surfaces. Cards come from the listed manifest player zone; playable descriptors are derived from `cardActions` whose `playFrom` matches that zone.
 
 ## Validation
 

@@ -158,15 +158,18 @@ Use card and hand components with `HandSurface` or a generated hand-zone
 renderer:
 
 ```tsx
-<Hand
-  cards={cards}
-  renderCard={({ card }) => (
-    <Card
-      card={card}
-      disabled={!contextByCardId.get(card.id)?.play}
-      onClick={() => void contextByCardId.get(card.id)?.play?.()}
-    />
-  )}
+<WorkspaceGameShell
+  surfaces={{
+    hand: {
+      zones: {
+        actionHand: {
+          renderCardContent: (card, ctx) => (
+            <span data-playable={!ctx.disabled}>{card.name ?? card.id}</span>
+          ),
+        },
+      },
+    },
+  }}
 />;
 ```
 

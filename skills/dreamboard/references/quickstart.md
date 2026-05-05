@@ -2,12 +2,9 @@
 
 Install Dreamboard, create a workspace, sync generated contracts, compile, and run locally.
 
-Use this page to create and run a workspace. It intentionally stops before a full game implementation; use the tutorials for real mechanics.
-
 ## Requirements
 
 - Node 20 or newer
-- A terminal that can run the Dreamboard CLI
 
 ## Install
 
@@ -16,16 +13,16 @@ npm install -g dreamboard
 dreamboard login
 ```
 
-`dreamboard login` opens a browser for authentication, then writes the CLI session locally.
+`dreamboard login` opens a browser for authentication.
 
 ## Create a workspace
 
 ```bash
-dreamboard new ring-arena --description "A compact card-and-zone deduction game"
-cd ring-arena
+dreamboard new my-deck-builder --description "An exciting deck builder for 4 players"
+cd my-deck-builder
 ```
 
-The generated workspace contains authored files, generated contracts, a React UI, and reducer-native tests. Read [Workspace layout](./workspace-layout.md) before changing generated files.
+The generated workspace contains generated contracts, a React UI, and reducer-native tests. Read [Workspace layout](./workspace-layout.md) before changing generated files.
 
 ## Sync generated files
 
@@ -35,7 +32,7 @@ Run sync after changing `manifest.ts`, reducer definitions, testing contracts, o
 dreamboard sync
 ```
 
-`sync` regenerates local contracts from authored source. If `sync` updates `package.json`, install dependencies before continuing:
+`sync` regenerates local contracts from authored source and upload the source files to Dreamboard server for compilation. 
 
 ```bash
 pnpm install
@@ -47,7 +44,7 @@ pnpm install
 dreamboard compile
 ```
 
-Compile runs local checks, builds the reducer bundle, and uploads the compiled artifact for the authored head. Fix type errors before moving to `dev`; type errors usually mean one of the generated contracts no longer matches the authored manifest or reducer.
+Compile runs local checks, builds the reducer bundle, and uploads the compiled artifact to Dreamboard server.
 
 ## Run locally
 
@@ -55,7 +52,7 @@ Compile runs local checks, builds the reducer bundle, and uploads the compiled a
 dreamboard dev
 ```
 
-Open the printed URL to play the current compiled game. Stop the dev host with `Ctrl+C`.
+Starts a local Vite server for playtesting the game. It runs the UI locally but connects to Dreamboard server for streaming game state. Open the printed URL to play the current compiled game.
 
 ## Add test coverage
 

@@ -1,0 +1,357 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dreamboard.games/schemas/reducer-runtime.schema.json",
+  "title": "ReducerRuntimeContract",
+  "description": "Wire-format contract between the JS reducer bundle (guest) and the Kotlin reducer runtime (host). Authored by hand; consumed by codegen in both languages. Any change here is a breaking protocol change and must bump REDUCER_CONTRACT_VERSION.",
+  "type": "object",
+  "properties": {
+    "version": { "$ref": "#/$defs/ReducerContractVersion" }
+  },
+  "required": ["version"],
+  "additionalProperties": false,
+
+  "$defs": {
+    "ReducerContractVersion": {
+      "description": "Semver-style major.minor.patch string. Major bumps are incompatible; the Kotlin adapter refuses bundles with a different major.",
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+
+    "EffectId": {
+      "description": "Locally-unique id scoped to a single accept payload. The SDK mints these; the host uses them as keys into the continuations map.",
+      "type": "string",
+      "minLength": 1
+    },
+
+    "ContinuationToken": {
+      "description": "Opaque handle the host passes back to the bundle when the effect resolves.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "data": { "$ref": "#/$defs/JsonValue" }
+      },
+      "required": ["id", "data"],
+      "additionalProperties": false
+    },
+
+    "ContinuationMap": {
+      "description": "Sparse map keyed by EffectId. Presence = effect has a continuation; absence = fire-and-forget.",
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/ContinuationToken" }
+    },
+
+    "JsonValue": {
+      "description": "Any JSON-compatible value. Deliberately permissive; callers enforce payload shapes elsewhere.",
+      "anyOf": [
+        { "type": "object" },
+        { "type": "array" },
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "boolean" },
+        { "type": "null" }
+      ]
+    },
+
+    "GameInput": {
+      "description": "Input submitted by a player. Tagged union; kind is the discriminator. Currently a single variant (interaction) so the union is trivially closed, but kept as oneOf so future input shapes (system events, etc.) can be added without breaking the code path.",
+      "oneOf": [{ "$ref": "#/$defs/GameInputInteraction" }]
+    },
+
+    "GameInputInteraction": {
+      "description": "A player submitting an interaction. An interaction is the unified authoring primitive for every player-originated input, identified by interactionId, with params carrying any collector-specific payload (e.g., prompt selection, board target, form fields).",
+      "type": "object",
+      "properties": {
+        "kind": { "const": "interaction" },
+        "playerId": { "type": "string", "minLength": 1 },
+        "interactionId": { "type": "string", "minLength": 1 },
+        "params": { "$ref": "#/$defs/JsonValue" }
+      },
+      "required": ["kind", "playerId", "interactionId", "params"],
+      "additionalProperties": false
+    },
+
+    "Effect": {
+      "description": "A thing the host should do. Every variant has effectId + type and carries NO continuation field. Continuations are expressed via the sibling ContinuationMap keyed by effectId.",
+      "oneOf": [
+        { "$ref": "#/$defs/EffectTransition" },
+        { "$ref": "#/$defs/EffectRollDie" },
+        { "$ref": "#/$defs/EffectShuffleSharedZone" }
+      ]
+    },
+
+    "EffectTransition": {
+      "type": "object",
+      "properties": {
+        "effectId": { "$ref": "#/$defs/EffectId" },
+        "type": { "const": "transition" },
+        "to": { "type": "string", "minLength": 1 }
+      },
+      "required": ["effectId", "type", "to"],
+      "additionalProperties": false
+    },
+
+    "EffectRollDie": {
+      "type": "object",
+      "properties": {
+        "effectId": { "$ref": "#/$defs/EffectId" },
+        "type": { "const": "rollDie" },
+        "dieId": { "type": "string", "minLength": 1 }
+      },
+      "required": ["effectId", "type", "dieId"],
+      "additionalProperties": false
+    },
+
+    "EffectShuffleSharedZone": {
+      "type": "object",
+      "properties": {
+        "effectId": { "$ref": "#/$defs/EffectId" },
+        "type": { "const": "shuffleSharedZone" },
+        "zoneId": { "type": "string", "minLength": 1 }
+      },
+      "required": ["effectId", "type", "zoneId"],
+      "additionalProperties": false
+    },
+
+    "ReducerInputValidationResult": {
+      "type": "object",
+      "properties": {
+        "valid": { "type": "boolean" },
+        "errorCode": { "type": "string" },
+        "message": { "type": "string" }
+      },
+      "required": ["valid"],
+      "additionalProperties": false
+    },
+
+    "InitializeRequest": {
+      "description": "Arguments passed to `createReducerBundle(...).initialize(...)`. `table` and `setup` are intentionally erased at this contract layer; the authored bundle validates them against its manifest-derived schemas.",
+      "type": "object",
+      "properties": {
+        "table": { "$ref": "#/$defs/JsonValue" },
+        "playerIds": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "rngSeed": {
+          "anyOf": [{ "type": "number" }, { "type": "null" }]
+        },
+        "setup": {
+          "anyOf": [{ "$ref": "#/$defs/JsonValue" }, { "type": "null" }]
+        }
+      },
+      "required": ["table", "playerIds"],
+      "additionalProperties": false
+    },
+
+    "InitializePhaseRequest": {
+      "description": "Arguments passed to `createReducerBundle(...).initializePhase(...)`.",
+      "type": "object",
+      "properties": {
+        "state": { "$ref": "#/$defs/JsonValue" },
+        "to": { "type": "string", "minLength": 1 }
+      },
+      "required": ["state", "to"],
+      "additionalProperties": false
+    },
+
+    "ValidateInputRequest": {
+      "description": "Arguments passed to `createReducerBundle(...).validateInput(...)`.",
+      "type": "object",
+      "properties": {
+        "state": { "$ref": "#/$defs/JsonValue" },
+        "input": { "$ref": "#/$defs/GameInput" }
+      },
+      "required": ["state", "input"],
+      "additionalProperties": false
+    },
+
+    "ReduceRequest": {
+      "description": "Arguments passed to `createReducerBundle(...).reduce(...)`.",
+      "type": "object",
+      "properties": {
+        "state": { "$ref": "#/$defs/JsonValue" },
+        "input": { "$ref": "#/$defs/GameInput" }
+      },
+      "required": ["state", "input"],
+      "additionalProperties": false
+    },
+
+    "DispatchRequest": {
+      "description": "Arguments passed to `createReducerBundle(...).dispatch(...)`.",
+      "type": "object",
+      "properties": {
+        "state": { "$ref": "#/$defs/JsonValue" },
+        "input": { "$ref": "#/$defs/GameInput" }
+      },
+      "required": ["state", "input"],
+      "additionalProperties": false
+    },
+
+    "ReduceResult": {
+      "description": "Pure reduce output (no host side-effects yet). Discriminator is `kind`.",
+      "oneOf": [
+        { "$ref": "#/$defs/ReduceResultReject" },
+        { "$ref": "#/$defs/ReduceResultAccept" }
+      ]
+    },
+
+    "ReduceResultReject": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "reject" },
+        "errorCode": { "type": "string", "minLength": 1 },
+        "message": { "type": "string" }
+      },
+      "required": ["kind", "errorCode"],
+      "additionalProperties": false
+    },
+
+    "ReduceResultAccept": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "accept" },
+        "state": { "$ref": "#/$defs/JsonValue" },
+        "effects": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Effect" }
+        },
+        "continuations": { "$ref": "#/$defs/ContinuationMap" }
+      },
+      "required": ["kind", "state", "effects", "continuations"],
+      "additionalProperties": false
+    },
+
+    "DispatchTrace": {
+      "description": "Per-step trace emitted by the host as it applies effects. Parallel in shape to ReducerRuntimeLogEntry but without the version field.",
+      "oneOf": [
+        { "$ref": "#/$defs/DispatchTraceAcceptedClientInput" },
+        { "$ref": "#/$defs/DispatchTraceAppliedEffect" },
+        { "$ref": "#/$defs/DispatchTraceRngConsumption" }
+      ]
+    },
+
+    "DispatchTraceAcceptedClientInput": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "acceptedClientInput" },
+        "input": { "$ref": "#/$defs/GameInput" }
+      },
+      "required": ["kind", "input"],
+      "additionalProperties": false
+    },
+
+    "DispatchTraceAppliedEffect": {
+      "description": "Applied effect trace. The continuation is inlined here so each trace entry is self-contained; the host emits the token it pulled from the sibling ContinuationMap at accept time.",
+      "type": "object",
+      "properties": {
+        "kind": { "const": "appliedEffect" },
+        "effect": { "$ref": "#/$defs/Effect" },
+        "continuation": { "$ref": "#/$defs/ContinuationToken" }
+      },
+      "required": ["kind", "effect"],
+      "additionalProperties": false
+    },
+
+    "DispatchTraceRngConsumption": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "rngConsumption" },
+        "operation": { "type": "string", "minLength": 1 },
+        "traceEntry": { "type": "string" }
+      },
+      "required": ["kind", "operation", "traceEntry"],
+      "additionalProperties": false
+    },
+
+    "DispatchResult": {
+      "description": "Result of dispatching a pure reduce result (i.e., applying effects).",
+      "oneOf": [
+        { "$ref": "#/$defs/DispatchResultReject" },
+        { "$ref": "#/$defs/DispatchResultAccept" }
+      ]
+    },
+
+    "DispatchResultReject": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "reject" },
+        "errorCode": { "type": "string", "minLength": 1 },
+        "message": { "type": "string" }
+      },
+      "required": ["kind", "errorCode"],
+      "additionalProperties": false
+    },
+
+    "DispatchResultAccept": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "accept" },
+        "state": { "$ref": "#/$defs/JsonValue" },
+        "trace": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/DispatchTrace" }
+        }
+      },
+      "required": ["kind", "state", "trace"],
+      "additionalProperties": false
+    },
+
+    "SeatProjection": {
+      "description": "One seat's slice of `projectSeatsDynamic(...)`. `availableInteractions` and `zones` stay JSON-erased here because their concrete shapes are owned by the gameplay payload/OpenAPI contracts, not reducer-contract.",
+      "type": "object",
+      "properties": {
+        "view": { "$ref": "#/$defs/JsonValue" },
+        "availableInteractions": { "$ref": "#/$defs/JsonValue" },
+        "zones": { "$ref": "#/$defs/JsonValue" }
+      },
+      "additionalProperties": false
+    },
+
+    "SeatProjectionBundle": {
+      "description": "Result of `createReducerBundle(...).projectSeatsDynamic(...)`.",
+      "type": "object",
+      "properties": {
+        "currentStage": {
+          "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }]
+        },
+        "stageSeats": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "seats": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/SeatProjection" }
+        }
+      },
+      "required": ["seats"],
+      "additionalProperties": false
+    },
+
+    "ProjectSeatsDynamicRequest": {
+      "description": "Arguments passed to `createReducerBundle(...).projectSeatsDynamic(...)`.",
+      "type": "object",
+      "properties": {
+        "state": { "$ref": "#/$defs/JsonValue" },
+        "playerIds": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "viewId": { "type": "string", "minLength": 1 }
+      },
+      "required": ["state", "playerIds"],
+      "additionalProperties": false
+    },
+
+    "BoardStaticProjection": {
+      "description": "Session-scoped projection produced by `projectStatic`. Computed once per reducer session from the manifest + setup profile (no mutable state), cached on the Kotlin host, and merged back into each seat view on the client. `hash` identifies the payload so clients and the host can detect accidental drift. `manifestVersion` identifies the bundle build so a restart with a new bundle invalidates the cache. Per-seat dynamic projection (view, availableInteractions, zones) continues to flow through `projectSeatsDynamic` and is decoded into typed `InteractionDescriptor` / `ZoneHandles` shapes defined by the OpenAPI game-messages schema, so it is not modeled here.",
+      "type": "object",
+      "properties": {
+        "view": { "$ref": "#/$defs/JsonValue" },
+        "hash": { "type": "string", "minLength": 1 },
+        "manifestVersion": { "type": "string" }
+      },
+      "required": ["view", "hash", "manifestVersion"],
+      "additionalProperties": false
+    }
+  }
+}

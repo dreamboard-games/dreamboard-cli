@@ -75,9 +75,9 @@ boards, use the typed `select.<kind>` helpers:
 ```
 
 For board-heavy games, keep board rendering in a local component and call the
-generated `useBoardInteractions()` wrapper inside that component. That is the
-Catan-class pattern because several build, robber, setup, and card follow-up
-interactions can all be live on the same geometry.
+generated `useBoardInteractions()` wrapper inside that component. That pattern
+works when several build, movement, setup, and card follow-up interactions can
+all be live on the same geometry.
 
 ## Surface overrides
 

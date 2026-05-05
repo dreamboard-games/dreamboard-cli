@@ -98,10 +98,10 @@ export default defineBase({
   players: 4,
   setup: async ({ game, seat }) => {
     for (const step of SETUP_ORDER) {
-      await game.submit(seat(step.seat), "placeSetupSettlement", {
+      await game.submit(seat(step.seat), "placeSetupMarker", {
         vertexId: step.vertex,
       });
-      await game.submit(seat(step.seat), "placeSetupRoad", {
+      await game.submit(seat(step.seat), "placeSetupPath", {
         edgeId: step.edge,
       });
     }

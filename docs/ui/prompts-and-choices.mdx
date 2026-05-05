@@ -3,11 +3,10 @@ title: "Prompts and choices"
 description: "Render prompt and choice interactions in player UI."
 ---
 
-Prompts are addressed interactions. They are authored with `promptInput`, routed
+Prompts are popups address to one or more players. It is useful for interactions that require another players response (e.g. trading resources). 
+They are created with `promptInput`, routed
 to one or more players with `to`, and projected into the current seat's inbox.
 
-They are not effects and they are not local UI dialogs. A prompt is a reducer
-interaction whose submit path is the same as every other player action.
 
 ## Author a prompt
 
@@ -17,7 +16,7 @@ const respondToTrade = defineInteraction<GameContract, typeof phaseState>()({
   label: "Respond to trade",
   title: "Incoming trade offer",
   presentation: {
-    mode: "dialog",
+    mode: "dialog", // | inline
     dialog: {
       title: "Incoming trade offer",
       description: "Review the offer and accept or reject it.",
